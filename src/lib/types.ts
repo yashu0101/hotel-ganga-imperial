@@ -20,6 +20,25 @@ export interface Enquiry {
   status: "new" | "contacted" | "confirmed" | "cancelled";
 }
 
+export interface Booking {
+  id: string;
+  name: string;
+  mobile: string;
+  email: string;
+  city: string;
+  country: string;
+  gender: "male" | "female" | "other";
+  roomType: string;
+  checkin: string;
+  checkout: string;
+  guests: number;
+  amount: number;
+  paymentStatus: "pending" | "paid" | "failed" | "refunded";
+  bookingStatus: "pending" | "confirmed" | "checked-in" | "checked-out" | "cancelled";
+  paymentId: string;
+  createdAt: string;
+}
+
 export interface SiteConfig {
   hotelName: string;
   contact: {
@@ -42,5 +61,6 @@ export interface SiteConfig {
 
 export interface DB {
   enquiries: Enquiry[];
+  bookings: Booking[];
   config: SiteConfig;
 }

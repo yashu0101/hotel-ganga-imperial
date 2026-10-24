@@ -1,23 +1,31 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { NAV_ITEMS } from "@/lib/config";
+import { useApp } from "@/lib/context";
+
+const NAV_KEYS = [
+  { href: "#home", key: "nav.home" },
+  { href: "#about", key: "nav.about" },
+  { href: "#rooms", key: "nav.rooms" },
+  { href: "#amenities", key: "nav.amenities" },
+  { href: "#events", key: "nav.banquet" },
+  { href: "#dining", key: "nav.dining" },
+  { href: "#gallery", key: "nav.gallery" },
+];
 
 export default function Header() {
+  const { t, lang, setLang, theme, setTheme } = useApp();
   const [solid, setSolid] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeId, setActiveId] = useState("home");
 
   const updateScroll = useCallback(() => {
     setSolid(window.scrollY > 40);
-
     const line = window.innerHeight * 0.4;
     let cur = "home";
-    for (const item of NAV_ITEMS) {
+    for (const item of NAV_KEYS) {
       const el = document.querySelector(item.href);
-      if (el && el.getBoundingClientRect().top <= line) {
-        cur = item.href.slice(1);
-      }
+      if (el && el.getBoundingClientRect().top <= line) cur = item.href.slice(1);
     }
     setActiveId(cur);
   }, []);
@@ -43,7 +51,6 @@ export default function Header() {
           className="menu-btn"
           aria-label={menuOpen ? "Close menu" : "Open menu"}
           aria-expanded={menuOpen}
-          aria-controls="nav"
           onClick={() => {
             setMenuOpen(!menuOpen);
             document.body.style.overflow = !menuOpen ? "hidden" : "";
@@ -51,30 +58,37 @@ export default function Header() {
         >
           <span /><span /><span />
         </button>
-        <nav className={`nav${menuOpen ? " open" : ""}`} id="nav" aria-label="Main">
-          {NAV_ITEMS.map((item) => (
+        <nav className={`nav${menuOpen ? " open" : ""}`} aria-label="Main">
+          {NAV_KEYS.map((item) => (
             <a
               key={item.href}
               href={item.href}
               aria-current={activeId === item.href.slice(1) ? "true" : undefined}
-              onClick={() => {
-                setMenuOpen(false);
-                document.body.style.overflow = "";
-              }}
+              onClick={() => { setMenuOpen(false); document.body.style.overflow = ""; }}
             >
-              {item.label}
+              {t(item.key)}
             </a>
           ))}
-          <a
-            className="cta"
-            href="#enquire"
-            onClick={() => {
-              setMenuOpen(false);
-              document.body.style.overflow = "";
-            }}
-          >
-            Enquire
+          <a className="cta" href="/book" onClick={() => { setMenuOpen(false); document.body.style.overflow = ""; }}>
+            {t("nav.book")}
           </a>
+          <div className="header-controls">
+            <button
+              className="ctrl-btn"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              aria-label="Toggle theme"
+              title={theme === "dark" ? t("theme.light") : t("theme.dark")}
+            >
+              {theme === "dark" ? "☀" : "☾"}
+            </button>
+            <button
+              className="ctrl-btn"
+              onClick={() => setLang(lang === "en" ? "hi" : "en")}
+              aria-label="Toggle language"
+            >
+              {lang === "en" ? "हि" : "EN"}
+            </button>
+          </div>
         </nav>
       </div>
     </header>

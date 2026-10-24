@@ -57,7 +57,16 @@ p{margin:0 0 1em;max-width:62ch}
   .menu-btn[aria-expanded="true"] span:nth-child(1){transform:translateY(6px) rotate(45deg)}
   .menu-btn[aria-expanded="true"] span:nth-child(2){opacity:0}
   .menu-btn[aria-expanded="true"] span:nth-child(3){transform:translateY(-6px) rotate(-45deg)}
+  .header-controls{display:flex;gap:8px;margin-top:18px}
 }
+
+/* ---------- Header controls ---------- */
+.header-controls{display:flex;gap:8px;align-items:center;margin-left:8px}
+.ctrl-btn{background:none;border:1px solid rgba(201,161,91,.5);color:#E9DFCB;width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;transition:all .2s;font-family:inherit;padding:0}
+.ctrl-btn:hover{background:rgba(201,161,91,.15);border-color:var(--brass);color:#fff}
+
+/* ---------- Guest icon ---------- */
+.guest-icon{margin-right:6px;font-size:1.1rem;vertical-align:middle}
 
 /* ---------- Hero ---------- */
 .hero{position:relative;min-height:100svh;display:grid;grid-template-columns:minmax(380px,.8fr) 1.2fr;color:#F6EEDD;background:var(--night);padding:0}

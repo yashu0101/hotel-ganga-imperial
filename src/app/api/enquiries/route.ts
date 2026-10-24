@@ -4,8 +4,13 @@ import {
   updateEnquiryStatus,
   deleteEnquiry,
 } from "@/lib/db";
+import { verifySession } from "@/lib/auth";
 
 export async function GET() {
+  const session = await verifySession();
+  if (!session.authenticated) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const enquiries = getEnquiries();
   return NextResponse.json(enquiries);
 }

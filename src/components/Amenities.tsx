@@ -1,40 +1,30 @@
-import Image from "next/image";
+"use client";
 
-const amenities = [
-  { icon: "pool", title: "Rooftop Swimming Pool", text: "An open-air pool on the top floor with skyline views." },
-  { icon: "spa", title: "Spa", text: "Professional treatments to unwind after a long day." },
-  { icon: "gym", title: "Fitness Gym", text: "Modern equipment available round the clock." },
-  { icon: "lounge", title: "Club Lounge", text: "A quiet space to work, read or meet over coffee." },
-  { icon: "security", title: "24/7 Security", text: "CCTV surveillance and trained staff at every entrance." },
-];
+import Image from "next/image";
+import { useApp } from "@/lib/context";
 
 export default function Amenities() {
+  const { t } = useApp();
+  const items = [
+    { key: "pool", title: t("amenities.pool"), text: t("amenities.poolDesc") },
+    { key: "spa", title: t("amenities.spa"), text: t("amenities.spaDesc") },
+    { key: "gym", title: t("amenities.gym"), text: t("amenities.gymDesc") },
+    { key: "lounge", title: t("amenities.lounge"), text: t("amenities.loungeDesc") },
+    { key: "security", title: t("amenities.security"), text: t("amenities.securityDesc") },
+  ];
   return (
     <section className="amen" id="amenities">
       <div className="wrap">
-        <div className="head">
-          <h2>Amenities</h2>
-          <p>Everything you need for a comfortable and complete stay.</p>
-        </div>
+        <div className="head"><h2>{t("amenities.title")}</h2><p>{t("amenities.subtitle")}</p></div>
         <div className="amen-feature">
-          <div className="amen-img" data-reveal>
-            <Image src="/images/image-8.jpeg" alt="Rooftop pool" width={600} height={400} />
-          </div>
-          <div className="amen-text" data-reveal>
-            <h3>Rooftop swimming pool</h3>
-            <p>
-              The pool sits on the top floor, open to the sky. Swim in the morning
-              light or float under the stars. Towels, loungers and a poolside bar
-              are all included.
-            </p>
-          </div>
+          <div className="amen-img" data-reveal><Image src="/images/image-8.jpeg" alt="Rooftop pool" width={600} height={400} /></div>
+          <div className="amen-text" data-reveal><h3>{t("amenities.poolTitle")}</h3><p>{t("amenities.poolText")}</p></div>
         </div>
         <div className="amen-grid">
-          {amenities.map((item, i) => (
-            <div key={i} className="amen-card" data-reveal>
-              <div className="amen-icon" data-icon={item.icon} />
-              <h3>{item.title}</h3>
-              <p>{item.text}</p>
+          {items.map((item) => (
+            <div key={item.key} className="amen-card" data-reveal>
+              <div className="amen-icon" data-icon={item.key} />
+              <h3>{item.title}</h3><p>{item.text}</p>
             </div>
           ))}
         </div>

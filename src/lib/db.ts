@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { DB, Enquiry } from "./types";
+import { DB, Enquiry, Booking } from "./types";
 import { SITE_CONFIG } from "./config";
 
 const DB_PATH = path.join(process.cwd(), "data", "db.json");
@@ -8,9 +8,11 @@ const DB_PATH = path.join(process.cwd(), "data", "db.json");
 function readDB(): DB {
   try {
     const raw = fs.readFileSync(DB_PATH, "utf-8");
-    return JSON.parse(raw);
+    const data = JSON.parse(raw);
+    if (!data.bookings) data.bookings = [];
+    return data;
   } catch {
-    const initial: DB = { enquiries: [], config: SITE_CONFIG };
+    const initial: DB = { enquiries: [], bookings: [], config: SITE_CONFIG };
     writeDB(initial);
     return initial;
   }
@@ -22,12 +24,9 @@ function writeDB(data: DB): void {
   fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), "utf-8");
 }
 
+// Enquiries
 export function getEnquiries(): Enquiry[] {
   return readDB().enquiries;
-}
-
-export function getEnquiry(id: string): Enquiry | undefined {
-  return readDB().enquiries.find((e) => e.id === id);
 }
 
 export function addEnquiry(
@@ -66,6 +65,50 @@ export function deleteEnquiry(id: string): boolean {
   return true;
 }
 
+// Bookings
+export function getBookings(): Booking[] {
+  return readDB().bookings;
+}
+
+export function addBooking(
+  booking: Omit<Booking, "id" | "createdAt" | "paymentId" | "paymentStatus" | "bookingStatus">
+): Booking {
+  const db = readDB();
+  const newBooking: Booking = {
+    ...booking,
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+    paymentId: "",
+    paymentStatus: "pending",
+    bookingStatus: "pending",
+  };
+  db.bookings.push(newBooking);
+  writeDB(db);
+  return newBooking;
+}
+
+export function updateBooking(
+  id: string,
+  updates: Partial<Pick<Booking, "paymentStatus" | "bookingStatus" | "paymentId">>
+): Booking | null {
+  const db = readDB();
+  const idx = db.bookings.findIndex((b) => b.id === id);
+  if (idx === -1) return null;
+  Object.assign(db.bookings[idx], updates);
+  writeDB(db);
+  return db.bookings[idx];
+}
+
+export function deleteBooking(id: string): boolean {
+  const db = readDB();
+  const idx = db.bookings.findIndex((b) => b.id === id);
+  if (idx === -1) return false;
+  db.bookings.splice(idx, 1);
+  writeDB(db);
+  return true;
+}
+
+// Config
 export function getConfig() {
   return readDB().config;
 }

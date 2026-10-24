@@ -1,0 +1,134 @@
+"use client";
+
+import { useState, FormEvent } from "react";
+import { SITE_CONFIG } from "@/lib/config";
+import { useApp } from "@/lib/context";
+
+export default function BookPage() {
+  const { t, lang, setLang, theme, setTheme } = useApp();
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [message, setMessage] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const errs: Record<string, string> = {};
+    const name = (form.elements.namedItem("name") as HTMLInputElement).value.trim();
+    const mobile = (form.elements.namedItem("mobile") as HTMLInputElement).value.trim();
+    const email = (form.elements.namedItem("email") as HTMLInputElement).value.trim();
+    const city = (form.elements.namedItem("city") as HTMLInputElement).value.trim();
+    const country = (form.elements.namedItem("country") as HTMLInputElement).value.trim();
+    const gender = (form.elements.namedItem("gender") as HTMLSelectElement).value;
+    const roomType = (form.elements.namedItem("roomType") as HTMLSelectElement).value;
+    const checkin = (form.elements.namedItem("checkin") as HTMLInputElement).value;
+    const checkout = (form.elements.namedItem("checkout") as HTMLInputElement).value;
+    const guests = (form.elements.namedItem("guests") as HTMLInputElement).value;
+
+    if (!name) errs.name = "Required";
+    if (!mobile || mobile.replace(/[^\d]/g, "").length < 10) errs.mobile = "Valid mobile required";
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.email = "Valid email required";
+    if (!city) errs.city = "Required";
+    if (!country) errs.country = "Required";
+    if (!checkin) errs.checkin = "Required";
+    setErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+
+    setStatus("loading");
+    try {
+      const res = await fetch("/api/book", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, mobile, email, city, country, gender, roomType, checkin, checkout, guests: Number(guests) }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setStatus("success");
+        setMessage(`Booking received! ID: ${data.booking.id.slice(0, 8).toUpperCase()}`);
+        form.reset();
+      } else { setStatus("error"); setMessage(data.error); }
+    } catch { setStatus("error"); setMessage("Failed. Please try again."); }
+  };
+
+  return (
+    <div className="book-page">
+      <style>{`
+        .book-page{min-height:100vh;background:var(--bg);color:var(--text);font-family:"Mulish",system-ui,sans-serif}
+        .book-header{background:rgba(18,24,39,.95);border-bottom:1px solid rgba(201,161,91,.25);padding:16px 32px;display:flex;align-items:center;justify-content:space-between}
+        .book-header a{font-family:"Marcellus",Georgia,serif;color:#C9A15B;text-decoration:none;font-size:1.1rem;letter-spacing:.14em}
+        .book-header .right{display:flex;gap:12px;align-items:center}
+        .book-header .back{color:#ADA394;font-family:"Mulish",sans-serif;font-size:.9rem;letter-spacing:0}
+        .ctrl{background:none;border:1px solid #323A50;color:#ADA394;padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:.85rem}
+        .ctrl:hover{border-color:#C9A15B;color:#C9A15B}
+        .book-body{max-width:640px;margin:0 auto;padding:48px 32px}
+        .book-body h1{font-family:"Marcellus",Georgia,serif;font-weight:400;font-size:2rem;color:var(--accent);margin:0 0 8px}
+        .book-body .sub{color:var(--muted);margin-bottom:32px}
+        .field{margin-bottom:18px}
+        .field label{display:block;color:var(--muted);font-size:.85rem;margin-bottom:5px}
+        .field input,.field select{width:100%;padding:12px 16px;background:var(--surface);border:1px solid var(--line);border-radius:6px;color:var(--text);font:inherit;font-size:.95rem;box-sizing:border-box}
+        .field input:focus,.field select:focus{outline:none;border-color:#C9A15B}
+        .field .err{color:#E88;font-size:.8rem;margin-top:4px}
+        .field-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+        .submit-btn{width:100%;padding:14px;background:#C9A15B;color:#121827;border:none;border-radius:6px;font:inherit;font-size:1rem;font-weight:600;cursor:pointer;margin-top:8px}
+        .submit-btn:hover{background:#E2C68E}
+        .submit-btn:disabled{opacity:.6;cursor:not-allowed}
+        .msg{padding:14px;border-radius:6px;margin-bottom:20px;font-size:.9rem}
+        .msg.success{background:rgba(91,201,107,.15);border:1px solid rgba(91,201,107,.4);color:#7ddf8a}
+        .msg.error{background:rgba(201,91,91,.15);border:1px solid rgba(201,91,91,.4);color:#E88}
+        @media(max-width:500px){.field-row{grid-template-columns:1fr}.book-body{padding:32px 16px}}
+      `}</style>
+
+      <div className="book-header">
+        <a href="/">Hotel Ganga Imperial</a>
+        <div className="right">
+          <button className="ctrl" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? "☀" : "☾"}</button>
+          <button className="ctrl" onClick={() => setLang(lang === "en" ? "hi" : "en")}>{lang === "en" ? "हि" : "EN"}</button>
+          <a href="/" className="back">{t("book.back")}</a>
+        </div>
+      </div>
+
+      <div className="book-body">
+        <h1>{t("book.title")}</h1>
+        <p className="sub">{t("book.subtitle")}</p>
+
+        {message && <div className={`msg ${status === "success" ? "success" : "error"}`}>{message}</div>}
+
+        {status !== "success" && (
+          <form onSubmit={handleSubmit}>
+            <div className="field"><label>{t("book.name")} *</label><input name="name" autoComplete="name" required />{errors.name && <div className="err">{errors.name}</div>}</div>
+            <div className="field-row">
+              <div className="field"><label>{t("book.mobile")} *</label><input name="mobile" type="tel" autoComplete="tel" inputMode="tel" required />{errors.mobile && <div className="err">{errors.mobile}</div>}</div>
+              <div className="field"><label>{t("book.email")} *</label><input name="email" type="email" autoComplete="email" required />{errors.email && <div className="err">{errors.email}</div>}</div>
+            </div>
+            <div className="field-row">
+              <div className="field"><label>{t("book.city")} *</label><input name="city" autoComplete="address-level2" required />{errors.city && <div className="err">{errors.city}</div>}</div>
+              <div className="field"><label>{t("book.country")} *</label><input name="country" autoComplete="country-name" defaultValue="India" required />{errors.country && <div className="err">{errors.country}</div>}</div>
+            </div>
+            <div className="field-row">
+              <div className="field">
+                <label>{t("book.gender")} *</label>
+                <select name="gender" required>
+                  <option value="male">{t("book.male")}</option>
+                  <option value="female">{t("book.female")}</option>
+                  <option value="other">{t("book.other")}</option>
+                </select>
+              </div>
+              <div className="field"><label>{t("book.roomType")} *</label><select name="roomType" required>{SITE_CONFIG.rooms.map((r) => <option key={r.name} value={r.name}>{r.name}</option>)}</select></div>
+            </div>
+            <div className="field-row">
+              <div className="field"><label>{t("book.checkin")} *</label><input name="checkin" type="date" required />{errors.checkin && <div className="err">{errors.checkin}</div>}</div>
+              <div className="field"><label>{t("book.checkout")}</label><input name="checkout" type="date" /></div>
+            </div>
+            <div className="field"><label>{t("book.guests")}</label><input name="guests" type="number" min={1} max={20} defaultValue={2} /></div>
+            <button className="submit-btn" type="submit" disabled={status === "loading"}>{status === "loading" ? t("book.submitting") : t("book.submit")}</button>
+          </form>
+        )}
+        {status === "success" && (
+          <div style={{ textAlign: "center", marginTop: 32 }}>
+            <button className="submit-btn" onClick={() => { setStatus("idle"); setMessage(""); }} style={{ maxWidth: 300 }}>{t("book.another")}</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
