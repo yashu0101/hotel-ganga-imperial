@@ -10,6 +10,7 @@ import Events from "@/components/Events";
 import Dining from "@/components/Dining";
 import RingCarousel from "@/components/RingCarousel";
 import Gallery from "@/components/Gallery";
+import Reviews from "@/components/Reviews";
 import EnquiryForm from "@/components/EnquiryForm";
 import Footer from "@/components/Footer";
 import BackToTop from "@/components/BackToTop";
@@ -31,6 +32,7 @@ export default function Home() {
         <Dining />
         <RingCarousel />
         <Gallery />
+        <Reviews />
         <EnquiryForm />
       </main>
       <Footer />

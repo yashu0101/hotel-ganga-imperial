@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addBooking } from "@/lib/db";
+import { addBooking, getBookings } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,6 +23,31 @@ export async function POST(req: NextRequest) {
     }
     if (!roomType || !checkin) {
       return NextResponse.json({ error: "Room type and check-in date are required." }, { status: 400 });
+    }
+
+    // Date validation
+    const today = new Date().toISOString().split("T")[0];
+    if (checkin < today) {
+      return NextResponse.json({ error: "Check-in date cannot be in the past." }, { status: 400 });
+    }
+    if (checkout && checkout <= checkin) {
+      return NextResponse.json({ error: "Check-out must be after check-in." }, { status: 400 });
+    }
+
+    // Room availability check (skip for banquet bookings)
+    if (!roomType.startsWith("Banquet")) {
+      const allBookings = await getBookings();
+      const checkoutDate = checkout || checkin;
+      const conflict = allBookings.find(b =>
+        b.roomType === roomType &&
+        b.bookingStatus !== "cancelled" &&
+        b.bookingStatus !== "checked-out" &&
+        b.checkin <= checkoutDate &&
+        (b.checkout || b.checkin) >= checkin
+      );
+      if (conflict) {
+        return NextResponse.json({ error: `${roomType} is not available for the selected dates. Please choose different dates or another room type.` }, { status: 409 });
+      }
     }
 
     const booking = await addBooking({

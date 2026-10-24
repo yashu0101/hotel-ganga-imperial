@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useApp } from "@/lib/context";
 
 interface Booking {
   id: string; name: string; mobile: string; email: string; city: string; country: string;
@@ -25,19 +26,27 @@ interface DiningOption {
   id: string; name: string; description: string; price: string;
   category: string; active: boolean; createdAt: string;
 }
+interface Review {
+  id: string; name: string; rating: number; text: string;
+  city: string; active: boolean; createdAt: string;
+}
 
 const genderIcon = (g: string) => g === "female" ? "\u{1F469}" : g === "male" ? "\u{1F468}" : "\u{1F9D1}";
 
+type Tab = "dashboard" | "bookings" | "enquiries" | "rooms" | "banquet" | "dining" | "offers" | "reviews" | "analytics";
+
 export default function AdminPage() {
   const router = useRouter();
+  const { t, lang, setLang } = useApp();
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"dashboard" | "bookings" | "enquiries" | "rooms" | "offers" | "banquet" | "dining">("dashboard");
+  const [tab, setTab] = useState<Tab>("dashboard");
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [banquetPkgs, setBanquetPkgs] = useState<BanquetPackage[]>([]);
   const [diningOpts, setDiningOpts] = useState<DiningOption[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [editRoom, setEditRoom] = useState<{ index: number; room: Room } | null>(null);
   const [newRoom, setNewRoom] = useState(false);
   const [editOffer, setEditOffer] = useState<Offer | null>(null);
@@ -46,6 +55,8 @@ export default function AdminPage() {
   const [newBanquet, setNewBanquet] = useState(false);
   const [editDining, setEditDining] = useState<DiningOption | null>(null);
   const [newDining, setNewDining] = useState(false);
+  const [editReview, setEditReview] = useState<Review | null>(null);
+  const [newReview, setNewReview] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me").then(r => { if (!r.ok) router.push("/login"); else setLoading(false); });
@@ -60,7 +71,8 @@ export default function AdminPage() {
       fetch("/api/offers").then(r => r.json()),
       fetch("/api/banquet").then(r => r.json()),
       fetch("/api/dining").then(r => r.json()),
-    ]).then(([b, e, r, o, bp, d]) => { setBookings(b); setEnquiries(e); setRooms(r); setOffers(o); setBanquetPkgs(bp); setDiningOpts(d); });
+      fetch("/api/reviews").then(r => r.json()),
+    ]).then(([b, e, r, o, bp, d, rv]) => { setBookings(b); setEnquiries(e); setRooms(r); setOffers(o); setBanquetPkgs(bp); setDiningOpts(d); setReviews(rv); });
   }, [loading]);
 
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }); router.push("/login"); };
@@ -69,18 +81,15 @@ export default function AdminPage() {
     await fetch("/api/bookings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, [field]: value }) });
     setBookings(prev => prev.map(b => b.id === id ? { ...b, [field]: value } : b));
   };
-
   const deleteBooking = async (id: string) => {
     if (!confirm("Delete this booking?")) return;
     await fetch(`/api/bookings?id=${id}`, { method: "DELETE" });
     setBookings(prev => prev.filter(b => b.id !== id));
   };
-
   const updateEnquiryStatus = async (id: string, status: string) => {
     await fetch("/api/enquiries", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status }) });
     setEnquiries(prev => prev.map(e => e.id === id ? { ...e, status } : e));
   };
-
   const deleteEnquiry = async (id: string) => {
     if (!confirm("Delete this enquiry?")) return;
     await fetch(`/api/enquiries?id=${id}`, { method: "DELETE" });
@@ -91,24 +100,19 @@ export default function AdminPage() {
   const saveRoom = async (index: number, room: Partial<Room>) => {
     const res = await fetch("/api/rooms", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ index, ...room }) });
     const data = await res.json();
-    setRooms(data.rooms);
-    setEditRoom(null);
+    setRooms(data.rooms); setEditRoom(null);
   };
-
   const createRoom = async (room: Room) => {
     const res = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(room) });
     const data = await res.json();
-    setRooms(data.rooms);
-    setNewRoom(false);
+    setRooms(data.rooms); setNewRoom(false);
   };
-
   const removeRoom = async (index: number) => {
     if (!confirm("Delete this room type?")) return;
     const res = await fetch(`/api/rooms?index=${index}`, { method: "DELETE" });
     const data = await res.json();
     setRooms(data.rooms);
   };
-
   const toggleRoomVisibility = async (index: number) => {
     const room = rooms[index];
     await saveRoom(index, { hidden: !room.hidden });
@@ -118,17 +122,13 @@ export default function AdminPage() {
   const createOfferFn = async (offer: Omit<Offer, "id" | "createdAt">) => {
     const res = await fetch("/api/offers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(offer) });
     const data = await res.json();
-    setOffers(prev => [...prev, data.offer]);
-    setNewOffer(false);
+    setOffers(prev => [...prev, data.offer]); setNewOffer(false);
   };
-
   const saveOfferFn = async (id: string, updates: Partial<Offer>) => {
     const res = await fetch("/api/offers", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...updates }) });
     const data = await res.json();
-    setOffers(prev => prev.map(o => o.id === id ? data.offer : o));
-    setEditOffer(null);
+    setOffers(prev => prev.map(o => o.id === id ? data.offer : o)); setEditOffer(null);
   };
-
   const removeOffer = async (id: string) => {
     if (!confirm("Delete this offer?")) return;
     await fetch(`/api/offers?id=${id}`, { method: "DELETE" });
@@ -139,14 +139,12 @@ export default function AdminPage() {
   const createBanquetFn = async (pkg: Omit<BanquetPackage, "id" | "createdAt">) => {
     const res = await fetch("/api/banquet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pkg) });
     const data = await res.json();
-    setBanquetPkgs(prev => [...prev, data.package]);
-    setNewBanquet(false);
+    setBanquetPkgs(prev => [...prev, data.package]); setNewBanquet(false);
   };
   const saveBanquetFn = async (id: string, updates: Partial<BanquetPackage>) => {
     const res = await fetch("/api/banquet", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...updates }) });
     const data = await res.json();
-    setBanquetPkgs(prev => prev.map(p => p.id === id ? data.package : p));
-    setEditBanquet(null);
+    setBanquetPkgs(prev => prev.map(p => p.id === id ? data.package : p)); setEditBanquet(null);
   };
   const removeBanquet = async (id: string) => {
     if (!confirm("Delete this package?")) return;
@@ -158,19 +156,34 @@ export default function AdminPage() {
   const createDiningFn = async (opt: Omit<DiningOption, "id" | "createdAt">) => {
     const res = await fetch("/api/dining", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(opt) });
     const data = await res.json();
-    setDiningOpts(prev => [...prev, data.option]);
-    setNewDining(false);
+    setDiningOpts(prev => [...prev, data.option]); setNewDining(false);
   };
   const saveDiningFn = async (id: string, updates: Partial<DiningOption>) => {
     const res = await fetch("/api/dining", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...updates }) });
     const data = await res.json();
-    setDiningOpts(prev => prev.map(d => d.id === id ? data.option : d));
-    setEditDining(null);
+    setDiningOpts(prev => prev.map(d => d.id === id ? data.option : d)); setEditDining(null);
   };
   const removeDining = async (id: string) => {
     if (!confirm("Delete this dining option?")) return;
     await fetch(`/api/dining?id=${id}`, { method: "DELETE" });
     setDiningOpts(prev => prev.filter(d => d.id !== id));
+  };
+
+  // Review CRUD
+  const createReviewFn = async (rev: Omit<Review, "id" | "createdAt">) => {
+    const res = await fetch("/api/reviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rev) });
+    const data = await res.json();
+    setReviews(prev => [...prev, data.review]); setNewReview(false);
+  };
+  const saveReviewFn = async (id: string, updates: Partial<Review>) => {
+    const res = await fetch("/api/reviews", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...updates }) });
+    const data = await res.json();
+    setReviews(prev => prev.map(r => r.id === id ? data.review : r)); setEditReview(null);
+  };
+  const removeReview = async (id: string) => {
+    if (!confirm("Delete this review?")) return;
+    await fetch(`/api/reviews?id=${id}`, { method: "DELETE" });
+    setReviews(prev => prev.filter(r => r.id !== id));
   };
 
   if (loading) return <div style={{ display: "grid", placeItems: "center", height: "100vh", background: "#121827", color: "#C9A15B", fontFamily: "Marcellus, serif", fontSize: "1.2rem" }}>Loading...</div>;
@@ -179,6 +192,38 @@ export default function AdminPage() {
   const confirmedBookings = bookings.filter(b => b.bookingStatus === "confirmed" || b.bookingStatus === "checked-in").length;
   const newEnquiries = enquiries.filter(e => e.status === "new").length;
   const activeOffers = offers.filter(o => o.active).length;
+
+  // Analytics data
+  const getBookingsByDay = () => {
+    const days: Record<string, number> = {};
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now); d.setDate(d.getDate() - i);
+      const key = d.toISOString().split("T")[0];
+      days[key] = 0;
+    }
+    bookings.forEach(b => {
+      const day = b.createdAt.split("T")[0];
+      if (days[day] !== undefined) days[day]++;
+    });
+    return Object.entries(days).map(([date, count]) => ({ date: date.slice(5), count }));
+  };
+
+  const getRevenueByRoom = () => {
+    const rev: Record<string, number> = {};
+    bookings.filter(b => b.paymentStatus === "paid").forEach(b => {
+      rev[b.roomType] = (rev[b.roomType] || 0) + b.amount;
+    });
+    return Object.entries(rev).map(([room, amount]) => ({ room, amount }));
+  };
+
+  const getStatusBreakdown = () => {
+    const counts: Record<string, number> = { pending: 0, confirmed: 0, "checked-in": 0, "checked-out": 0, cancelled: 0 };
+    bookings.forEach(b => { counts[b.bookingStatus] = (counts[b.bookingStatus] || 0) + 1; });
+    return counts;
+  };
+
+  const tabKeys: Tab[] = ["dashboard", "bookings", "enquiries", "rooms", "banquet", "dining", "offers", "reviews", "analytics"];
 
   return (
     <div style={{ minHeight: "100vh", background: "#0f1422", color: "#EDE6DA", fontFamily: "'Mulish', sans-serif" }}>
@@ -243,17 +288,18 @@ export default function AdminPage() {
       `}</style>
 
       <div className="adm-header">
-        <h1>Hotel Ganga Imperial</h1>
+        <h1>{t("admin.title")}</h1>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <a href="/" style={{ color: "#8a8070", textDecoration: "none", fontSize: ".85rem" }}>View Site</a>
-          <button className="adm-btn" onClick={logout}>Logout</button>
+          <button className="adm-btn" onClick={() => setLang(lang === "en" ? "hi" : "en")}>{lang === "en" ? "हि" : "EN"}</button>
+          <a href="/" style={{ color: "#8a8070", textDecoration: "none", fontSize: ".85rem" }}>{t("admin.viewSite")}</a>
+          <button className="adm-btn" onClick={logout}>{t("admin.logout")}</button>
         </div>
       </div>
 
       <div className="adm-tabs">
-        {(["dashboard", "bookings", "enquiries", "rooms", "banquet", "dining", "offers"] as const).map(t => (
-          <button key={t} className={`adm-tab${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>
-            {t.charAt(0).toUpperCase() + t.slice(1)}
+        {tabKeys.map(tk => (
+          <button key={tk} className={`adm-tab${tab === tk ? " active" : ""}`} onClick={() => setTab(tk)}>
+            {t(`admin.${tk}`)}
           </button>
         ))}
       </div>
@@ -263,19 +309,19 @@ export default function AdminPage() {
         {tab === "dashboard" && (
           <>
             <div className="stat-grid">
-              <div className="stat-card"><div className="num">{bookings.length}</div><div className="lbl">Total Bookings</div></div>
-              <div className="stat-card"><div className="num">{confirmedBookings}</div><div className="lbl">Active Guests</div></div>
-              <div className="stat-card"><div className="num">{newEnquiries}</div><div className="lbl">New Enquiries</div></div>
-              <div className="stat-card"><div className="num">{activeOffers}</div><div className="lbl">Active Offers</div></div>
-              <div className="stat-card"><div className="num">{rooms.length}</div><div className="lbl">Room Types</div></div>
-              <div className="stat-card"><div className="num">{banquetPkgs.filter(p => p.active).length}</div><div className="lbl">Banquet Packages</div></div>
-              <div className="stat-card"><div className="num">{diningOpts.filter(d => d.active).length}</div><div className="lbl">Dining Options</div></div>
-              <div className="stat-card"><div className="num">{totalRevenue > 0 ? `\u20B9${totalRevenue.toLocaleString()}` : "--"}</div><div className="lbl">Revenue (Paid)</div></div>
+              <div className="stat-card"><div className="num">{bookings.length}</div><div className="lbl">{t("admin.totalBookings")}</div></div>
+              <div className="stat-card"><div className="num">{confirmedBookings}</div><div className="lbl">{t("admin.activeGuests")}</div></div>
+              <div className="stat-card"><div className="num">{newEnquiries}</div><div className="lbl">{t("admin.newEnquiries")}</div></div>
+              <div className="stat-card"><div className="num">{activeOffers}</div><div className="lbl">{t("admin.activeOffers")}</div></div>
+              <div className="stat-card"><div className="num">{rooms.length}</div><div className="lbl">{t("admin.roomTypes")}</div></div>
+              <div className="stat-card"><div className="num">{banquetPkgs.filter(p => p.active).length}</div><div className="lbl">{t("admin.banquetPackages")}</div></div>
+              <div className="stat-card"><div className="num">{diningOpts.filter(d => d.active).length}</div><div className="lbl">{t("admin.diningOptions")}</div></div>
+              <div className="stat-card"><div className="num">{totalRevenue > 0 ? `\u20B9${totalRevenue.toLocaleString()}` : "--"}</div><div className="lbl">{t("admin.revenue")}</div></div>
             </div>
             <div className="adm-card">
-              <h3>Recent Bookings</h3>
+              <h3>{t("admin.recentBookings")}</h3>
               <table className="adm-table">
-                <thead><tr><th>Guest</th><th>Room</th><th>Dates</th><th>Status</th></tr></thead>
+                <thead><tr><th>{t("admin.guest")}</th><th>{t("admin.room")}</th><th>{t("admin.dates")}</th><th>{t("admin.status")}</th></tr></thead>
                 <tbody>
                   {bookings.slice(-5).reverse().map(b => (
                     <tr key={b.id}>
@@ -289,9 +335,9 @@ export default function AdminPage() {
               </table>
             </div>
             <div className="adm-card">
-              <h3>Recent Enquiries</h3>
+              <h3>{t("admin.recentEnquiries")}</h3>
               <table className="adm-table">
-                <thead><tr><th>Name</th><th>Type</th><th>Date</th><th>Status</th></tr></thead>
+                <thead><tr><th>{t("admin.name")}</th><th>{t("admin.type")}</th><th>{t("admin.date")}</th><th>{t("admin.status")}</th></tr></thead>
                 <tbody>
                   {enquiries.slice(-5).reverse().map(e => (
                     <tr key={e.id}>
@@ -311,7 +357,7 @@ export default function AdminPage() {
         {tab === "bookings" && (
           <div style={{ overflowX: "auto" }}>
             <table className="adm-table">
-              <thead><tr><th></th><th>Guest</th><th>Contact</th><th>Room</th><th>Dates</th><th>Guests</th><th>Payment</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th></th><th>{t("admin.guest")}</th><th>{t("admin.contact")}</th><th>{t("admin.room")}</th><th>{t("admin.dates")}</th><th>{t("admin.guests")}</th><th>{t("admin.payment")}</th><th>{t("admin.status")}</th><th>{t("admin.actions")}</th></tr></thead>
               <tbody>
                 {bookings.map(b => (
                   <tr key={b.id}>
@@ -336,7 +382,7 @@ export default function AdminPage() {
                 ))}
               </tbody>
             </table>
-            {bookings.length === 0 && <p style={{ textAlign: "center", color: "#8a8070", marginTop: 40 }}>No bookings yet</p>}
+            {bookings.length === 0 && <p style={{ textAlign: "center", color: "#8a8070", marginTop: 40 }}>{t("admin.noBookings")}</p>}
           </div>
         )}
 
@@ -344,7 +390,7 @@ export default function AdminPage() {
         {tab === "enquiries" && (
           <div style={{ overflowX: "auto" }}>
             <table className="adm-table">
-              <thead><tr><th>Name</th><th>Contact</th><th>Type</th><th>Guests</th><th>Date</th><th>Message</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th>{t("admin.name")}</th><th>{t("admin.contact")}</th><th>{t("admin.type")}</th><th>{t("admin.guests")}</th><th>{t("admin.date")}</th><th>{t("admin.message")}</th><th>{t("admin.status")}</th><th>{t("admin.actions")}</th></tr></thead>
               <tbody>
                 {enquiries.map(e => (
                   <tr key={e.id}>
@@ -364,7 +410,7 @@ export default function AdminPage() {
                 ))}
               </tbody>
             </table>
-            {enquiries.length === 0 && <p style={{ textAlign: "center", color: "#8a8070", marginTop: 40 }}>No enquiries yet</p>}
+            {enquiries.length === 0 && <p style={{ textAlign: "center", color: "#8a8070", marginTop: 40 }}>{t("admin.noEnquiries")}</p>}
           </div>
         )}
 
@@ -372,12 +418,10 @@ export default function AdminPage() {
         {tab === "rooms" && (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <h2 style={{ margin: 0, fontFamily: "Marcellus, serif", fontWeight: 400, color: "#C9A15B" }}>Room Types</h2>
-              <button className="adm-btn primary" onClick={() => setNewRoom(true)}>+ Add Room</button>
+              <h2 style={{ margin: 0, fontFamily: "Marcellus, serif", fontWeight: 400, color: "#C9A15B" }}>{t("admin.roomTypes")}</h2>
+              <button className="adm-btn primary" onClick={() => setNewRoom(true)}>{t("admin.addRoom")}</button>
             </div>
-
             {newRoom && <RoomForm onSave={createRoom} onCancel={() => setNewRoom(false)} />}
-
             {rooms.map((room, i) => (
               editRoom?.index === i ? (
                 <RoomForm key={i} room={editRoom.room} onSave={(r) => saveRoom(i, r)} onCancel={() => setEditRoom(null)} />
@@ -404,12 +448,10 @@ export default function AdminPage() {
         {tab === "banquet" && (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <h2 style={{ margin: 0, fontFamily: "Marcellus, serif", fontWeight: 400, color: "#C9A15B" }}>Banquet Packages</h2>
-              <button className="adm-btn primary" onClick={() => setNewBanquet(true)}>+ Add Package</button>
+              <h2 style={{ margin: 0, fontFamily: "Marcellus, serif", fontWeight: 400, color: "#C9A15B" }}>{t("admin.banquetPackages")}</h2>
+              <button className="adm-btn primary" onClick={() => setNewBanquet(true)}>{t("admin.addPackage")}</button>
             </div>
-
             {newBanquet && <BanquetForm onSave={createBanquetFn} onCancel={() => setNewBanquet(false)} />}
-
             {banquetPkgs.map(pkg => (
               editBanquet?.id === pkg.id ? (
                 <BanquetForm key={pkg.id} pkg={editBanquet} onSave={(updates) => saveBanquetFn(pkg.id, updates)} onCancel={() => setEditBanquet(null)} />
@@ -440,12 +482,10 @@ export default function AdminPage() {
         {tab === "dining" && (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <h2 style={{ margin: 0, fontFamily: "Marcellus, serif", fontWeight: 400, color: "#C9A15B" }}>Dining Options</h2>
-              <button className="adm-btn primary" onClick={() => setNewDining(true)}>+ Add Option</button>
+              <h2 style={{ margin: 0, fontFamily: "Marcellus, serif", fontWeight: 400, color: "#C9A15B" }}>{t("admin.diningOptions")}</h2>
+              <button className="adm-btn primary" onClick={() => setNewDining(true)}>{t("admin.addOption")}</button>
             </div>
-
             {newDining && <DiningForm onSave={createDiningFn} onCancel={() => setNewDining(false)} />}
-
             {diningOpts.map(opt => (
               editDining?.id === opt.id ? (
                 <DiningForm key={opt.id} opt={editDining} onSave={(updates) => saveDiningFn(opt.id, updates)} onCancel={() => setEditDining(null)} />
@@ -475,12 +515,10 @@ export default function AdminPage() {
         {tab === "offers" && (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <h2 style={{ margin: 0, fontFamily: "Marcellus, serif", fontWeight: 400, color: "#C9A15B" }}>Offers & Promotions</h2>
-              <button className="adm-btn primary" onClick={() => setNewOffer(true)}>+ Add Offer</button>
+              <h2 style={{ margin: 0, fontFamily: "Marcellus, serif", fontWeight: 400, color: "#C9A15B" }}>{t("admin.offersTitle")}</h2>
+              <button className="adm-btn primary" onClick={() => setNewOffer(true)}>{t("admin.addOffer")}</button>
             </div>
-
             {newOffer && <OfferForm onSave={createOfferFn} onCancel={() => setNewOffer(false)} />}
-
             {offers.map(o => (
               editOffer?.id === o.id ? (
                 <OfferForm key={o.id} offer={editOffer} onSave={(updates) => saveOfferFn(o.id, updates)} onCancel={() => setEditOffer(null)} />
@@ -504,7 +542,141 @@ export default function AdminPage() {
                 </div>
               )
             ))}
-            {offers.length === 0 && !newOffer && <p style={{ textAlign: "center", color: "#8a8070", marginTop: 40 }}>No offers yet. Create your first promotion.</p>}
+            {offers.length === 0 && !newOffer && <p style={{ textAlign: "center", color: "#8a8070", marginTop: 40 }}>No offers yet.</p>}
+          </>
+        )}
+
+        {/* REVIEWS */}
+        {tab === "reviews" && (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ margin: 0, fontFamily: "Marcellus, serif", fontWeight: 400, color: "#C9A15B" }}>{t("admin.reviews")}</h2>
+              <button className="adm-btn primary" onClick={() => setNewReview(true)}>{t("admin.addReview")}</button>
+            </div>
+            {newReview && <ReviewForm onSave={createReviewFn} onCancel={() => setNewReview(false)} />}
+            {reviews.map(r => (
+              editReview?.id === r.id ? (
+                <ReviewForm key={r.id} review={editReview} onSave={(updates) => saveReviewFn(r.id, updates)} onCancel={() => setEditReview(null)} />
+              ) : (
+                <div key={r.id} className="adm-card" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+                  <div style={{ flex: 1 }}>
+                    <h3 style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      {r.name}
+                      <span style={{ color: "#C9A15B", fontSize: ".9rem" }}>{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</span>
+                      <span className={`badge ${r.active ? "badge-active" : "badge-inactive"}`}>{r.active ? "Active" : "Inactive"}</span>
+                    </h3>
+                    <p style={{ color: "#8a8070", fontSize: ".88rem", margin: "4px 0", fontStyle: "italic" }}>&ldquo;{r.text}&rdquo;</p>
+                    {r.city && <p style={{ fontSize: ".82rem", color: "#C9A15B" }}>{r.city}</p>}
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button className="adm-btn" onClick={() => saveReviewFn(r.id, { active: !r.active })}>{r.active ? "Deactivate" : "Activate"}</button>
+                    <button className="adm-btn" onClick={() => setEditReview({ ...r })}>Edit</button>
+                    <button className="adm-btn danger" onClick={() => removeReview(r.id)}>Del</button>
+                  </div>
+                </div>
+              )
+            ))}
+            {reviews.length === 0 && !newReview && <p style={{ textAlign: "center", color: "#8a8070", marginTop: 40 }}>No reviews yet.</p>}
+          </>
+        )}
+
+        {/* ANALYTICS */}
+        {tab === "analytics" && (
+          <>
+            <h2 style={{ margin: "0 0 24px", fontFamily: "Marcellus, serif", fontWeight: 400, color: "#C9A15B" }}>{t("admin.analytics")}</h2>
+            <div className="chart-wrap">
+              {/* Bookings over time */}
+              <div className="chart-card">
+                <h3>{t("admin.bookingsOverTime")}</h3>
+                <div className="bar-chart">
+                  {getBookingsByDay().map(d => {
+                    const max = Math.max(...getBookingsByDay().map(x => x.count), 1);
+                    return (
+                      <div key={d.date} className="bar-col">
+                        <div className="bar-value">{d.count}</div>
+                        <div className="bar-fill" style={{ height: `${(d.count / max) * 130}px` }} />
+                        <div className="bar-label">{d.date}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Booking Status Breakdown */}
+              <div className="chart-card">
+                <h3>{t("admin.bookingStatus")}</h3>
+                {(() => {
+                  const status = getStatusBreakdown();
+                  const total = Math.max(bookings.length, 1);
+                  const colors: Record<string, string> = { pending: "#E2C68E", confirmed: "#7db8df", "checked-in": "#7ddfa8", "checked-out": "#aaa", cancelled: "#888" };
+                  return (
+                    <div className="donut-wrap">
+                      <svg width="140" height="140" viewBox="0 0 42 42">
+                        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#252d42" strokeWidth="6" />
+                        {Object.entries(status).reduce<{ el: React.ReactNode[]; offset: number }>((acc, [key, count]) => {
+                          const pct = (count / total) * 100;
+                          if (pct > 0) {
+                            acc.el.push(
+                              <circle key={key} cx="21" cy="21" r="15.9" fill="none" stroke={colors[key] || "#C9A15B"} strokeWidth="6"
+                                strokeDasharray={`${pct} ${100 - pct}`} strokeDashoffset={`${-acc.offset}`} />
+                            );
+                          }
+                          acc.offset += pct;
+                          return acc;
+                        }, { el: [], offset: 0 }).el}
+                      </svg>
+                      <div className="donut-legend">
+                        {Object.entries(status).map(([key, count]) => count > 0 && (
+                          <span key={key}><i style={{ background: colors[key] || "#C9A15B" }} />{key}: {count}</span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Revenue by room type */}
+              <div className="chart-card">
+                <h3>{t("admin.revenueByRoom")}</h3>
+                <div className="bar-chart">
+                  {getRevenueByRoom().length === 0 ? (
+                    <p style={{ color: "#8a8070", fontSize: ".85rem", margin: "auto" }}>No revenue data yet</p>
+                  ) : (
+                    getRevenueByRoom().map(d => {
+                      const max = Math.max(...getRevenueByRoom().map(x => x.amount), 1);
+                      return (
+                        <div key={d.room} className="bar-col">
+                          <div className="bar-value">{"\u20B9"}{d.amount.toLocaleString()}</div>
+                          <div className="bar-fill" style={{ height: `${(d.amount / max) * 130}px` }} />
+                          <div className="bar-label">{d.room.length > 12 ? d.room.slice(0, 12) + ".." : d.room}</div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Occupancy rate */}
+              <div className="chart-card">
+                <h3>{t("admin.occupancyRate")}</h3>
+                {(() => {
+                  const activeRooms = rooms.filter(r => !r.hidden).length || 1;
+                  const occupiedRooms = bookings.filter(b => b.bookingStatus === "checked-in").length;
+                  const rate = Math.min(Math.round((occupiedRooms / activeRooms) * 100), 100);
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "20px 0" }}>
+                      <svg width="140" height="140" viewBox="0 0 42 42">
+                        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#252d42" strokeWidth="6" />
+                        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#C9A15B" strokeWidth="6"
+                          strokeDasharray={`${rate} ${100 - rate}`} strokeDashoffset="25" strokeLinecap="round" />
+                        <text x="21" y="23" textAnchor="middle" fill="#C9A15B" fontSize="8" fontFamily="Marcellus, serif">{rate}%</text>
+                      </svg>
+                      <span style={{ color: "#8a8070", fontSize: ".85rem" }}>{occupiedRooms} / {activeRooms} rooms occupied</span>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
           </>
         )}
       </div>
@@ -628,6 +800,33 @@ function OfferForm({ offer, onSave, onCancel }: { offer?: Offer; onSave: (o: Omi
       </div>
       <div className="adm-actions">
         <button className="adm-btn primary" onClick={() => title.trim() && onSave({ title: title.trim(), description, discount, validFrom, validTo, active })}>Save</button>
+        <button className="adm-btn" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function ReviewForm({ review, onSave, onCancel }: { review?: Review; onSave: (r: Omit<Review, "id" | "createdAt">) => void; onCancel: () => void }) {
+  const [name, setName] = useState(review?.name || "");
+  const [rating, setRating] = useState(review?.rating || 5);
+  const [text, setText] = useState(review?.text || "");
+  const [city, setCity] = useState(review?.city || "");
+  const [active, setActive] = useState(review?.active ?? true);
+
+  return (
+    <div className="adm-card">
+      <h3>{review ? "Edit Review" : "New Review"}</h3>
+      <div className="adm-form">
+        <div><label>Guest Name *</label><input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Rajesh Sharma" /></div>
+        <div><label>Rating (1-5)</label><input type="number" min={1} max={5} value={rating} onChange={e => setRating(Number(e.target.value))} /></div>
+        <div><label>City</label><input value={city} onChange={e => setCity(e.target.value)} placeholder="e.g. Delhi" /></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 20 }}>
+          <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} /> Active</label>
+        </div>
+        <div className="full"><label>Review Text</label><textarea value={text} onChange={e => setText(e.target.value)} placeholder="Guest review text..." /></div>
+      </div>
+      <div className="adm-actions">
+        <button className="adm-btn primary" onClick={() => name.trim() && onSave({ name: name.trim(), rating: Math.min(5, Math.max(1, rating)), text, city, active })}>Save</button>
         <button className="adm-btn" onClick={onCancel}>Cancel</button>
       </div>
     </div>

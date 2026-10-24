@@ -78,4 +78,14 @@ export async function initDB() {
     active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT NOW()
   )`;
+
+  await sql`CREATE TABLE IF NOT EXISTS reviews (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    rating INT DEFAULT 5,
+    text TEXT DEFAULT '',
+    city TEXT DEFAULT '',
+    active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`;
 }

@@ -15,6 +15,9 @@ export default function BookPage() {
   const [rooms, setRooms] = useState<RoomOption[]>(SITE_CONFIG.rooms);
   const [banquetPkgs, setBanquetPkgs] = useState<BanquetOption[]>([]);
   const [bookingType, setBookingType] = useState<"room" | "banquet">("room");
+  const [lastBooking, setLastBooking] = useState<{ name: string; roomType: string; checkin: string; checkout: string; guests: number; id: string } | null>(null);
+
+  const today = new Date().toISOString().split("T")[0];
 
   useEffect(() => {
     fetch("/api/rooms").then(r => r.json()).then((data: RoomOption[]) => {
@@ -47,6 +50,8 @@ export default function BookPage() {
     if (!city) errs.city = "Required";
     if (!country) errs.country = "Required";
     if (!checkin) errs.checkin = "Required";
+    else if (checkin < today) errs.checkin = "Cannot select a past date";
+    if (checkout && checkin && checkout <= checkin) errs.checkout = "Must be after check-in date";
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
@@ -61,6 +66,7 @@ export default function BookPage() {
       if (res.ok) {
         setStatus("success");
         setMessage(`Booking received! ID: ${data.booking.id.slice(0, 8).toUpperCase()}`);
+        setLastBooking({ name, roomType, checkin, checkout, guests: Number(guests), id: data.booking.id });
         form.reset();
       } else { setStatus("error"); setMessage(data.error); }
     } catch { setStatus("error"); setMessage("Failed. Please try again."); }
@@ -145,8 +151,8 @@ export default function BookPage() {
                 )}
               </div>
               <div className="field-row">
-                <div className="field"><label>{bookingType === "banquet" ? t("book.eventDate") : t("book.checkin")} *</label><input name="checkin" type="date" required />{errors.checkin && <div className="err">{errors.checkin}</div>}</div>
-                <div className="field"><label>{bookingType === "banquet" ? t("book.eventEndDate") : t("book.checkout")}</label><input name="checkout" type="date" /></div>
+                <div className="field"><label>{bookingType === "banquet" ? t("book.eventDate") : t("book.checkin")} *</label><input name="checkin" type="date" min={today} required />{errors.checkin && <div className="err">{errors.checkin}</div>}</div>
+                <div className="field"><label>{bookingType === "banquet" ? t("book.eventEndDate") : t("book.checkout")}</label><input name="checkout" type="date" min={today} />{errors.checkout && <div className="err">{errors.checkout}</div>}</div>
               </div>
               <div className="field"><label>{t("book.guests")}</label><input name="guests" type="number" min={1} max={bookingType === "banquet" ? 500 : 20} defaultValue={bookingType === "banquet" ? 50 : 2} /></div>
               <button className="submit-btn" type="submit" disabled={status === "loading"}>{status === "loading" ? t("book.submitting") : t("book.submit")}</button>
@@ -155,7 +161,20 @@ export default function BookPage() {
         )}
         {status === "success" && (
           <div style={{ textAlign: "center", marginTop: 32 }}>
-            <button className="submit-btn" onClick={() => { setStatus("idle"); setMessage(""); }} style={{ maxWidth: 300 }}>{t("book.another")}</button>
+            {lastBooking && (
+              <a
+                href={`https://wa.me/919876543210?text=${encodeURIComponent(
+                  `Hi, I just booked at Hotel Ganga Imperial!\n\nBooking ID: ${lastBooking.id.slice(0, 8).toUpperCase()}\nName: ${lastBooking.name}\nRoom/Package: ${lastBooking.roomType}\nCheck-in: ${lastBooking.checkin}${lastBooking.checkout ? `\nCheck-out: ${lastBooking.checkout}` : ""}\nGuests: ${lastBooking.guests}\n\nPlease confirm my booking. Thank you!`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="submit-btn"
+                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, maxWidth: 340, textDecoration: "none", marginBottom: 16, background: "#25D366", color: "#fff" }}
+              >
+                {t("book.whatsapp")}
+              </a>
+            )}
+            <button className="submit-btn" onClick={() => { setStatus("idle"); setMessage(""); setLastBooking(null); }} style={{ maxWidth: 300 }}>{t("book.another")}</button>
           </div>
         )}
       </div>

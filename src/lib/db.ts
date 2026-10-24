@@ -1,4 +1,4 @@
-import { Enquiry, Booking, Offer, Room, BanquetPackage, DiningOption } from "./types";
+import { Enquiry, Booking, Offer, Room, BanquetPackage, DiningOption, Review } from "./types";
 
 // ---------- Detect environment ----------
 const IS_POSTGRES = !!process.env.DATABASE_URL;
@@ -215,6 +215,40 @@ async function pgDeleteDiningOption(id: string): Promise<boolean> {
   return rows.length > 0;
 }
 
+// ---------- Reviews (Postgres) ----------
+function mapReviewRow(r: Record<string, unknown>): Review {
+  return { id: r.id, name: r.name, rating: r.rating, text: r.text, city: r.city, active: r.active, createdAt: r.created_at } as Review;
+}
+async function pgGetReviews(): Promise<Review[]> {
+  const sql = getSQL();
+  const rows = await sql`SELECT * FROM reviews ORDER BY created_at DESC`;
+  return rows.map(mapReviewRow);
+}
+async function pgAddReview(rev: Omit<Review, "id" | "createdAt">): Promise<Review> {
+  const sql = getSQL();
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await sql`INSERT INTO reviews (id, name, rating, text, city, active, created_at) VALUES (${id}, ${rev.name}, ${rev.rating}, ${rev.text}, ${rev.city}, ${rev.active}, ${now})`;
+  return { ...rev, id, createdAt: now };
+}
+async function pgUpdateReview(id: string, updates: Partial<Review>): Promise<Review | null> {
+  const sql = getSQL();
+  const rows = await sql`UPDATE reviews SET
+    name = COALESCE(${updates.name ?? null}, name),
+    rating = COALESCE(${updates.rating ?? null}, rating),
+    text = COALESCE(${updates.text ?? null}, text),
+    city = COALESCE(${updates.city ?? null}, city),
+    active = COALESCE(${updates.active ?? null}, active)
+    WHERE id = ${id} RETURNING *`;
+  if (rows.length === 0) return null;
+  return mapReviewRow(rows[0]);
+}
+async function pgDeleteReview(id: string): Promise<boolean> {
+  const sql = getSQL();
+  const rows = await sql`DELETE FROM reviews WHERE id = ${id} RETURNING id`;
+  return rows.length > 0;
+}
+
 // ============================================================
 // JSON FILE — used in local development
 // ============================================================
@@ -233,9 +267,10 @@ function readDB(): DB {
     if (!data.offers) data.offers = [];
     if (!data.banquetPackages) data.banquetPackages = [];
     if (!data.diningOptions) data.diningOptions = [];
+    if (!data.reviews) data.reviews = [];
     return data;
   } catch {
-    const initial: DB = { enquiries: [], bookings: [], offers: [], banquetPackages: [], diningOptions: [], config: SITE_CONFIG };
+    const initial: DB = { enquiries: [], bookings: [], offers: [], banquetPackages: [], diningOptions: [], reviews: [], config: SITE_CONFIG };
     writeDB(initial);
     return initial;
   }
@@ -324,6 +359,19 @@ function jsonDeleteDiningOption(id: string): boolean {
   const db = readDB(); const idx = db.diningOptions.findIndex(d => d.id === id);
   if (idx === -1) return false; db.diningOptions.splice(idx, 1); writeDB(db); return true;
 }
+function jsonGetReviews(): Review[] { return readDB().reviews; }
+function jsonAddReview(rev: Omit<Review, "id" | "createdAt">): Review {
+  const db = readDB(); const n: Review = { ...rev, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+  db.reviews.push(n); writeDB(db); return n;
+}
+function jsonUpdateReview(id: string, updates: Partial<Review>): Review | null {
+  const db = readDB(); const idx = db.reviews.findIndex(r => r.id === id);
+  if (idx === -1) return null; Object.assign(db.reviews[idx], updates); writeDB(db); return db.reviews[idx];
+}
+function jsonDeleteReview(id: string): boolean {
+  const db = readDB(); const idx = db.reviews.findIndex(r => r.id === id);
+  if (idx === -1) return false; db.reviews.splice(idx, 1); writeDB(db); return true;
+}
 
 // ============================================================
 // EXPORTED API
@@ -357,6 +405,11 @@ export async function getDiningOptions() { return IS_POSTGRES ? pgGetDiningOptio
 export async function addDiningOption(opt: Omit<DiningOption, "id" | "createdAt">) { return IS_POSTGRES ? pgAddDiningOption(opt) : jsonAddDiningOption(opt); }
 export async function updateDiningOption(id: string, updates: Partial<DiningOption>) { return IS_POSTGRES ? pgUpdateDiningOption(id, updates) : jsonUpdateDiningOption(id, updates); }
 export async function deleteDiningOption(id: string) { return IS_POSTGRES ? pgDeleteDiningOption(id) : jsonDeleteDiningOption(id); }
+
+export async function getReviews() { return IS_POSTGRES ? pgGetReviews() : jsonGetReviews(); }
+export async function addReview(rev: Omit<Review, "id" | "createdAt">) { return IS_POSTGRES ? pgAddReview(rev) : jsonAddReview(rev); }
+export async function updateReview(id: string, updates: Partial<Review>) { return IS_POSTGRES ? pgUpdateReview(id, updates) : jsonUpdateReview(id, updates); }
+export async function deleteReview(id: string) { return IS_POSTGRES ? pgDeleteReview(id) : jsonDeleteReview(id); }
 
 export function getConfig() { return readDB().config; }
 export function updateConfig(config: Partial<DB["config"]>) { const db = readDB(); db.config = { ...db.config, ...config }; writeDB(db); return db.config; }

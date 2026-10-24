@@ -72,6 +72,16 @@ export interface DiningOption {
   createdAt: string;
 }
 
+export interface Review {
+  id: string;
+  name: string;
+  rating: number;
+  text: string;
+  city: string;
+  active: boolean;
+  createdAt: string;
+}
+
 export interface SiteConfig {
   hotelName: string;
   contact: {
@@ -98,5 +108,6 @@ export interface DB {
   offers: Offer[];
   banquetPackages: BanquetPackage[];
   diningOptions: DiningOption[];
+  reviews: Review[];
   config: SiteConfig;
 }

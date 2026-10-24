@@ -48,5 +48,16 @@ export async function POST() {
     ('din-004', 'Room Service', 'Full menu delivered to your room 24 hours a day. Order anything from snacks to full meals.', '₹300–1,200', 'room-service', true, NOW()),
     ('din-005', 'Event Catering', 'Custom catering packages for banquet events, weddings and private parties. Veg and non-veg menus available.', '₹800/plate onwards', 'event-catering', true, NOW())`;
 
+  // Seed reviews
+  const existingReviews = await sql`SELECT COUNT(*) as cnt FROM reviews`;
+  if (Number(existingReviews[0].cnt) === 0) {
+    await sql`INSERT INTO reviews (id, name, rating, text, city, active, created_at) VALUES
+      ('rev-001', 'Rajesh Sharma', 5, 'Excellent hospitality and beautiful rooms. The rooftop pool is stunning. Will definitely come back!', 'Delhi', true, NOW()),
+      ('rev-002', 'Priya Patel', 5, 'We hosted our wedding reception here. The banquet hall was beautifully decorated and the staff was incredibly helpful.', 'Mumbai', true, NOW()),
+      ('rev-003', 'Amit Kumar', 4, 'Very comfortable stay. The breakfast buffet was delicious and the staff was friendly. Great value for money.', 'Lucknow', true, NOW()),
+      ('rev-004', 'Sneha Gupta', 5, 'The suite was amazing! Marble floors, great city views, and the spa treatment was so relaxing. Highly recommended.', 'Jaipur', true, NOW()),
+      ('rev-005', 'Vikram Singh', 4, 'Clean rooms, excellent room service, and the location is perfect. The gym facilities are top-notch.', 'Chandigarh', true, NOW())`;
+  }
+
   return NextResponse.json({ success: true, message: "Database seeded successfully" });
 }

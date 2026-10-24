@@ -71,16 +71,21 @@ export default function EnquiryForm() {
     };
   }, []);
 
+  const today = new Date().toISOString().split("T")[0];
+
   const validate = (form: HTMLFormElement) => {
     const errs: Record<string, string> = {};
     const name = (form.elements.namedItem("name") as HTMLInputElement).value.trim();
     const phone = (form.elements.namedItem("phone") as HTMLInputElement).value.trim();
     const email = (form.elements.namedItem("email") as HTMLInputElement).value.trim();
     const checkin = (form.elements.namedItem("checkin") as HTMLInputElement).value;
+    const checkout = (form.elements.namedItem("checkout") as HTMLInputElement).value;
     if (!name) errs.name = "Required";
     if (!phone || phone.replace(/[^\d]/g, "").length < 10) errs.phone = "Valid phone required";
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.email = "Valid email required";
     if (!checkin) errs.checkin = "Required";
+    else if (checkin < today) errs.checkin = "Cannot select a past date";
+    if (checkout && checkin && checkout <= checkin) errs.checkout = "Must be after check-in date";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -145,8 +150,8 @@ export default function EnquiryForm() {
           <div className="f full"><label htmlFor="f-email">{t("enquiry.email")}</label><input id="f-email" name="email" type="email" autoComplete="email" />{errors.email && <span className="err">{errors.email}</span>}</div>
           <div className="f"><label htmlFor="f-type">{t("enquiry.type")}</label><select id="f-type" name="type">{allOptions.map((opt) => <option key={opt}>{opt}</option>)}</select></div>
           <div className="f"><label htmlFor="f-guests">{t("enquiry.guests")}</label><input id="f-guests" name="guests" type="number" min={1} max={1000} defaultValue={2} required /></div>
-          <div className="f"><label htmlFor="f-in">{t("enquiry.checkin")}</label><input id="f-in" name="checkin" type="date" required />{errors.checkin && <span className="err">{errors.checkin}</span>}</div>
-          <div className="f"><label htmlFor="f-out">{t("enquiry.checkout")}</label><input id="f-out" name="checkout" type="date" /></div>
+          <div className="f"><label htmlFor="f-in">{t("enquiry.checkin")}</label><input id="f-in" name="checkin" type="date" min={today} required />{errors.checkin && <span className="err">{errors.checkin}</span>}</div>
+          <div className="f"><label htmlFor="f-out">{t("enquiry.checkout")}</label><input id="f-out" name="checkout" type="date" min={today} />{errors.checkout && <span className="err">{errors.checkout}</span>}</div>
           <div className="f full"><label htmlFor="f-msg">{t("enquiry.message")}</label><textarea id="f-msg" name="message" /></div>
           {status && <div className="form-status show" role="status">{status}</div>}
           <button className="btn btn-solid" type="submit" disabled={submitting}>{submitting ? t("enquiry.sending") : t("enquiry.submit")}</button>
