@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const enquiry = addEnquiry({
+    const enquiry = await addEnquiry({
       name: name.trim(),
       phone: phoneClean,
       email: email?.trim() || "",

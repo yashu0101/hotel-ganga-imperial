@@ -3,7 +3,7 @@ import { getBanquetPackages, addBanquetPackage, updateBanquetPackage, deleteBanq
 import { verifySession } from "@/lib/auth";
 
 export async function GET() {
-  return NextResponse.json(getBanquetPackages());
+  return NextResponse.json(await getBanquetPackages());
 }
 
 export async function POST(req: NextRequest) {
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { name, description, capacity, price, includes, active } = body;
   if (!name?.trim()) return NextResponse.json({ error: "Package name required" }, { status: 400 });
-  const pkg = addBanquetPackage({
+  const pkg = await addBanquetPackage({
     name: name.trim(), description: description || "", capacity: capacity || "",
     price: price || "", includes: includes || [], active: active !== false,
   });
@@ -25,7 +25,7 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const { id, ...updates } = body;
   if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
-  const pkg = updateBanquetPackage(id, updates);
+  const pkg = await updateBanquetPackage(id, updates);
   if (!pkg) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ package: pkg });
 }
@@ -36,7 +36,7 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
-  const ok = deleteBanquetPackage(id);
+  const ok = await deleteBanquetPackage(id);
   if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ success: true });
 }

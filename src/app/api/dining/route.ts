@@ -3,7 +3,7 @@ import { getDiningOptions, addDiningOption, updateDiningOption, deleteDiningOpti
 import { verifySession } from "@/lib/auth";
 
 export async function GET() {
-  return NextResponse.json(getDiningOptions());
+  return NextResponse.json(await getDiningOptions());
 }
 
 export async function POST(req: NextRequest) {
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { name, description, price, category, active } = body;
   if (!name?.trim()) return NextResponse.json({ error: "Name required" }, { status: 400 });
-  const opt = addDiningOption({
+  const opt = await addDiningOption({
     name: name.trim(), description: description || "", price: price || "",
     category: category || "dinner", active: active !== false,
   });
@@ -25,7 +25,7 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const { id, ...updates } = body;
   if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
-  const opt = updateDiningOption(id, updates);
+  const opt = await updateDiningOption(id, updates);
   if (!opt) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ option: opt });
 }
@@ -36,7 +36,7 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
-  const ok = deleteDiningOption(id);
+  const ok = await deleteDiningOption(id);
   if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ success: true });
 }

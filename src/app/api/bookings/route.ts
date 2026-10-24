@@ -7,7 +7,7 @@ export async function GET() {
   if (!session.authenticated) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return NextResponse.json(getBookings());
+  return NextResponse.json(await getBookings());
 }
 
 export async function PATCH(req: NextRequest) {
@@ -18,7 +18,7 @@ export async function PATCH(req: NextRequest) {
   try {
     const { id, ...updates } = await req.json();
     if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-    const updated = updateBooking(id, updates);
+    const updated = await updateBooking(id, updates);
     if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(updated);
   } catch {
@@ -34,7 +34,7 @@ export async function DELETE(req: NextRequest) {
   try {
     const { id } = await req.json();
     if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-    const ok = deleteBooking(id);
+    const ok = await deleteBooking(id);
     if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ success: true });
   } catch {

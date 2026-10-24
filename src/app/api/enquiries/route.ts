@@ -11,7 +11,7 @@ export async function GET() {
   if (!session.authenticated) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const enquiries = getEnquiries();
+  const enquiries = await getEnquiries();
   return NextResponse.json(enquiries);
 }
 
@@ -24,7 +24,7 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
-    const updated = updateEnquiryStatus(id, status);
+    const updated = await updateEnquiryStatus(id, status);
     if (!updated) {
       return NextResponse.json(
         { error: "Enquiry not found" },
@@ -49,7 +49,7 @@ export async function DELETE(req: NextRequest) {
         { status: 400 }
       );
     }
-    const success = deleteEnquiry(id);
+    const success = await deleteEnquiry(id);
     if (!success) {
       return NextResponse.json(
         { error: "Enquiry not found" },

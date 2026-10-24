@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Room type and check-in date are required." }, { status: 400 });
     }
 
-    const booking = addBooking({
+    const booking = await addBooking({
       name: name.trim(),
       mobile: mobile.trim(),
       email: email.trim(),

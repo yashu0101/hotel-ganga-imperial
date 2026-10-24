@@ -51,6 +51,19 @@
       "id": "01e2dda3-ec16-4a30-8e20-e958918506fa",
       "createdAt": "2026-10-24T10:24:43.768Z",
       "status": "new"
+    },
+    {
+      "name": "Wedding Enquiry",
+      "phone": "9876500077",
+      "email": "wedding@test.com",
+      "type": "Banquet - Platinum Package",
+      "guests": 250,
+      "checkin": "2027-02-14",
+      "checkout": "",
+      "message": "Grand wedding reception",
+      "id": "496eb4cc-161d-424e-9dd5-8c0fd9d8cc75",
+      "createdAt": "2026-10-24T10:36:06.743Z",
+      "status": "new"
     }
   ],
   "bookings": [
@@ -197,6 +210,24 @@
       "paymentId": "",
       "paymentStatus": "pending",
       "bookingStatus": "pending"
+    },
+    {
+      "name": "Banquet Test",
+      "mobile": "9876500088",
+      "email": "banquet@test.com",
+      "city": "Delhi",
+      "country": "India",
+      "gender": "male",
+      "roomType": "Banquet - Gold Package",
+      "checkin": "2026-12-25",
+      "checkout": "",
+      "guests": 150,
+      "amount": 0,
+      "id": "94db5cef-7218-454c-8b51-23ab033dd77b",
+      "createdAt": "2026-10-24T10:36:04.338Z",
+      "paymentId": "",
+      "paymentStatus": "pending",
+      "bookingStatus": "pending"
     }
   ],
   "offers": [
@@ -238,7 +269,13 @@
       "description": "Ideal for small gatherings and birthday parties. Includes basic hall decoration, sound system and standard catering.",
       "capacity": "Up to 100 guests",
       "price": "₹75,000",
-      "includes": ["Hall rental", "Basic decoration", "Sound system", "Standard catering", "Valet parking"],
+      "includes": [
+        "Hall rental",
+        "Basic decoration",
+        "Sound system",
+        "Standard catering",
+        "Valet parking"
+      ],
       "active": true,
       "createdAt": "2026-10-01T00:00:00Z"
     },
@@ -248,7 +285,15 @@
       "description": "Perfect for wedding receptions and corporate events. Includes premium decoration, DJ, catering and photography.",
       "capacity": "Up to 200 guests",
       "price": "₹1,50,000",
-      "includes": ["Hall rental", "Premium decoration", "DJ & sound", "Premium catering", "Photography", "Valet parking", "Stage setup"],
+      "includes": [
+        "Hall rental",
+        "Premium decoration",
+        "DJ & sound",
+        "Premium catering",
+        "Photography",
+        "Valet parking",
+        "Stage setup"
+      ],
       "active": true,
       "createdAt": "2026-10-01T00:00:00Z"
     },
@@ -258,7 +303,17 @@
       "description": "The complete celebration experience. Everything in Gold plus luxury flower decoration, videography, live music and bridal suite.",
       "capacity": "Up to 300 guests",
       "price": "₹2,50,000",
-      "includes": ["Hall rental", "Luxury decoration", "Live music & DJ", "Gourmet catering", "Photography & videography", "Bridal suite", "Valet parking", "Stage & lighting", "Welcome drinks"],
+      "includes": [
+        "Hall rental",
+        "Luxury decoration",
+        "Live music & DJ",
+        "Gourmet catering",
+        "Photography & videography",
+        "Bridal suite",
+        "Valet parking",
+        "Stage & lighting",
+        "Welcome drinks"
+      ],
       "active": true,
       "createdAt": "2026-10-01T00:00:00Z"
     }
