@@ -1,32 +1,46 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { SITE_CONFIG } from "@/lib/config";
 import { useApp } from "@/lib/context";
 
+interface Room {
+  name: string; text: string; image: string; rate: string; sample: boolean; hidden?: boolean;
+}
+
 export default function Rooms() {
   const { t } = useApp();
+  const [rooms, setRooms] = useState<Room[]>(SITE_CONFIG.rooms);
+
+  useEffect(() => {
+    fetch("/api/rooms").then(r => r.json()).then((data: Room[]) => {
+      const visible = data.filter(r => !r.hidden);
+      if (visible.length > 0) setRooms(visible);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const cards = document.querySelectorAll(".rcard");
     cards.forEach(c => {
       const inn = c.querySelector(".rcard-in") as HTMLElement;
       if (!inn) return;
-      c.addEventListener("pointermove", (e) => {
+      const onMove = (e: Event) => {
         const ev = e as PointerEvent;
         const b = c.getBoundingClientRect();
         const x = (ev.clientX - b.left) / b.width - 0.5;
         const y = (ev.clientY - b.top) / b.height - 0.5;
         inn.style.setProperty("--ty", (x * 10) + "deg");
         inn.style.setProperty("--tx", (-y * 10) + "deg");
-      });
-      c.addEventListener("pointerleave", () => {
+      };
+      const onLeave = () => {
         inn.style.setProperty("--ty", "0deg");
         inn.style.setProperty("--tx", "0deg");
-      });
+      };
+      c.addEventListener("pointermove", onMove);
+      c.addEventListener("pointerleave", onLeave);
     });
-  }, []);
+  }, [rooms]);
 
   return (
     <section className="rooms" id="rooms">
@@ -55,7 +69,7 @@ export default function Rooms() {
           <p>{t("rooms.typesSubtitle")}</p>
         </div>
         <div className="types" id="room-types">
-          {SITE_CONFIG.rooms.map((room, i) => (
+          {rooms.map((room, i) => (
             <article key={i} className="rcard" data-reveal>
               <div className="rcard-in">
                 <figure>
@@ -66,8 +80,8 @@ export default function Rooms() {
                   <h3>{room.name}</h3>
                   <p>{room.text}</p>
                   <div className="rcard-foot">
-                    <span>{room.rate || t("rooms.rateOnRequest")}</span>
-                    <a href="#enquire">{t("rooms.enquire")}</a>
+                    <span className="rcard-price">{room.rate || t("rooms.rateOnRequest")}</span>
+                    <a href="/book">{t("rooms.enquire")}</a>
                   </div>
                 </div>
               </div>
@@ -89,7 +103,7 @@ export default function Rooms() {
           <div>
             <Image src="/images/image-36.jpeg" alt="" width={84} height={84} loading="lazy" />
             <strong>Booking</strong>
-            Rooms are reserved by enquiry. <a href="#enquire">Send your dates</a> and the team will confirm.
+            Rooms are reserved by enquiry. <a href="/book">Book now</a> or <a href="#enquire">send your dates</a>.
           </div>
         </div>
       </div>

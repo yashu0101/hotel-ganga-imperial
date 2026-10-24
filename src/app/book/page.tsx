@@ -1,14 +1,24 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { SITE_CONFIG } from "@/lib/config";
 import { useApp } from "@/lib/context";
+
+interface RoomOption { name: string; rate: string; hidden?: boolean; }
 
 export default function BookPage() {
   const { t, lang, setLang, theme, setTheme } = useApp();
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [rooms, setRooms] = useState<RoomOption[]>(SITE_CONFIG.rooms);
+
+  useEffect(() => {
+    fetch("/api/rooms").then(r => r.json()).then((data: RoomOption[]) => {
+      const visible = data.filter(r => !r.hidden);
+      if (visible.length > 0) setRooms(visible);
+    }).catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -113,7 +123,7 @@ export default function BookPage() {
                   <option value="other">{t("book.other")}</option>
                 </select>
               </div>
-              <div className="field"><label>{t("book.roomType")} *</label><select name="roomType" required>{SITE_CONFIG.rooms.map((r) => <option key={r.name} value={r.name}>{r.name}</option>)}</select></div>
+              <div className="field"><label>{t("book.roomType")} *</label><select name="roomType" required>{rooms.map((r) => <option key={r.name} value={r.name}>{r.name} {r.rate ? `— ${r.rate}` : ""}</option>)}</select></div>
             </div>
             <div className="field-row">
               <div className="field"><label>{t("book.checkin")} *</label><input name="checkin" type="date" required />{errors.checkin && <div className="err">{errors.checkin}</div>}</div>

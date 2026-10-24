@@ -25,6 +25,19 @@
       "message": "Wedding reception for 150 guests",
       "createdAt": "2026-10-18T14:15:00Z",
       "status": "contacted"
+    },
+    {
+      "name": "Test Guest",
+      "phone": "9876543210",
+      "email": "test@test.com",
+      "type": "Room stay",
+      "guests": 2,
+      "checkin": "2026-12-01",
+      "checkout": "2026-12-03",
+      "message": "Testing",
+      "id": "eb707ce2-42e3-4965-955c-5e82986feba1",
+      "createdAt": "2026-10-24T10:14:11.901Z",
+      "status": "new"
     }
   ],
   "bookings": [
@@ -135,6 +148,24 @@
       "paymentId": "",
       "paymentStatus": "pending",
       "bookingStatus": "pending"
+    },
+    {
+      "name": "Test User",
+      "mobile": "9876543210",
+      "email": "test@test.com",
+      "city": "Mumbai",
+      "country": "India",
+      "gender": "male",
+      "roomType": "Deluxe Room",
+      "checkin": "2026-12-01",
+      "checkout": "2026-12-03",
+      "guests": 2,
+      "amount": 0,
+      "id": "121b35fd-ac94-4b5b-aee2-da8b6a8fd46a",
+      "createdAt": "2026-10-24T10:14:10.057Z",
+      "paymentId": "",
+      "paymentStatus": "pending",
+      "bookingStatus": "pending"
     }
   ],
   "offers": [
@@ -181,30 +212,30 @@
     "rooms": [
       {
         "name": "Deluxe Room",
-        "text": "A warm, cove-lit room with an upholstered headboard, work desk and city view.",
+        "text": "A warm, cove-lit room with an upholstered headboard, work desk and city view. Includes AC, Wi-Fi, TV, mini-bar and complimentary breakfast.",
         "image": "/images/image-14.jpeg",
-        "rate": "",
+        "rate": "₹3,000/night",
         "sample": true
       },
       {
         "name": "Premium Room",
-        "text": "Extra space, brass accents and a sitting area for a more relaxed stay.",
+        "text": "Extra space, brass accents and a sitting area for a more relaxed stay. Includes all Deluxe amenities plus a lounge area and premium toiletries.",
         "image": "/images/image-15.jpeg",
-        "rate": "",
+        "rate": "₹4,500/night",
         "sample": true
       },
       {
         "name": "Suite",
-        "text": "A separate living room, king bed and premium bath amenities for longer visits.",
+        "text": "A separate living room, king bed and premium bath amenities for longer visits. Includes butler service, welcome drink and late checkout.",
         "image": "/images/image-16.jpeg",
-        "rate": "",
+        "rate": "₹8,000/night",
         "sample": true
       },
       {
         "name": "Family Room",
-        "text": "Twin beds, extra floor space and everything a family needs under one roof.",
+        "text": "Twin beds, extra floor space and everything a family needs under one roof. Includes kids' welcome kit, extra bedding and family breakfast.",
         "image": "/images/image-17.jpeg",
-        "rate": "",
+        "rate": "₹5,500/night",
         "sample": true
       }
     ],

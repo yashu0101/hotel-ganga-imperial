@@ -109,6 +109,10 @@ export const translations: Record<Lang, Record<string, string>> = {
     "book.another": "Make Another Booking",
     "book.back": "Back to website",
 
+    // Offers
+    "offers.title": "Special Offers",
+    "offers.subtitle": "Take advantage of our current deals and packages.",
+
     // Footer
     "footer.copyright": "Hotel Ganga Imperial",
 
@@ -217,6 +221,9 @@ export const translations: Record<Lang, Record<string, string>> = {
     "book.submitting": "जमा कर रहे हैं...",
     "book.another": "एक और बुकिंग करें",
     "book.back": "वेबसाइट पर वापस जाएं",
+
+    "offers.title": "विशेष ऑफ़र",
+    "offers.subtitle": "हमारे मौजूदा सौदों और पैकेजों का लाभ उठाएं।",
 
     "footer.copyright": "होटल गंगा इंपीरियल",
 

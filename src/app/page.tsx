@@ -4,6 +4,7 @@ import Hero from "@/components/Hero";
 import Experience from "@/components/Experience";
 import About from "@/components/About";
 import Rooms from "@/components/Rooms";
+import Offers from "@/components/Offers";
 import Amenities from "@/components/Amenities";
 import Events from "@/components/Events";
 import Dining from "@/components/Dining";
@@ -24,6 +25,7 @@ export default function Home() {
         <Experience />
         <About />
         <Rooms />
+        <Offers />
         <Amenities />
         <Events />
         <Dining />

@@ -347,5 +347,23 @@ footer a[aria-current="true"]{color:var(--brass-soft)}
 .side-photo{position:relative;margin:0}
 .side-photo img{width:100%;object-fit:cover}
 
+/* ---------- Room price ---------- */
+.rcard-price{font-family:var(--display);font-weight:400;color:var(--accent);font-size:1rem}
+
+/* ---------- Offers / Packages ---------- */
+.offers-sec{background:linear-gradient(135deg,rgba(18,24,39,.97),rgba(27,34,54,.95));color:#ECE3D2;overflow:hidden}
+.offers-sec h2{color:#F4E6C6}
+.offers-sec .head p{color:#B5AA98}
+.offers-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:clamp(16px,2vw,24px)}
+.offer-card{background:linear-gradient(145deg,rgba(201,161,91,.08),rgba(201,161,91,.02));border:1px solid rgba(201,161,91,.3);padding:clamp(24px,3vw,36px);position:relative;overflow:hidden;transition:transform .3s,box-shadow .3s}
+.offer-card:hover{transform:translateY(-4px);box-shadow:0 20px 40px -15px rgba(0,0,0,.5)}
+.offer-card::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--brass),var(--brass-soft))}
+.offer-badge{display:inline-block;background:var(--brass);color:#121827;padding:6px 16px;font-family:var(--display);font-size:1.1rem;font-weight:400;letter-spacing:.04em;margin-bottom:16px}
+.offer-card h3{font-family:var(--display);color:#F4E6C6;font-size:1.3rem;margin-bottom:10px}
+.offer-card p{color:#BDB29F;font-size:.92rem;margin-bottom:16px}
+.offer-valid{font-size:.8rem;color:#8a8070;margin-bottom:18px;padding-top:12px;border-top:1px solid rgba(201,161,91,.15)}
+.offer-card .btn{font-size:.85rem;min-height:40px;padding:0 20px}
+@media (max-width:600px){.offers-grid{grid-template-columns:1fr}}
+
 /* ---------- Guest icon ---------- */
 .guest-icon{margin-right:6px;font-size:1.1rem;vertical-align:middle}
