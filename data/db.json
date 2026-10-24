@@ -117,6 +117,56 @@
       "bookingStatus": "checked-out",
       "paymentId": "pay_demo_005",
       "createdAt": "2026-10-05T11:20:00Z"
+    },
+    {
+      "name": "test",
+      "mobile": "1222222222",
+      "email": "yashuoct06@gmail.com",
+      "city": "pune",
+      "country": "India",
+      "gender": "male",
+      "roomType": "Deluxe Room",
+      "checkin": "2026-10-27",
+      "checkout": "2026-10-30",
+      "guests": 2,
+      "amount": 0,
+      "id": "81811da2-5800-49f0-92bc-1de65e9bcba4",
+      "createdAt": "2026-10-24T09:02:01.500Z",
+      "paymentId": "",
+      "paymentStatus": "pending",
+      "bookingStatus": "pending"
+    }
+  ],
+  "offers": [
+    {
+      "id": "offer-001",
+      "title": "Early Bird Discount",
+      "description": "Book 30 days in advance and get 20% off on all room types.",
+      "discount": "20%",
+      "validFrom": "2026-10-01",
+      "validTo": "2027-03-31",
+      "active": true,
+      "createdAt": "2026-10-01T00:00:00Z"
+    },
+    {
+      "id": "offer-002",
+      "title": "Weekend Getaway",
+      "description": "Special weekend rates - stay Friday to Sunday and save.",
+      "discount": "15%",
+      "validFrom": "2026-11-01",
+      "validTo": "2027-02-28",
+      "active": true,
+      "createdAt": "2026-10-15T00:00:00Z"
+    },
+    {
+      "id": "offer-003",
+      "title": "Honeymoon Package",
+      "description": "Suite with complimentary spa, breakfast and room decoration.",
+      "discount": "Complimentary extras",
+      "validFrom": "2026-10-01",
+      "validTo": "2027-12-31",
+      "active": false,
+      "createdAt": "2026-10-20T00:00:00Z"
     }
   ],
   "config": {

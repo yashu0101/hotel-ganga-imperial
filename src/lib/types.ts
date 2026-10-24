@@ -4,6 +4,18 @@ export interface Room {
   image: string;
   rate: string;
   sample: boolean;
+  hidden?: boolean;
+}
+
+export interface Offer {
+  id: string;
+  title: string;
+  description: string;
+  discount: string;
+  validFrom: string;
+  validTo: string;
+  active: boolean;
+  createdAt: string;
 }
 
 export interface Enquiry {
@@ -62,5 +74,6 @@ export interface SiteConfig {
 export interface DB {
   enquiries: Enquiry[];
   bookings: Booking[];
+  offers: Offer[];
   config: SiteConfig;
 }

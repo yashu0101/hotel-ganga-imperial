@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { DB, Enquiry, Booking } from "./types";
+import { DB, Enquiry, Booking, Offer, Room } from "./types";
 import { SITE_CONFIG } from "./config";
 
 const DB_PATH = path.join(process.cwd(), "data", "db.json");
@@ -10,9 +10,10 @@ function readDB(): DB {
     const raw = fs.readFileSync(DB_PATH, "utf-8");
     const data = JSON.parse(raw);
     if (!data.bookings) data.bookings = [];
+    if (!data.offers) data.offers = [];
     return data;
   } catch {
-    const initial: DB = { enquiries: [], bookings: [], config: SITE_CONFIG };
+    const initial: DB = { enquiries: [], bookings: [], offers: [], config: SITE_CONFIG };
     writeDB(initial);
     return initial;
   }
@@ -118,4 +119,67 @@ export function updateConfig(config: Partial<DB["config"]>) {
   db.config = { ...db.config, ...config };
   writeDB(db);
   return db.config;
+}
+
+// Rooms (managed via config)
+export function getRooms(): Room[] {
+  return readDB().config.rooms;
+}
+
+export function addRoom(room: Room): Room[] {
+  const db = readDB();
+  db.config.rooms.push(room);
+  writeDB(db);
+  return db.config.rooms;
+}
+
+export function updateRoom(index: number, updates: Partial<Room>): Room[] {
+  const db = readDB();
+  if (index < 0 || index >= db.config.rooms.length) return db.config.rooms;
+  Object.assign(db.config.rooms[index], updates);
+  writeDB(db);
+  return db.config.rooms;
+}
+
+export function deleteRoom(index: number): Room[] {
+  const db = readDB();
+  if (index < 0 || index >= db.config.rooms.length) return db.config.rooms;
+  db.config.rooms.splice(index, 1);
+  writeDB(db);
+  return db.config.rooms;
+}
+
+// Offers
+export function getOffers(): Offer[] {
+  return readDB().offers;
+}
+
+export function addOffer(offer: Omit<Offer, "id" | "createdAt">): Offer {
+  const db = readDB();
+  const newOffer: Offer = {
+    ...offer,
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+  };
+  db.offers.push(newOffer);
+  writeDB(db);
+  return newOffer;
+}
+
+export function updateOffer(id: string, updates: Partial<Offer>): Offer | null {
+  const db = readDB();
+  const idx = db.offers.findIndex((o) => o.id === id);
+  if (idx === -1) return null;
+  Object.assign(db.offers[idx], updates);
+  writeDB(db);
+  return db.offers[idx];
+}
+
+export function deleteOffer(id: string): boolean {
+  const db = readDB();
+  const idx = db.offers.findIndex((o) => o.id === id);
+  if (idx === -1) return false;
+  db.offers.splice(idx, 1);
+  writeDB(db);
+  return true;
 }

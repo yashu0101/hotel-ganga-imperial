@@ -7,6 +7,7 @@ import Rooms from "@/components/Rooms";
 import Amenities from "@/components/Amenities";
 import Events from "@/components/Events";
 import Dining from "@/components/Dining";
+import RingCarousel from "@/components/RingCarousel";
 import Gallery from "@/components/Gallery";
 import EnquiryForm from "@/components/EnquiryForm";
 import Footer from "@/components/Footer";
@@ -26,6 +27,7 @@ export default function Home() {
         <Amenities />
         <Events />
         <Dining />
+        <RingCarousel />
         <Gallery />
         <EnquiryForm />
       </main>

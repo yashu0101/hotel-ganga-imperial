@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, useRef, FormEvent } from "react";
+import Image from "next/image";
 import { SITE_CONFIG } from "@/lib/config";
 import { useApp } from "@/lib/context";
 
@@ -9,8 +10,51 @@ export default function EnquiryForm() {
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const cardRef = useRef<HTMLDivElement>(null);
   const roomOptions = SITE_CONFIG.rooms.map((r) => r.name);
   const allOptions = [...roomOptions, "Banquet hall", "Spa", "Something else"];
+
+  // Keycard 3D animation
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card || window.matchMedia("(prefers-reduced-motion:reduce)").matches) return;
+    const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+    let ticking = false;
+
+    const upd = () => {
+      ticking = false;
+      const vh = window.innerHeight;
+      const kr = card.getBoundingClientRect();
+      const k = clamp((vh - kr.top) / (vh + kr.height), 0, 1);
+      card.style.setProperty("--ky", (-30 + k * 60) + "deg");
+      card.style.setProperty("--sh", (-60 + k * 160) + "%");
+    };
+    const req = () => { if (!ticking) { ticking = true; requestAnimationFrame(upd); } };
+    window.addEventListener("scroll", req, { passive: true });
+    upd();
+
+    // Bob animation
+    const t0 = performance.now();
+    let raf: number;
+    const bob = (t: number) => {
+      raf = requestAnimationFrame(bob);
+      card.style.setProperty("--kf", (Math.sin((t - t0) / 900) * 6).toFixed(2) + "px");
+    };
+    raf = requestAnimationFrame(bob);
+
+    // Click to flip
+    const onClick = () => {
+      const cur = parseFloat(getComputedStyle(card).getPropertyValue("--ky")) || 0;
+      card.style.setProperty("--ky", (cur + 180) + "deg");
+    };
+    card.addEventListener("click", onClick);
+
+    return () => {
+      window.removeEventListener("scroll", req);
+      cancelAnimationFrame(raf);
+      card.removeEventListener("click", onClick);
+    };
+  }, []);
 
   const validate = (form: HTMLFormElement) => {
     const errs: Record<string, string> = {};
@@ -63,10 +107,20 @@ export default function EnquiryForm() {
             {contact.email && <li><span>Email</span><a href={`mailto:${contact.email}`}>{contact.email}</a></li>}
             {contact.address && <li><span>Address</span>{contact.address}</li>}
           </ul>
+          <div className="enq-pics">
+            <Image src="/images/image-19.jpeg" alt="Hotel lobby" width={210} height={210} loading="lazy" />
+            <Image src="/images/image-16.jpeg" alt="Suite" width={210} height={210} loading="lazy" />
+          </div>
           <div className="keycard-wrap" aria-hidden="true">
-            <div className="keycard">
-              <div className="kc-face kc-front"><div className="kc-name"><small>Hotel</small>Ganga Imperial</div><div className="kc-row"><div className="kc-chip" /><span>Guest key</span></div></div>
-              <div className="kc-face kc-back"><div className="strip" /><span style={{ fontSize: "0.8rem" }}>Please return this card at checkout.</span></div>
+            <div className="keycard" ref={cardRef}>
+              <div className="kc-face kc-front">
+                <div className="kc-name"><small>Hotel</small>Ganga Imperial</div>
+                <div className="kc-row"><div className="kc-chip" /><span>Guest key</span></div>
+              </div>
+              <div className="kc-face kc-back">
+                <div className="strip" />
+                <span style={{ fontSize: "0.8rem" }}>Please return this card at checkout.</span>
+              </div>
             </div>
           </div>
         </div>
