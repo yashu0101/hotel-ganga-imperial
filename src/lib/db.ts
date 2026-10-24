@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { DB, Enquiry, Booking, Offer, Room } from "./types";
+import { DB, Enquiry, Booking, Offer, Room, BanquetPackage, DiningOption } from "./types";
 import { SITE_CONFIG } from "./config";
 
 const DB_PATH = path.join(process.cwd(), "data", "db.json");
@@ -11,9 +11,11 @@ function readDB(): DB {
     const data = JSON.parse(raw);
     if (!data.bookings) data.bookings = [];
     if (!data.offers) data.offers = [];
+    if (!data.banquetPackages) data.banquetPackages = [];
+    if (!data.diningOptions) data.diningOptions = [];
     return data;
   } catch {
-    const initial: DB = { enquiries: [], bookings: [], offers: [], config: SITE_CONFIG };
+    const initial: DB = { enquiries: [], bookings: [], offers: [], banquetPackages: [], diningOptions: [], config: SITE_CONFIG };
     writeDB(initial);
     return initial;
   }
@@ -180,6 +182,68 @@ export function deleteOffer(id: string): boolean {
   const idx = db.offers.findIndex((o) => o.id === id);
   if (idx === -1) return false;
   db.offers.splice(idx, 1);
+  writeDB(db);
+  return true;
+}
+
+// Banquet Packages
+export function getBanquetPackages(): BanquetPackage[] {
+  return readDB().banquetPackages;
+}
+
+export function addBanquetPackage(pkg: Omit<BanquetPackage, "id" | "createdAt">): BanquetPackage {
+  const db = readDB();
+  const newPkg: BanquetPackage = { ...pkg, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+  db.banquetPackages.push(newPkg);
+  writeDB(db);
+  return newPkg;
+}
+
+export function updateBanquetPackage(id: string, updates: Partial<BanquetPackage>): BanquetPackage | null {
+  const db = readDB();
+  const idx = db.banquetPackages.findIndex((p) => p.id === id);
+  if (idx === -1) return null;
+  Object.assign(db.banquetPackages[idx], updates);
+  writeDB(db);
+  return db.banquetPackages[idx];
+}
+
+export function deleteBanquetPackage(id: string): boolean {
+  const db = readDB();
+  const idx = db.banquetPackages.findIndex((p) => p.id === id);
+  if (idx === -1) return false;
+  db.banquetPackages.splice(idx, 1);
+  writeDB(db);
+  return true;
+}
+
+// Dining Options
+export function getDiningOptions(): DiningOption[] {
+  return readDB().diningOptions;
+}
+
+export function addDiningOption(opt: Omit<DiningOption, "id" | "createdAt">): DiningOption {
+  const db = readDB();
+  const newOpt: DiningOption = { ...opt, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+  db.diningOptions.push(newOpt);
+  writeDB(db);
+  return newOpt;
+}
+
+export function updateDiningOption(id: string, updates: Partial<DiningOption>): DiningOption | null {
+  const db = readDB();
+  const idx = db.diningOptions.findIndex((d) => d.id === id);
+  if (idx === -1) return null;
+  Object.assign(db.diningOptions[idx], updates);
+  writeDB(db);
+  return db.diningOptions[idx];
+}
+
+export function deleteDiningOption(id: string): boolean {
+  const db = readDB();
+  const idx = db.diningOptions.findIndex((d) => d.id === id);
+  if (idx === -1) return false;
+  db.diningOptions.splice(idx, 1);
   writeDB(db);
   return true;
 }

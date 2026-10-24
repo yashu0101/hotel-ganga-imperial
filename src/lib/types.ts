@@ -51,6 +51,27 @@ export interface Booking {
   createdAt: string;
 }
 
+export interface BanquetPackage {
+  id: string;
+  name: string;
+  description: string;
+  capacity: string;
+  price: string;
+  includes: string[];
+  active: boolean;
+  createdAt: string;
+}
+
+export interface DiningOption {
+  id: string;
+  name: string;
+  description: string;
+  price: string;
+  category: "breakfast" | "lunch" | "dinner" | "room-service" | "event-catering";
+  active: boolean;
+  createdAt: string;
+}
+
 export interface SiteConfig {
   hotelName: string;
   contact: {
@@ -75,5 +96,7 @@ export interface DB {
   enquiries: Enquiry[];
   bookings: Booking[];
   offers: Offer[];
+  banquetPackages: BanquetPackage[];
+  diningOptions: DiningOption[];
   config: SiteConfig;
 }

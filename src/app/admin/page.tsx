@@ -17,21 +17,35 @@ interface Offer {
   id: string; title: string; description: string; discount: string;
   validFrom: string; validTo: string; active: boolean; createdAt: string;
 }
+interface BanquetPackage {
+  id: string; name: string; description: string; capacity: string;
+  price: string; includes: string[]; active: boolean; createdAt: string;
+}
+interface DiningOption {
+  id: string; name: string; description: string; price: string;
+  category: string; active: boolean; createdAt: string;
+}
 
 const genderIcon = (g: string) => g === "female" ? "\u{1F469}" : g === "male" ? "\u{1F468}" : "\u{1F9D1}";
 
 export default function AdminPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"dashboard" | "bookings" | "enquiries" | "rooms" | "offers">("dashboard");
+  const [tab, setTab] = useState<"dashboard" | "bookings" | "enquiries" | "rooms" | "offers" | "banquet" | "dining">("dashboard");
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
+  const [banquetPkgs, setBanquetPkgs] = useState<BanquetPackage[]>([]);
+  const [diningOpts, setDiningOpts] = useState<DiningOption[]>([]);
   const [editRoom, setEditRoom] = useState<{ index: number; room: Room } | null>(null);
   const [newRoom, setNewRoom] = useState(false);
   const [editOffer, setEditOffer] = useState<Offer | null>(null);
   const [newOffer, setNewOffer] = useState(false);
+  const [editBanquet, setEditBanquet] = useState<BanquetPackage | null>(null);
+  const [newBanquet, setNewBanquet] = useState(false);
+  const [editDining, setEditDining] = useState<DiningOption | null>(null);
+  const [newDining, setNewDining] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me").then(r => { if (!r.ok) router.push("/login"); else setLoading(false); });
@@ -44,7 +58,9 @@ export default function AdminPage() {
       fetch("/api/enquiries").then(r => r.json()),
       fetch("/api/rooms").then(r => r.json()),
       fetch("/api/offers").then(r => r.json()),
-    ]).then(([b, e, r, o]) => { setBookings(b); setEnquiries(e); setRooms(r); setOffers(o); });
+      fetch("/api/banquet").then(r => r.json()),
+      fetch("/api/dining").then(r => r.json()),
+    ]).then(([b, e, r, o, bp, d]) => { setBookings(b); setEnquiries(e); setRooms(r); setOffers(o); setBanquetPkgs(bp); setDiningOpts(d); });
   }, [loading]);
 
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }); router.push("/login"); };
@@ -117,6 +133,44 @@ export default function AdminPage() {
     if (!confirm("Delete this offer?")) return;
     await fetch(`/api/offers?id=${id}`, { method: "DELETE" });
     setOffers(prev => prev.filter(o => o.id !== id));
+  };
+
+  // Banquet CRUD
+  const createBanquetFn = async (pkg: Omit<BanquetPackage, "id" | "createdAt">) => {
+    const res = await fetch("/api/banquet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pkg) });
+    const data = await res.json();
+    setBanquetPkgs(prev => [...prev, data.package]);
+    setNewBanquet(false);
+  };
+  const saveBanquetFn = async (id: string, updates: Partial<BanquetPackage>) => {
+    const res = await fetch("/api/banquet", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...updates }) });
+    const data = await res.json();
+    setBanquetPkgs(prev => prev.map(p => p.id === id ? data.package : p));
+    setEditBanquet(null);
+  };
+  const removeBanquet = async (id: string) => {
+    if (!confirm("Delete this package?")) return;
+    await fetch(`/api/banquet?id=${id}`, { method: "DELETE" });
+    setBanquetPkgs(prev => prev.filter(p => p.id !== id));
+  };
+
+  // Dining CRUD
+  const createDiningFn = async (opt: Omit<DiningOption, "id" | "createdAt">) => {
+    const res = await fetch("/api/dining", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(opt) });
+    const data = await res.json();
+    setDiningOpts(prev => [...prev, data.option]);
+    setNewDining(false);
+  };
+  const saveDiningFn = async (id: string, updates: Partial<DiningOption>) => {
+    const res = await fetch("/api/dining", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...updates }) });
+    const data = await res.json();
+    setDiningOpts(prev => prev.map(d => d.id === id ? data.option : d));
+    setEditDining(null);
+  };
+  const removeDining = async (id: string) => {
+    if (!confirm("Delete this dining option?")) return;
+    await fetch(`/api/dining?id=${id}`, { method: "DELETE" });
+    setDiningOpts(prev => prev.filter(d => d.id !== id));
   };
 
   if (loading) return <div style={{ display: "grid", placeItems: "center", height: "100vh", background: "#121827", color: "#C9A15B", fontFamily: "Marcellus, serif", fontSize: "1.2rem" }}>Loading...</div>;
@@ -197,7 +251,7 @@ export default function AdminPage() {
       </div>
 
       <div className="adm-tabs">
-        {(["dashboard", "bookings", "enquiries", "rooms", "offers"] as const).map(t => (
+        {(["dashboard", "bookings", "enquiries", "rooms", "banquet", "dining", "offers"] as const).map(t => (
           <button key={t} className={`adm-tab${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>
             {t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
@@ -214,6 +268,8 @@ export default function AdminPage() {
               <div className="stat-card"><div className="num">{newEnquiries}</div><div className="lbl">New Enquiries</div></div>
               <div className="stat-card"><div className="num">{activeOffers}</div><div className="lbl">Active Offers</div></div>
               <div className="stat-card"><div className="num">{rooms.length}</div><div className="lbl">Room Types</div></div>
+              <div className="stat-card"><div className="num">{banquetPkgs.filter(p => p.active).length}</div><div className="lbl">Banquet Packages</div></div>
+              <div className="stat-card"><div className="num">{diningOpts.filter(d => d.active).length}</div><div className="lbl">Dining Options</div></div>
               <div className="stat-card"><div className="num">{totalRevenue > 0 ? `\u20B9${totalRevenue.toLocaleString()}` : "--"}</div><div className="lbl">Revenue (Paid)</div></div>
             </div>
             <div className="adm-card">
@@ -344,6 +400,77 @@ export default function AdminPage() {
           </>
         )}
 
+        {/* BANQUET */}
+        {tab === "banquet" && (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ margin: 0, fontFamily: "Marcellus, serif", fontWeight: 400, color: "#C9A15B" }}>Banquet Packages</h2>
+              <button className="adm-btn primary" onClick={() => setNewBanquet(true)}>+ Add Package</button>
+            </div>
+
+            {newBanquet && <BanquetForm onSave={createBanquetFn} onCancel={() => setNewBanquet(false)} />}
+
+            {banquetPkgs.map(pkg => (
+              editBanquet?.id === pkg.id ? (
+                <BanquetForm key={pkg.id} pkg={editBanquet} onSave={(updates) => saveBanquetFn(pkg.id, updates)} onCancel={() => setEditBanquet(null)} />
+              ) : (
+                <div key={pkg.id} className="adm-card" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+                  <div style={{ flex: 1 }}>
+                    <h3 style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      {pkg.name}
+                      <span className={`badge ${pkg.active ? "badge-active" : "badge-inactive"}`}>{pkg.active ? "Active" : "Inactive"}</span>
+                    </h3>
+                    <p style={{ color: "#C9A15B", fontSize: ".95rem", margin: "4px 0" }}>{pkg.price} | {pkg.capacity}</p>
+                    <p style={{ color: "#8a8070", fontSize: ".88rem", margin: "4px 0" }}>{pkg.description}</p>
+                    {pkg.includes.length > 0 && <p style={{ fontSize: ".82rem", color: "#8a8070" }}>Includes: {pkg.includes.join(", ")}</p>}
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button className="adm-btn" onClick={() => saveBanquetFn(pkg.id, { active: !pkg.active })}>{pkg.active ? "Deactivate" : "Activate"}</button>
+                    <button className="adm-btn" onClick={() => setEditBanquet({ ...pkg })}>Edit</button>
+                    <button className="adm-btn danger" onClick={() => removeBanquet(pkg.id)}>Del</button>
+                  </div>
+                </div>
+              )
+            ))}
+            {banquetPkgs.length === 0 && !newBanquet && <p style={{ textAlign: "center", color: "#8a8070", marginTop: 40 }}>No banquet packages yet.</p>}
+          </>
+        )}
+
+        {/* DINING */}
+        {tab === "dining" && (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ margin: 0, fontFamily: "Marcellus, serif", fontWeight: 400, color: "#C9A15B" }}>Dining Options</h2>
+              <button className="adm-btn primary" onClick={() => setNewDining(true)}>+ Add Option</button>
+            </div>
+
+            {newDining && <DiningForm onSave={createDiningFn} onCancel={() => setNewDining(false)} />}
+
+            {diningOpts.map(opt => (
+              editDining?.id === opt.id ? (
+                <DiningForm key={opt.id} opt={editDining} onSave={(updates) => saveDiningFn(opt.id, updates)} onCancel={() => setEditDining(null)} />
+              ) : (
+                <div key={opt.id} className="adm-card" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+                  <div style={{ flex: 1 }}>
+                    <h3 style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      {opt.name}
+                      <span className={`badge ${opt.active ? "badge-active" : "badge-inactive"}`}>{opt.active ? "Active" : "Inactive"}</span>
+                    </h3>
+                    <p style={{ color: "#C9A15B", fontSize: ".95rem", margin: "4px 0" }}>{opt.price} | {opt.category.replace("-", " ")}</p>
+                    <p style={{ color: "#8a8070", fontSize: ".88rem", margin: "4px 0" }}>{opt.description}</p>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button className="adm-btn" onClick={() => saveDiningFn(opt.id, { active: !opt.active })}>{opt.active ? "Deactivate" : "Activate"}</button>
+                    <button className="adm-btn" onClick={() => setEditDining({ ...opt })}>Edit</button>
+                    <button className="adm-btn danger" onClick={() => removeDining(opt.id)}>Del</button>
+                  </div>
+                </div>
+              )
+            ))}
+            {diningOpts.length === 0 && !newDining && <p style={{ textAlign: "center", color: "#8a8070", marginTop: 40 }}>No dining options yet.</p>}
+          </>
+        )}
+
         {/* OFFERS */}
         {tab === "offers" && (
           <>
@@ -408,6 +535,70 @@ function RoomForm({ room, onSave, onCancel }: { room?: Room; onSave: (r: Room) =
       </div>
       <div className="adm-actions">
         <button className="adm-btn primary" onClick={() => name.trim() && onSave({ name: name.trim(), text, image, rate, sample, hidden })}>Save</button>
+        <button className="adm-btn" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function BanquetForm({ pkg, onSave, onCancel }: { pkg?: BanquetPackage; onSave: (p: Omit<BanquetPackage, "id" | "createdAt">) => void; onCancel: () => void }) {
+  const [name, setName] = useState(pkg?.name || "");
+  const [description, setDescription] = useState(pkg?.description || "");
+  const [capacity, setCapacity] = useState(pkg?.capacity || "");
+  const [price, setPrice] = useState(pkg?.price || "");
+  const [includesStr, setIncludesStr] = useState(pkg?.includes?.join(", ") || "");
+  const [active, setActive] = useState(pkg?.active ?? true);
+
+  return (
+    <div className="adm-card">
+      <h3>{pkg ? "Edit Package" : "New Package"}</h3>
+      <div className="adm-form">
+        <div><label>Name *</label><input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Gold Package" /></div>
+        <div><label>Price</label><input value={price} onChange={e => setPrice(e.target.value)} placeholder="e.g. ₹1,50,000" /></div>
+        <div><label>Capacity</label><input value={capacity} onChange={e => setCapacity(e.target.value)} placeholder="e.g. Up to 200 guests" /></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 20 }}>
+          <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} /> Active</label>
+        </div>
+        <div className="full"><label>Description</label><textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
+        <div className="full"><label>Includes (comma separated)</label><input value={includesStr} onChange={e => setIncludesStr(e.target.value)} placeholder="Hall rental, Catering, DJ, Decoration" /></div>
+      </div>
+      <div className="adm-actions">
+        <button className="adm-btn primary" onClick={() => name.trim() && onSave({ name: name.trim(), description, capacity, price, includes: includesStr.split(",").map(s => s.trim()).filter(Boolean), active })}>Save</button>
+        <button className="adm-btn" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function DiningForm({ opt, onSave, onCancel }: { opt?: DiningOption; onSave: (d: Omit<DiningOption, "id" | "createdAt">) => void; onCancel: () => void }) {
+  const [name, setName] = useState(opt?.name || "");
+  const [description, setDescription] = useState(opt?.description || "");
+  const [price, setPrice] = useState(opt?.price || "");
+  const [category, setCategory] = useState(opt?.category || "dinner");
+  const [active, setActive] = useState(opt?.active ?? true);
+
+  return (
+    <div className="adm-card">
+      <h3>{opt ? "Edit Dining Option" : "New Dining Option"}</h3>
+      <div className="adm-form">
+        <div><label>Name *</label><input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Dinner Buffet" /></div>
+        <div><label>Price</label><input value={price} onChange={e => setPrice(e.target.value)} placeholder="e.g. ₹800/person" /></div>
+        <div><label>Category</label>
+          <select value={category} onChange={e => setCategory(e.target.value)}>
+            <option value="breakfast">Breakfast</option>
+            <option value="lunch">Lunch</option>
+            <option value="dinner">Dinner</option>
+            <option value="room-service">Room Service</option>
+            <option value="event-catering">Event Catering</option>
+          </select>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 20 }}>
+          <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} /> Active</label>
+        </div>
+        <div className="full"><label>Description</label><textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
+      </div>
+      <div className="adm-actions">
+        <button className="adm-btn primary" onClick={() => name.trim() && onSave({ name: name.trim(), description, price, category, active })}>Save</button>
         <button className="adm-btn" onClick={onCancel}>Cancel</button>
       </div>
     </div>

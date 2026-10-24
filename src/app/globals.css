@@ -365,5 +365,28 @@ footer a[aria-current="true"]{color:var(--brass-soft)}
 .offer-card .btn{font-size:.85rem;min-height:40px;padding:0 20px}
 @media (max-width:600px){.offers-grid{grid-template-columns:1fr}}
 
+/* ---------- Banquet packages ---------- */
+.banquet-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:clamp(16px,2vw,24px)}
+.banquet-card{background:var(--surface);border:1px solid var(--line);padding:clamp(24px,3vw,36px);position:relative;overflow:hidden;transition:transform .3s,box-shadow .3s}
+.banquet-card:hover{transform:translateY(-4px);box-shadow:0 16px 32px -10px rgba(0,0,0,.4)}
+.banquet-card::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--brass),var(--brass-soft))}
+.banquet-price{font-family:var(--display);font-size:1.4rem;color:var(--accent);margin-bottom:8px}
+.banquet-card h3{font-family:var(--display);font-size:1.2rem;margin-bottom:6px}
+.banquet-cap{font-size:.85rem;color:var(--muted);margin-bottom:12px;font-weight:600}
+.banquet-card p{font-size:.9rem;color:var(--muted);margin-bottom:14px}
+.banquet-includes{list-style:none;padding:0;margin:0 0 18px;display:flex;flex-wrap:wrap;gap:6px}
+.banquet-includes li{background:rgba(201,161,91,.1);border:1px solid rgba(201,161,91,.2);padding:4px 12px;font-size:.78rem;color:var(--accent)}
+.banquet-card .btn{font-size:.85rem;min-height:40px;padding:0 20px}
+@media(max-width:600px){.banquet-grid{grid-template-columns:1fr}}
+
+/* ---------- Dining menu ---------- */
+.dining-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:clamp(14px,2vw,20px);margin-bottom:40px}
+.dining-card{background:var(--surface);border:1px solid var(--line);padding:clamp(20px,2.5vw,30px);transition:transform .3s}
+.dining-card:hover{transform:translateY(-3px)}
+.dining-cat{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);margin-bottom:10px;font-weight:600}
+.dining-card h3{font-family:var(--display);font-size:1.1rem;margin-bottom:8px}
+.dining-card p{font-size:.88rem;color:var(--muted);margin-bottom:14px}
+.dining-price{font-family:var(--display);color:var(--accent);font-size:1rem}
+
 /* ---------- Guest icon ---------- */
 .guest-icon{margin-right:6px;font-size:1.1rem;vertical-align:middle}

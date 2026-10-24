@@ -38,6 +38,19 @@
       "id": "eb707ce2-42e3-4965-955c-5e82986feba1",
       "createdAt": "2026-10-24T10:14:11.901Z",
       "status": "new"
+    },
+    {
+      "name": "Test Check",
+      "phone": "9999999999",
+      "email": "check@test.com",
+      "type": "Room stay",
+      "guests": 1,
+      "checkin": "2026-12-10",
+      "checkout": "2026-12-12",
+      "message": "Automated check",
+      "id": "01e2dda3-ec16-4a30-8e20-e958918506fa",
+      "createdAt": "2026-10-24T10:24:43.768Z",
+      "status": "new"
     }
   ],
   "bookings": [
@@ -166,6 +179,24 @@
       "paymentId": "",
       "paymentStatus": "pending",
       "bookingStatus": "pending"
+    },
+    {
+      "name": "Test Booking",
+      "mobile": "9876500099",
+      "email": "testbook@test.com",
+      "city": "Delhi",
+      "country": "India",
+      "gender": "male",
+      "roomType": "Deluxe Room",
+      "checkin": "2026-12-15",
+      "checkout": "2026-12-17",
+      "guests": 2,
+      "amount": 0,
+      "id": "7c9e3403-d510-4ef9-b6c4-00f979a6bff1",
+      "createdAt": "2026-10-24T10:24:45.466Z",
+      "paymentId": "",
+      "paymentStatus": "pending",
+      "bookingStatus": "pending"
     }
   ],
   "offers": [
@@ -198,6 +229,85 @@
       "validTo": "2027-12-31",
       "active": false,
       "createdAt": "2026-10-20T00:00:00Z"
+    }
+  ],
+  "banquetPackages": [
+    {
+      "id": "banq-001",
+      "name": "Silver Package",
+      "description": "Ideal for small gatherings and birthday parties. Includes basic hall decoration, sound system and standard catering.",
+      "capacity": "Up to 100 guests",
+      "price": "₹75,000",
+      "includes": ["Hall rental", "Basic decoration", "Sound system", "Standard catering", "Valet parking"],
+      "active": true,
+      "createdAt": "2026-10-01T00:00:00Z"
+    },
+    {
+      "id": "banq-002",
+      "name": "Gold Package",
+      "description": "Perfect for wedding receptions and corporate events. Includes premium decoration, DJ, catering and photography.",
+      "capacity": "Up to 200 guests",
+      "price": "₹1,50,000",
+      "includes": ["Hall rental", "Premium decoration", "DJ & sound", "Premium catering", "Photography", "Valet parking", "Stage setup"],
+      "active": true,
+      "createdAt": "2026-10-01T00:00:00Z"
+    },
+    {
+      "id": "banq-003",
+      "name": "Platinum Package",
+      "description": "The complete celebration experience. Everything in Gold plus luxury flower decoration, videography, live music and bridal suite.",
+      "capacity": "Up to 300 guests",
+      "price": "₹2,50,000",
+      "includes": ["Hall rental", "Luxury decoration", "Live music & DJ", "Gourmet catering", "Photography & videography", "Bridal suite", "Valet parking", "Stage & lighting", "Welcome drinks"],
+      "active": true,
+      "createdAt": "2026-10-01T00:00:00Z"
+    }
+  ],
+  "diningOptions": [
+    {
+      "id": "din-001",
+      "name": "Breakfast Buffet",
+      "description": "A rich spread of Indian and continental options including fresh juices, eggs, parathas, cereals and more.",
+      "price": "₹500/person",
+      "category": "breakfast",
+      "active": true,
+      "createdAt": "2026-10-01T00:00:00Z"
+    },
+    {
+      "id": "din-002",
+      "name": "Lunch Thali",
+      "description": "Traditional North Indian thali with dal, paneer, seasonal vegetables, rice, roti and dessert.",
+      "price": "₹600/person",
+      "category": "lunch",
+      "active": true,
+      "createdAt": "2026-10-01T00:00:00Z"
+    },
+    {
+      "id": "din-003",
+      "name": "Dinner - A La Carte",
+      "description": "Evening dining with seasonal menus, local specialties and international cuisine in a candle-lit restaurant.",
+      "price": "₹800–1,500/person",
+      "category": "dinner",
+      "active": true,
+      "createdAt": "2026-10-01T00:00:00Z"
+    },
+    {
+      "id": "din-004",
+      "name": "Room Service",
+      "description": "Full menu delivered to your room 24 hours a day. Order anything from snacks to full meals.",
+      "price": "₹300–1,200",
+      "category": "room-service",
+      "active": true,
+      "createdAt": "2026-10-01T00:00:00Z"
+    },
+    {
+      "id": "din-005",
+      "name": "Event Catering",
+      "description": "Custom catering packages for banquet events, weddings and private parties. Veg and non-veg menus available.",
+      "price": "₹800/plate onwards",
+      "category": "event-catering",
+      "active": true,
+      "createdAt": "2026-10-01T00:00:00Z"
     }
   ],
   "config": {

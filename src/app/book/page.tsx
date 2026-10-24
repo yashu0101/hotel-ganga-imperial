@@ -5,6 +5,7 @@ import { SITE_CONFIG } from "@/lib/config";
 import { useApp } from "@/lib/context";
 
 interface RoomOption { name: string; rate: string; hidden?: boolean; }
+interface BanquetOption { id: string; name: string; price: string; active: boolean; }
 
 export default function BookPage() {
   const { t, lang, setLang, theme, setTheme } = useApp();
@@ -12,11 +13,16 @@ export default function BookPage() {
   const [message, setMessage] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [rooms, setRooms] = useState<RoomOption[]>(SITE_CONFIG.rooms);
+  const [banquetPkgs, setBanquetPkgs] = useState<BanquetOption[]>([]);
+  const [bookingType, setBookingType] = useState<"room" | "banquet">("room");
 
   useEffect(() => {
     fetch("/api/rooms").then(r => r.json()).then((data: RoomOption[]) => {
       const visible = data.filter(r => !r.hidden);
       if (visible.length > 0) setRooms(visible);
+    }).catch(() => {});
+    fetch("/api/banquet").then(r => r.json()).then((data: BanquetOption[]) => {
+      setBanquetPkgs(data.filter(p => p.active));
     }).catch(() => {});
   }, []);
 
@@ -85,6 +91,9 @@ export default function BookPage() {
         .msg{padding:14px;border-radius:6px;margin-bottom:20px;font-size:.9rem}
         .msg.success{background:rgba(91,201,107,.15);border:1px solid rgba(91,201,107,.4);color:#7ddf8a}
         .msg.error{background:rgba(201,91,91,.15);border:1px solid rgba(201,91,91,.4);color:#E88}
+        .type-toggle{display:flex;gap:0;margin-bottom:24px;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+        .type-toggle button{flex:1;padding:12px;background:var(--surface);color:var(--muted);border:none;font:inherit;font-size:.9rem;cursor:pointer;transition:all .2s}
+        .type-toggle button.active{background:#C9A15B;color:#121827;font-weight:600}
         @media(max-width:500px){.field-row{grid-template-columns:1fr}.book-body{padding:32px 16px}}
       `}</style>
 
@@ -104,34 +113,45 @@ export default function BookPage() {
         {message && <div className={`msg ${status === "success" ? "success" : "error"}`}>{message}</div>}
 
         {status !== "success" && (
-          <form onSubmit={handleSubmit}>
-            <div className="field"><label>{t("book.name")} *</label><input name="name" autoComplete="name" required />{errors.name && <div className="err">{errors.name}</div>}</div>
-            <div className="field-row">
-              <div className="field"><label>{t("book.mobile")} *</label><input name="mobile" type="tel" autoComplete="tel" inputMode="tel" required />{errors.mobile && <div className="err">{errors.mobile}</div>}</div>
-              <div className="field"><label>{t("book.email")} *</label><input name="email" type="email" autoComplete="email" required />{errors.email && <div className="err">{errors.email}</div>}</div>
+          <>
+            <div className="type-toggle">
+              <button className={bookingType === "room" ? "active" : ""} onClick={() => setBookingType("room")}>{t("book.roomBooking")}</button>
+              <button className={bookingType === "banquet" ? "active" : ""} onClick={() => setBookingType("banquet")}>{t("book.banquetBooking")}</button>
             </div>
-            <div className="field-row">
-              <div className="field"><label>{t("book.city")} *</label><input name="city" autoComplete="address-level2" required />{errors.city && <div className="err">{errors.city}</div>}</div>
-              <div className="field"><label>{t("book.country")} *</label><input name="country" autoComplete="country-name" defaultValue="India" required />{errors.country && <div className="err">{errors.country}</div>}</div>
-            </div>
-            <div className="field-row">
-              <div className="field">
-                <label>{t("book.gender")} *</label>
-                <select name="gender" required>
-                  <option value="male">{t("book.male")}</option>
-                  <option value="female">{t("book.female")}</option>
-                  <option value="other">{t("book.other")}</option>
-                </select>
+            <form onSubmit={handleSubmit}>
+              <input type="hidden" name="bookingType" value={bookingType} />
+              <div className="field"><label>{t("book.name")} *</label><input name="name" autoComplete="name" required />{errors.name && <div className="err">{errors.name}</div>}</div>
+              <div className="field-row">
+                <div className="field"><label>{t("book.mobile")} *</label><input name="mobile" type="tel" autoComplete="tel" inputMode="tel" required />{errors.mobile && <div className="err">{errors.mobile}</div>}</div>
+                <div className="field"><label>{t("book.email")} *</label><input name="email" type="email" autoComplete="email" required />{errors.email && <div className="err">{errors.email}</div>}</div>
               </div>
-              <div className="field"><label>{t("book.roomType")} *</label><select name="roomType" required>{rooms.map((r) => <option key={r.name} value={r.name}>{r.name} {r.rate ? `— ${r.rate}` : ""}</option>)}</select></div>
-            </div>
-            <div className="field-row">
-              <div className="field"><label>{t("book.checkin")} *</label><input name="checkin" type="date" required />{errors.checkin && <div className="err">{errors.checkin}</div>}</div>
-              <div className="field"><label>{t("book.checkout")}</label><input name="checkout" type="date" /></div>
-            </div>
-            <div className="field"><label>{t("book.guests")}</label><input name="guests" type="number" min={1} max={20} defaultValue={2} /></div>
-            <button className="submit-btn" type="submit" disabled={status === "loading"}>{status === "loading" ? t("book.submitting") : t("book.submit")}</button>
-          </form>
+              <div className="field-row">
+                <div className="field"><label>{t("book.city")} *</label><input name="city" autoComplete="address-level2" required />{errors.city && <div className="err">{errors.city}</div>}</div>
+                <div className="field"><label>{t("book.country")} *</label><input name="country" autoComplete="country-name" defaultValue="India" required />{errors.country && <div className="err">{errors.country}</div>}</div>
+              </div>
+              <div className="field-row">
+                <div className="field">
+                  <label>{t("book.gender")} *</label>
+                  <select name="gender" required>
+                    <option value="male">{t("book.male")}</option>
+                    <option value="female">{t("book.female")}</option>
+                    <option value="other">{t("book.other")}</option>
+                  </select>
+                </div>
+                {bookingType === "room" ? (
+                  <div className="field"><label>{t("book.roomType")} *</label><select name="roomType" required>{rooms.map((r) => <option key={r.name} value={r.name}>{r.name} {r.rate ? `— ${r.rate}` : ""}</option>)}</select></div>
+                ) : (
+                  <div className="field"><label>{t("book.banquetPackage")} *</label><select name="roomType" required>{banquetPkgs.map((p) => <option key={p.id} value={`Banquet - ${p.name}`}>{p.name} {p.price ? `— ${p.price}` : ""}</option>)}{banquetPkgs.length === 0 && <option value="Banquet hall">Banquet Hall</option>}</select></div>
+                )}
+              </div>
+              <div className="field-row">
+                <div className="field"><label>{bookingType === "banquet" ? t("book.eventDate") : t("book.checkin")} *</label><input name="checkin" type="date" required />{errors.checkin && <div className="err">{errors.checkin}</div>}</div>
+                <div className="field"><label>{bookingType === "banquet" ? t("book.eventEndDate") : t("book.checkout")}</label><input name="checkout" type="date" /></div>
+              </div>
+              <div className="field"><label>{t("book.guests")}</label><input name="guests" type="number" min={1} max={bookingType === "banquet" ? 500 : 20} defaultValue={bookingType === "banquet" ? 50 : 2} /></div>
+              <button className="submit-btn" type="submit" disabled={status === "loading"}>{status === "loading" ? t("book.submitting") : t("book.submit")}</button>
+            </form>
+          </>
         )}
         {status === "success" && (
           <div style={{ textAlign: "center", marginTop: 32 }}>

@@ -58,6 +58,8 @@ export const translations: Record<Lang, Record<string, string>> = {
     "events.title": "Banquet hall",
     "events.text": "A grand, chandeliered hall for weddings, receptions, corporate events and family functions. The space seats up to 300 guests and includes in-house catering, AV equipment and dedicated event coordination.",
     "events.cta": "Enquire about events",
+    "events.packages": "Banquet Packages",
+    "events.packagesSubtitle": "Choose a package that fits your celebration. All packages include hall rental and coordination.",
 
     // Dining
     "dining.title": "Dining",
@@ -66,6 +68,8 @@ export const translations: Record<Lang, Record<string, string>> = {
     "dining.breakfastDesc": "A buffet of Indian and continental options to start your day.",
     "dining.roomService": "Room service",
     "dining.roomServiceDesc": "Order from the full menu, delivered to your door any time.",
+    "dining.menu": "Menu & Pricing",
+    "dining.menuSubtitle": "Fresh, seasonal meals prepared by our in-house chefs.",
     "dining.evening": "Evening dining",
     "dining.eveningDesc": "A relaxed restaurant with seasonal menus and local specialties.",
 
@@ -108,6 +112,11 @@ export const translations: Record<Lang, Record<string, string>> = {
     "book.submitting": "Submitting...",
     "book.another": "Make Another Booking",
     "book.back": "Back to website",
+    "book.roomBooking": "Room Booking",
+    "book.banquetBooking": "Banquet Hall",
+    "book.banquetPackage": "Package",
+    "book.eventDate": "Event Date",
+    "book.eventEndDate": "End Date (optional)",
 
     // Offers
     "offers.title": "Special Offers",
@@ -175,9 +184,13 @@ export const translations: Record<Lang, Record<string, string>> = {
     "events.title": "बैंक्वेट हॉल",
     "events.text": "शादियों, रिसेप्शन, कॉर्पोरेट इवेंट्स और पारिवारिक समारोहों के लिए एक भव्य हॉल। 300 मेहमानों तक की क्षमता।",
     "events.cta": "इवेंट के बारे में पूछें",
+    "events.packages": "बैंक्वेट पैकेज",
+    "events.packagesSubtitle": "अपने समारोह के लिए उपयुक्त पैकेज चुनें। सभी पैकेज में हॉल किराया और समन्वय शामिल है।",
 
     "dining.title": "भोजन",
     "dining.subtitle": "हार्दिक नाश्ते से लेकर कैंडललाइट डिनर तक, हर भोजन हमारे शेफ द्वारा ताज़ा तैयार किया जाता है।",
+    "dining.menu": "मेनू और मूल्य",
+    "dining.menuSubtitle": "हमारे शेफ द्वारा तैयार किए गए ताज़े, मौसमी भोजन।",
     "dining.breakfast": "नाश्ता",
     "dining.breakfastDesc": "आपके दिन की शुरुआत के लिए भारतीय और कॉन्टिनेंटल विकल्पों का बुफ़े।",
     "dining.roomService": "रूम सर्विस",
@@ -221,6 +234,11 @@ export const translations: Record<Lang, Record<string, string>> = {
     "book.submitting": "जमा कर रहे हैं...",
     "book.another": "एक और बुकिंग करें",
     "book.back": "वेबसाइट पर वापस जाएं",
+    "book.roomBooking": "कमरा बुकिंग",
+    "book.banquetBooking": "बैंक्वेट हॉल",
+    "book.banquetPackage": "पैकेज",
+    "book.eventDate": "इवेंट तिथि",
+    "book.eventEndDate": "समाप्ति तिथि (वैकल्पिक)",
 
     "offers.title": "विशेष ऑफ़र",
     "offers.subtitle": "हमारे मौजूदा सौदों और पैकेजों का लाभ उठाएं।",

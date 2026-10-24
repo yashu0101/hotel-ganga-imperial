@@ -11,8 +11,23 @@ export default function EnquiryForm() {
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const cardRef = useRef<HTMLDivElement>(null);
-  const roomOptions = SITE_CONFIG.rooms.map((r) => r.name);
-  const allOptions = [...roomOptions, "Banquet hall", "Spa", "Something else"];
+  const [allOptions, setAllOptions] = useState(() => {
+    const roomOptions = SITE_CONFIG.rooms.map((r) => r.name);
+    return [...roomOptions, "Banquet hall", "Spa", "Something else"];
+  });
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/rooms").then(r => r.json()).catch(() => []),
+      fetch("/api/banquet").then(r => r.json()).catch(() => []),
+    ]).then(([rooms, banquetPkgs]) => {
+      const roomNames = (rooms as { name: string; hidden?: boolean }[]).filter(r => !r.hidden).map(r => r.name);
+      const banquetNames = (banquetPkgs as { name: string; active: boolean }[]).filter(p => p.active).map(p => `Banquet - ${p.name}`);
+      if (roomNames.length > 0 || banquetNames.length > 0) {
+        setAllOptions([...roomNames, ...(banquetNames.length > 0 ? banquetNames : ["Banquet hall"]), "Spa", "Something else"]);
+      }
+    });
+  }, []);
 
   // Keycard 3D animation
   useEffect(() => {

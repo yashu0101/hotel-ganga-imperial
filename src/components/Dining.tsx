@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useApp } from "@/lib/context";
 
@@ -10,9 +10,21 @@ const FAN_ITEMS = [
   { i: 0, a: 0, src: "/images/image-29.jpeg", alt: "Restaurant", caption: "Restaurant", sample: true },
 ];
 
+interface DiningOption {
+  id: string; name: string; description: string; price: string;
+  category: string; active: boolean;
+}
+
 export default function Dining() {
   const { t } = useApp();
   const fanRef = useRef<HTMLDivElement>(null);
+  const [options, setOptions] = useState<DiningOption[]>([]);
+
+  useEffect(() => {
+    fetch("/api/dining").then(r => r.json())
+      .then((data: DiningOption[]) => setOptions(data.filter(d => d.active)))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const fan = fanRef.current;
@@ -39,8 +51,7 @@ export default function Dining() {
       <div className="wrap fan-wrap">
         <div>
           <h2>{t("dining.title")}</h2>
-          <p style={{ marginTop: 24 }}>Sample section. Candle-lit tables, rooftop evenings above the city lights and a relaxed lounge to end the day.</p>
-          <p>Replace these sample images and words with the hotel&apos;s real restaurant details once confirmed.</p>
+          <p style={{ marginTop: 24 }}>{t("dining.subtitle")}</p>
           <a className="btn btn-solid" href="#enquire">Ask about dining</a>
         </div>
         <div className="fan" id="fan" ref={fanRef}>
@@ -53,6 +64,25 @@ export default function Dining() {
           ))}
         </div>
       </div>
+
+      {options.length > 0 && (
+        <div className="wrap">
+          <div className="head" style={{ marginTop: 48 }}>
+            <h2>{t("dining.menu")}</h2>
+            <p>{t("dining.menuSubtitle")}</p>
+          </div>
+          <div className="dining-grid">
+            {options.map(opt => (
+              <div key={opt.id} className="dining-card" data-reveal>
+                <div className="dining-cat">{opt.category.replace("-", " ")}</div>
+                <h3>{opt.name}</h3>
+                <p>{opt.description}</p>
+                <div className="dining-price">{opt.price}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
