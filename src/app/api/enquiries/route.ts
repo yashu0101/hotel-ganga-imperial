@@ -1,0 +1,61 @@
+import { NextRequest, NextResponse } from "next/server";
+import {
+  getEnquiries,
+  updateEnquiryStatus,
+  deleteEnquiry,
+} from "@/lib/db";
+
+export async function GET() {
+  const enquiries = getEnquiries();
+  return NextResponse.json(enquiries);
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const { id, status } = await req.json();
+    if (!id || !status) {
+      return NextResponse.json(
+        { error: "id and status are required" },
+        { status: 400 }
+      );
+    }
+    const updated = updateEnquiryStatus(id, status);
+    if (!updated) {
+      return NextResponse.json(
+        { error: "Enquiry not found" },
+        { status: 404 }
+      );
+    }
+    return NextResponse.json(updated);
+  } catch {
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { id } = await req.json();
+    if (!id) {
+      return NextResponse.json(
+        { error: "id is required" },
+        { status: 400 }
+      );
+    }
+    const success = deleteEnquiry(id);
+    if (!success) {
+      return NextResponse.json(
+        { error: "Enquiry not found" },
+        { status: 404 }
+      );
+    }
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500 }
+    );
+  }
+}

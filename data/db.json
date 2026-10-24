@@ -1,0 +1,51 @@
+{
+  "enquiries": [],
+  "config": {
+    "hotelName": "Hotel Ganga Imperial",
+    "contact": {
+      "phone": "",
+      "whatsapp": "",
+      "email": "",
+      "address": "",
+      "mapEmbedUrl": ""
+    },
+    "rooms": [
+      {
+        "name": "Deluxe Room",
+        "text": "A warm, cove-lit room with an upholstered headboard, work desk and city view.",
+        "image": "/images/image-14.jpeg",
+        "rate": "",
+        "sample": true
+      },
+      {
+        "name": "Premium Room",
+        "text": "Extra space, brass accents and a sitting area for a more relaxed stay.",
+        "image": "/images/image-15.jpeg",
+        "rate": "",
+        "sample": true
+      },
+      {
+        "name": "Suite",
+        "text": "A separate living room, king bed and premium bath amenities for longer visits.",
+        "image": "/images/image-16.jpeg",
+        "rate": "",
+        "sample": true
+      },
+      {
+        "name": "Family Room",
+        "text": "Twin beds, extra floor space and everything a family needs under one roof.",
+        "image": "/images/image-17.jpeg",
+        "rate": "",
+        "sample": true
+      }
+    ],
+    "venue": {
+      "enabled": false,
+      "name": "",
+      "tagline": "",
+      "description": "",
+      "logo": "",
+      "image": ""
+    }
+  }
+}
