@@ -1,9 +1,11 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
-const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "hotel-ganga-imperial-default-secret"
-);
+function signingKey() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || secret.length < 32) throw new Error("JWT_SECRET must contain at least 32 characters");
+  return new TextEncoder().encode(secret);
+}
 const COOKIE_NAME = "admin_session";
 
 export async function createSession(email: string) {
@@ -11,7 +13,7 @@ export async function createSession(email: string) {
     .setProtectedHeader({ alg: "HS256" })
     .setExpirationTime("24h")
     .setIssuedAt()
-    .sign(SECRET);
+    .sign(signingKey());
   return token;
 }
 
@@ -24,8 +26,8 @@ export async function verifySession(): Promise<{
     const token = cookieStore.get(COOKIE_NAME)?.value;
     if (!token) return { authenticated: false };
 
-    const { payload } = await jwtVerify(token, SECRET);
-    return { authenticated: true, email: payload.email as string };
+    const { payload } = await jwtVerify(token, signingKey(), { algorithms: ["HS256"] });
+    return { authenticated: payload.role === "admin" && typeof payload.email === "string", email: payload.email as string };
   } catch {
     return { authenticated: false };
   }
@@ -33,8 +35,8 @@ export async function verifySession(): Promise<{
 
 export function getAdminCredentials() {
   return {
-    email: process.env.ADMIN_EMAIL || "admin@gangaimperial.com",
-    password: process.env.ADMIN_PASSWORD || "admin123",
+    email: process.env.ADMIN_EMAIL,
+    password: process.env.ADMIN_PASSWORD,
   };
 }
 
