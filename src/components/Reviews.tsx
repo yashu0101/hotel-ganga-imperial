@@ -30,7 +30,7 @@ export default function Reviews() {
         </div>
         <div className="reviews-grid">
           {reviews.map(r => (
-            <div key={r.id} className="review-card">
+            <div key={r.id} className="review-card card-lift reveal-luxury">
               <div className="review-stars">{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</div>
               <p className="review-text">&ldquo;{r.text}&rdquo;</p>
               <div className="review-author">

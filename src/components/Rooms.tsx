@@ -50,15 +50,15 @@ export default function Rooms() {
           <p>{t("rooms.subtitle")}</p>
         </div>
         <div className="room-grid">
-          <figure className="a" data-reveal>
+          <figure className="a img-reveal" data-reveal>
             <Image src="/images/image-10.jpeg" alt="Premium room with king bed" width={600} height={750} />
             <figcaption>Bed with seating corner</figcaption>
           </figure>
-          <figure className="b" data-reveal>
+          <figure className="b img-reveal" data-reveal>
             <Image src="/images/image-11.jpeg" alt="Cove-lit ceiling room" width={600} height={480} />
             <figcaption>Cove-lit ceiling and window</figcaption>
           </figure>
-          <figure className="c" data-reveal>
+          <figure className="c img-reveal" data-reveal>
             <Image src="/images/image-12.jpeg" alt="Marble TV wall" width={600} height={480} />
             <figcaption>Marble TV wall and wardrobe</figcaption>
           </figure>
@@ -70,7 +70,7 @@ export default function Rooms() {
         </div>
         <div className="types" id="room-types">
           {rooms.map((room, i) => (
-            <article key={i} className="rcard" data-reveal>
+            <article key={i} className={`rcard card-lift reveal-luxury stagger-${(i % 3) + 1}`} data-reveal>
               <div className="rcard-in">
                 <figure>
                   <Image src={room.image} alt={room.name} width={400} height={300} />

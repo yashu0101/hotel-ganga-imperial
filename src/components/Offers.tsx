@@ -30,8 +30,8 @@ export default function Offers() {
         </div>
         <div className="offers-grid">
           {offers.map(o => (
-            <div key={o.id} className="offer-card" data-reveal>
-              <div className="offer-badge">{o.discount}</div>
+            <div key={o.id} className="offer-card card-lift reveal-luxury" data-reveal>
+              <div className="offer-badge float-badge">{o.discount}</div>
               <h3>{o.title}</h3>
               <p>{o.description}</p>
               {(o.validFrom || o.validTo) && (

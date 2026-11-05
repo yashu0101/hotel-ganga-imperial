@@ -14,11 +14,13 @@ import Reviews from "@/components/Reviews";
 import EnquiryForm from "@/components/EnquiryForm";
 import Footer from "@/components/Footer";
 import BackToTop from "@/components/BackToTop";
+import ScrollReveal from "@/components/ScrollReveal";
 
 export default function Home() {
   return (
     <>
       <DoorIntro />
+      <ScrollReveal />
       <a className="skip" href="#main">Skip to content</a>
       <Header />
       <main id="main">

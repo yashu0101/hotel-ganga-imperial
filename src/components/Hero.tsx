@@ -43,11 +43,11 @@ export default function Hero() {
   return (
     <section className="hero" id="home" aria-label="Welcome">
       <div className="wrap-free hero-inner">
-        <h1>{t("hero.title")}</h1>
-        <div className="rule" />
-        <p>{t("hero.subtitle")}</p>
-        <div className="btns">
-          <a className="btn btn-solid" href="/book">{t("hero.book")}</a>
+        <h1 className="hero-enter-1">{t("hero.title")}</h1>
+        <div className="rule hero-enter-2 gold-line" />
+        <p className="hero-enter-3">{t("hero.subtitle")}</p>
+        <div className="btns hero-enter-4">
+          <a className="btn btn-solid pulse-brass" href="/book">{t("hero.book")}</a>
           <a className="btn btn-ghost" href="#rooms">{t("hero.rooms")}</a>
         </div>
       </div>

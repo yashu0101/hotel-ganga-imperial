@@ -33,7 +33,7 @@ export default function Events() {
             <Image src="/images/image-30.jpeg" alt="Rooftop terrace" width={200} height={200} loading="lazy" />
           </div>
         </div>
-        <div className="media" data-reveal>
+        <div className="media img-reveal reveal-right-l" data-reveal>
           <Image src="/images/image-13.jpeg" alt="Banquet hall with chandeliers" width={600} height={450} loading="lazy" />
         </div>
       </div>
@@ -46,7 +46,7 @@ export default function Events() {
           </div>
           <div className="banquet-grid">
             {packages.map(pkg => (
-              <div key={pkg.id} className="banquet-card" data-reveal>
+              <div key={pkg.id} className="banquet-card card-lift reveal-luxury" data-reveal>
                 <div className="banquet-price">{pkg.price}</div>
                 <h3>{pkg.name}</h3>
                 <p className="banquet-cap">{pkg.capacity}</p>

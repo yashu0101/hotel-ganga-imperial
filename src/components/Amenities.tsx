@@ -26,34 +26,34 @@ export default function Amenities() {
           <p>{t("amenities.subtitle")}</p>
         </div>
         <div className="amen-feature">
-          <figure data-reveal className="tile t-pool">
+          <figure data-reveal className="tile t-pool img-reveal reveal-luxury stagger-1">
             <Image src="/images/image-23.jpeg" alt="Rooftop swimming pool" width={700} height={500} loading="lazy" />
             <figcaption>Rooftop swimming pool</figcaption>
           </figure>
-          <figure data-reveal className="tile t-banquet">
+          <figure data-reveal className="tile t-banquet img-reveal reveal-luxury stagger-2">
             <Image src="/images/image-27.jpeg" alt="Banquet hall" width={500} height={500} loading="lazy" />
             <figcaption>Banquet hall</figcaption>
           </figure>
-          <figure data-reveal className="tile t-spa">
+          <figure data-reveal className="tile t-spa img-reveal reveal-luxury stagger-1">
             <Image src="/images/image-24.jpeg" alt="Spa treatment room" width={400} height={300} loading="lazy" />
             <figcaption>Spa</figcaption>
           </figure>
-          <figure data-reveal className="tile t-gym">
+          <figure data-reveal className="tile t-gym img-reveal reveal-luxury stagger-2">
             <Image src="/images/image-25.jpeg" alt="Gym" width={400} height={300} loading="lazy" />
             <figcaption>Gym</figcaption>
           </figure>
-          <figure data-reveal className="tile t-lounge">
+          <figure data-reveal className="tile t-lounge img-reveal reveal-luxury stagger-3">
             <Image src="/images/image-26.jpeg" alt="Club lounge" width={400} height={300} loading="lazy" />
             <figcaption>Club lounge</figcaption>
           </figure>
-          <figure data-reveal className="tile t-tt">
+          <figure data-reveal className="tile t-tt img-reveal reveal-luxury stagger-4">
             <Image src="/images/image-29.jpeg" alt="Table tennis" width={400} height={300} loading="lazy" />
             <figcaption>Table tennis</figcaption>
           </figure>
         </div>
         <ul className="amen-list" aria-label="All amenities">
           {AMENITY_LIST.map((a, i) => (
-            <li key={i}>
+            <li key={i} className={`amen-icon-enter stagger-${(i % 5) + 1}`}>
               <svg viewBox="0 0 32 32">
                 <path d={a.icon} />
                 {a.circle && <circle cx="16" cy="25" r="1.5" />}
