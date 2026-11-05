@@ -6,7 +6,7 @@ export default function MotionEffects() {
     let observer: IntersectionObserver | undefined;
     const setup = () => {
       observer?.disconnect();
-      const elements = document.querySelectorAll(".intro-media, .intro > div:last-child, .head, .stay-card, .amen-feature .tile, .banquet-card, .dining-card, .g-grid button, .footer-grid > div");
+      const elements = document.querySelectorAll(".intro-media, .intro > div:last-child, .head, .stay-card, .amen-feature .tile, .banquet-card, .dining-card, .g-grid button, .footer-grid > div, .reveal-luxury, .reveal-left-l, .reveal-right-l, .reveal-scale-l, .amen-icon-enter, .sec-divider");
       elements.forEach((element, index) => {
         element.classList.remove("motion-pending");
         (element as HTMLElement).style.setProperty("--reveal-delay", `${(index % 3) * 65}ms`);

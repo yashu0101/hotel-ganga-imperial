@@ -75,7 +75,7 @@ export default function Dining({preview=false}:{preview?:boolean}) {
           </div>
           <div className="dining-grid">
             {options.map(opt => (
-              <div key={opt.id} className="dining-card" data-reveal>
+              <div key={opt.id} className="dining-card card-lift reveal-luxury" data-reveal>
                 <div className="dining-cat">{opt.category.replace("-", " ")}</div>
                 <h3>{opt.name}</h3>
                 <p>{opt.description}</p>
