@@ -31,23 +31,23 @@ export default function Amenities() {
             <figcaption>Rooftop swimming pool</figcaption>
           </figure>
           <figure data-reveal className="tile t-banquet">
-            <Image src="/images/image-27.jpeg" alt="Banquet hall" width={500} height={500} loading="lazy" />
+            <Image src="/images/image-48.jpeg" alt="Banquet hall" width={500} height={500} loading="lazy" />
             <figcaption>Banquet hall</figcaption>
           </figure>
           <figure data-reveal className="tile t-spa">
-            <Image src="/images/image-24.jpeg" alt="Spa treatment room" width={400} height={300} loading="lazy" />
+            <Image src="/images/image-50.jpeg" alt="Spa treatment room" width={400} height={300} loading="lazy" />
             <figcaption>Spa</figcaption>
           </figure>
           <figure data-reveal className="tile t-gym">
-            <Image src="/images/image-25.jpeg" alt="Gym" width={400} height={300} loading="lazy" />
+            <Image src="/images/image-53.jpeg" alt="Gym" width={400} height={300} loading="lazy" />
             <figcaption>Gym</figcaption>
           </figure>
           <figure data-reveal className="tile t-lounge">
-            <Image src="/images/image-26.jpeg" alt="Club lounge" width={400} height={300} loading="lazy" />
+            <Image src="/images/image-51.jpeg" alt="Club lounge" width={400} height={300} loading="lazy" />
             <figcaption>Club lounge</figcaption>
           </figure>
           <figure data-reveal className="tile t-tt">
-            <Image src="/images/image-29.jpeg" alt="Table tennis" width={400} height={300} loading="lazy" />
+            <Image src="/images/image-54.jpeg" alt="Table tennis" width={400} height={300} loading="lazy" />
             <figcaption>Table tennis</figcaption>
           </figure>
         </div>
