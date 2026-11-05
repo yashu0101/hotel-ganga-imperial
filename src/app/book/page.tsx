@@ -1,183 +1,49 @@
 "use client";
-
-import { useState, useEffect, FormEvent } from "react";
-import { SITE_CONFIG } from "@/lib/config";
-import { useApp } from "@/lib/context";
-
-interface RoomOption { name: string; rate: string; hidden?: boolean; }
-interface BanquetOption { id: string; name: string; price: string; active: boolean; }
-
+import { useEffect, useState, FormEvent } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
+import RequestReceipt, {type ReceiptDetails} from "@/components/RequestReceipt";
+import ThemeToggle from "@/components/ThemeToggle";
+import { SITE_CONFIG } from '@/lib/config';
+import { hotelToday, dateError, nightlyRate } from '@/lib/reservation';
+import type { Room, BanquetPackage } from '@/lib/types';
 export default function BookPage() {
-  const { t, lang, setLang, theme, setTheme } = useApp();
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
-  const [message, setMessage] = useState("");
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [rooms, setRooms] = useState<RoomOption[]>(SITE_CONFIG.rooms);
-  const [banquetPkgs, setBanquetPkgs] = useState<BanquetOption[]>([]);
-  const [bookingType, setBookingType] = useState<"room" | "banquet">("room");
-  const [lastBooking, setLastBooking] = useState<{ name: string; roomType: string; checkin: string; checkout: string; guests: number; id: string } | null>(null);
-
-  const today = new Date().toISOString().split("T")[0];
-
-  useEffect(() => {
-    fetch("/api/rooms").then(r => r.json()).then((data: RoomOption[]) => {
-      const visible = data.filter(r => !r.hidden);
-      if (visible.length > 0) setRooms(visible);
-    }).catch(() => {});
-    fetch("/api/banquet").then(r => r.json()).then((data: BanquetOption[]) => {
-      setBanquetPkgs(data.filter(p => p.active));
-    }).catch(() => {});
-  }, []);
-
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const errs: Record<string, string> = {};
-    const name = (form.elements.namedItem("name") as HTMLInputElement).value.trim();
-    const mobile = (form.elements.namedItem("mobile") as HTMLInputElement).value.trim();
-    const email = (form.elements.namedItem("email") as HTMLInputElement).value.trim();
-    const city = (form.elements.namedItem("city") as HTMLInputElement).value.trim();
-    const country = (form.elements.namedItem("country") as HTMLInputElement).value.trim();
-    const gender = (form.elements.namedItem("gender") as HTMLSelectElement).value;
-    const roomType = (form.elements.namedItem("roomType") as HTMLSelectElement).value;
-    const checkin = (form.elements.namedItem("checkin") as HTMLInputElement).value;
-    const checkout = (form.elements.namedItem("checkout") as HTMLInputElement).value;
-    const guests = (form.elements.namedItem("guests") as HTMLInputElement).value;
-
-    if (!name) errs.name = "Required";
-    if (!mobile || mobile.replace(/[^\d]/g, "").length < 10) errs.mobile = "Valid mobile required";
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.email = "Valid email required";
-    if (!city) errs.city = "Required";
-    if (!country) errs.country = "Required";
-    if (!checkin) errs.checkin = "Required";
-    else if (checkin < today) errs.checkin = "Cannot select a past date";
-    if (checkout && checkin && checkout <= checkin) errs.checkout = "Must be after check-in date";
-    setErrors(errs);
-    if (Object.keys(errs).length > 0) return;
-
-    setStatus("loading");
-    try {
-      const res = await fetch("/api/book", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, mobile, email, city, country, gender, roomType, checkin, checkout, guests: Number(guests) }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setStatus("success");
-        setMessage(`Booking received! ID: ${data.booking.id.slice(0, 8).toUpperCase()}`);
-        setLastBooking({ name, roomType, checkin, checkout, guests: Number(guests), id: data.booking.id });
-        form.reset();
-      } else { setStatus("error"); setMessage(data.error); }
-    } catch { setStatus("error"); setMessage("Failed. Please try again."); }
-  };
-
-  return (
-    <div className="book-page">
-      <style>{`
-        .book-page{min-height:100vh;background:var(--bg);color:var(--text);font-family:"Mulish",system-ui,sans-serif}
-        .book-header{background:rgba(18,24,39,.95);border-bottom:1px solid rgba(201,161,91,.25);padding:16px 32px;display:flex;align-items:center;justify-content:space-between}
-        .book-header a{font-family:"Marcellus",Georgia,serif;color:#C9A15B;text-decoration:none;font-size:1.1rem;letter-spacing:.14em}
-        .book-header .right{display:flex;gap:12px;align-items:center}
-        .book-header .back{color:#ADA394;font-family:"Mulish",sans-serif;font-size:.9rem;letter-spacing:0}
-        .ctrl{background:none;border:1px solid #323A50;color:#ADA394;padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:.85rem}
-        .ctrl:hover{border-color:#C9A15B;color:#C9A15B}
-        .book-body{max-width:640px;margin:0 auto;padding:48px 32px}
-        .book-body h1{font-family:"Marcellus",Georgia,serif;font-weight:400;font-size:2rem;color:var(--accent);margin:0 0 8px}
-        .book-body .sub{color:var(--muted);margin-bottom:32px}
-        .field{margin-bottom:18px}
-        .field label{display:block;color:var(--muted);font-size:.85rem;margin-bottom:5px}
-        .field input,.field select{width:100%;padding:12px 16px;background:var(--surface);border:1px solid var(--line);border-radius:6px;color:var(--text);font:inherit;font-size:.95rem;box-sizing:border-box}
-        .field input:focus,.field select:focus{outline:none;border-color:#C9A15B}
-        .field .err{color:#E88;font-size:.8rem;margin-top:4px}
-        .field-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-        .submit-btn{width:100%;padding:14px;background:#C9A15B;color:#121827;border:none;border-radius:6px;font:inherit;font-size:1rem;font-weight:600;cursor:pointer;margin-top:8px}
-        .submit-btn:hover{background:#E2C68E}
-        .submit-btn:disabled{opacity:.6;cursor:not-allowed}
-        .msg{padding:14px;border-radius:6px;margin-bottom:20px;font-size:.9rem}
-        .msg.success{background:rgba(91,201,107,.15);border:1px solid rgba(91,201,107,.4);color:#7ddf8a}
-        .msg.error{background:rgba(201,91,91,.15);border:1px solid rgba(201,91,91,.4);color:#E88}
-        .type-toggle{display:flex;gap:0;margin-bottom:24px;border:1px solid var(--line);border-radius:6px;overflow:hidden}
-        .type-toggle button{flex:1;padding:12px;background:var(--surface);color:var(--muted);border:none;font:inherit;font-size:.9rem;cursor:pointer;transition:all .2s}
-        .type-toggle button.active{background:#C9A15B;color:#121827;font-weight:600}
-        @media(max-width:500px){.field-row{grid-template-columns:1fr}.book-body{padding:32px 16px}}
-      `}</style>
-
-      <div className="book-header">
-        <a href="/">Hotel Ganga Imperial</a>
-        <div className="right">
-          <button className="ctrl" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? "☀" : "☾"}</button>
-          <button className="ctrl" onClick={() => setLang(lang === "en" ? "hi" : "en")}>{lang === "en" ? "हि" : "EN"}</button>
-          <a href="/" className="back">{t("book.back")}</a>
-        </div>
-      </div>
-
-      <div className="book-body">
-        <h1>{t("book.title")}</h1>
-        <p className="sub">{t("book.subtitle")}</p>
-
-        {message && <div className={`msg ${status === "success" ? "success" : "error"}`}>{message}</div>}
-
-        {status !== "success" && (
-          <>
-            <div className="type-toggle">
-              <button className={bookingType === "room" ? "active" : ""} onClick={() => setBookingType("room")}>{t("book.roomBooking")}</button>
-              <button className={bookingType === "banquet" ? "active" : ""} onClick={() => setBookingType("banquet")}>{t("book.banquetBooking")}</button>
-            </div>
-            <form onSubmit={handleSubmit}>
-              <input type="hidden" name="bookingType" value={bookingType} />
-              <div className="field"><label>{t("book.name")} *</label><input name="name" autoComplete="name" required />{errors.name && <div className="err">{errors.name}</div>}</div>
-              <div className="field-row">
-                <div className="field"><label>{t("book.mobile")} *</label><input name="mobile" type="tel" autoComplete="tel" inputMode="tel" required />{errors.mobile && <div className="err">{errors.mobile}</div>}</div>
-                <div className="field"><label>{t("book.email")} *</label><input name="email" type="email" autoComplete="email" required />{errors.email && <div className="err">{errors.email}</div>}</div>
-              </div>
-              <div className="field-row">
-                <div className="field"><label>{t("book.city")} *</label><input name="city" autoComplete="address-level2" required />{errors.city && <div className="err">{errors.city}</div>}</div>
-                <div className="field"><label>{t("book.country")} *</label><input name="country" autoComplete="country-name" defaultValue="India" required />{errors.country && <div className="err">{errors.country}</div>}</div>
-              </div>
-              <div className="field-row">
-                <div className="field">
-                  <label>{t("book.gender")} *</label>
-                  <select name="gender" required>
-                    <option value="male">{t("book.male")}</option>
-                    <option value="female">{t("book.female")}</option>
-                    <option value="other">{t("book.other")}</option>
-                  </select>
-                </div>
-                {bookingType === "room" ? (
-                  <div className="field"><label>{t("book.roomType")} *</label><select name="roomType" required>{rooms.map((r) => <option key={r.name} value={r.name}>{r.name} {r.rate ? `— ${r.rate}` : ""}</option>)}</select></div>
-                ) : (
-                  <div className="field"><label>{t("book.banquetPackage")} *</label><select name="roomType" required>{banquetPkgs.map((p) => <option key={p.id} value={`Banquet - ${p.name}`}>{p.name} {p.price ? `— ${p.price}` : ""}</option>)}{banquetPkgs.length === 0 && <option value="Banquet hall">Banquet Hall</option>}</select></div>
-                )}
-              </div>
-              <div className="field-row">
-                <div className="field"><label>{bookingType === "banquet" ? t("book.eventDate") : t("book.checkin")} *</label><input name="checkin" type="date" min={today} required />{errors.checkin && <div className="err">{errors.checkin}</div>}</div>
-                <div className="field"><label>{bookingType === "banquet" ? t("book.eventEndDate") : t("book.checkout")}</label><input name="checkout" type="date" min={today} />{errors.checkout && <div className="err">{errors.checkout}</div>}</div>
-              </div>
-              <div className="field"><label>{t("book.guests")}</label><input name="guests" type="number" min={1} max={bookingType === "banquet" ? 500 : 20} defaultValue={bookingType === "banquet" ? 50 : 2} /></div>
-              <button className="submit-btn" type="submit" disabled={status === "loading"}>{status === "loading" ? t("book.submitting") : t("book.submit")}</button>
-            </form>
-          </>
-        )}
-        {status === "success" && (
-          <div style={{ textAlign: "center", marginTop: 32 }}>
-            {lastBooking && (
-              <a
-                href={`https://wa.me/919876543210?text=${encodeURIComponent(
-                  `Hi, I just booked at Hotel Ganga Imperial!\n\nBooking ID: ${lastBooking.id.slice(0, 8).toUpperCase()}\nName: ${lastBooking.name}\nRoom/Package: ${lastBooking.roomType}\nCheck-in: ${lastBooking.checkin}${lastBooking.checkout ? `\nCheck-out: ${lastBooking.checkout}` : ""}\nGuests: ${lastBooking.guests}\n\nPlease confirm my booking. Thank you!`
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="submit-btn"
-                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, maxWidth: 340, textDecoration: "none", marginBottom: 16, background: "#25D366", color: "#fff" }}
-              >
-                {t("book.whatsapp")}
-              </a>
-            )}
-            <button className="submit-btn" onClick={() => { setStatus("idle"); setMessage(""); setLastBooking(null); }} style={{ maxWidth: 300 }}>{t("book.another")}</button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+    const [rooms, setRooms] = useState<Room[]>(SITE_CONFIG.rooms);
+    const [packages, setPackages] = useState<BanquetPackage[]>([]);
+    const [type, setType] = useState('room');
+    const [choice, setChoice] = useState(SITE_CONFIG.rooms[0].name);
+    const [checkin, setCheckin] = useState('');
+    const [checkout, setCheckout] = useState('');
+    const [guests, setGuests] = useState(2);
+    const [roomsRequested,setRoomsRequested]=useState(1);
+    const [receipt,setReceipt]=useState<ReceiptDetails|null>(null);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+    const [reference, setReference] = useState('');
+    const [loaded, setLoaded] = useState(false);
+    const [loadError, setLoadError] = useState(false);
+    useEffect(() => { const q = new URLSearchParams(window.location.search); const initial = q.get('type') || 'room'; Promise.all([fetch('/api/rooms').then(r => { if (!r.ok)
+            throw Error(); return r.json(); }), fetch('/api/banquet').then(r => { if (!r.ok)
+            throw Error(); return r.json(); })]).then(([rs, ps]) => { const visible = rs.filter((r: Room) => !r.hidden); const active = ps.filter((p: BanquetPackage) => p.active); setRooms(visible); setPackages(active); setType(['banquet', 'dining'].includes(initial) ? initial : 'room'); setChoice(initial === 'banquet' ? (active.some((p:BanquetPackage)=>'Banquet - '+p.name===q.get('package')) ? q.get('package')! : 'Banquet hall') : initial === 'dining' ? 'Dining enquiry' : visible.some((r: Room) => r.name === q.get('room')) ? q.get('room')! : visible[0]?.name || ''); setGuests(initial === 'banquet' ? 50 : 2); setLoaded(true); }).catch(() => { setLoadError(true); }); }, []);
+    const room = rooms.find(r => r.name === choice);
+    const nightly = room ? nightlyRate(room.rate) || 0 : 0;
+    const nights = checkin && checkout ? Math.round((Date.parse(checkout) - Date.parse(checkin)) / 86400000) : 0;
+    async function submit(e: FormEvent<HTMLFormElement>) { e.preventDefault(); setError(''); const invalid = dateError(checkin, checkout, type === 'room'); if (invalid) {
+        setError(invalid);
+        return;
+    } setBusy(true); const values = new FormData(e.currentTarget); try {
+        const res = await fetch('/api/book', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: values.get('name'), mobile: values.get('mobile'), email: values.get('email'), roomType: choice, checkin, checkout, guests, roomsRequested:type==='room'?roomsRequested:0 }) });
+        const data = await res.json();
+        if (!res.ok)
+            throw Error(data.error || 'Please try again.');
+        setReceipt({name:String(values.get('name')||''),preference:choice,checkin,checkout,guests,rooms:type==='room'?roomsRequested:0});
+        setReference(data.reference);
+    }
+    catch (err) {
+        setError(err instanceof Error ? err.message : 'Please try again.');
+    }
+    finally {
+        setBusy(false);
+    } }
+    return <div className="reservation-page"><header className="reservation-header"><Link className="wordmark" href="/"><small>Hotel</small>Ganga Imperial</Link><div className="booking-header-actions"><ThemeToggle/><Link href="/">← Back to hotel</Link></div></header><main className="reservation-layout"><aside className="reservation-aside"><Image src="/images/image-49.jpeg" alt="Representative guest room with warm lighting" width={700} height={600} sizes="(max-width:800px) 100vw, 40vw"/><div><span className="eyebrow">YOUR NEXT CHAPTER</span><h2>Let us take care<br />of the details.</h2><p>A quiet stay, a shared meal or a special celebration. Tell us what you have in mind.</p><ul><li>No payment taken on this website</li><li>Availability confirmed by the hotel</li><li>Final price and terms agreed before booking</li></ul></div></aside><section className="reservation-form"><span className="eyebrow">DIRECT RESERVATION REQUEST</span><h1>{reference ? 'Thank you. We have your request.' : type === 'banquet' ? 'Plan your celebration' : type === 'dining' ? 'Plan a meal with us' : 'Plan your stay'}</h1>{reference && receipt ? <RequestReceipt reference={reference} details={receipt}/> : <><p className="reservation-intro">Share a few details. This is a request, with no payment or commitment at this stage.</p><div className="reservation-tabs" aria-label="Enquiry type">{[['room', 'A room'], ['banquet', 'A celebration'], ['dining', 'Dining']].map(([value, label]) => <button key={value} type="button" aria-pressed={type === value} onClick={() => { setType(value); setChoice(value === 'room' ? rooms[0]?.name || '' : value === 'banquet' ? 'Banquet hall' : 'Dining enquiry'); setGuests(value === 'banquet' ? 50 : 2); setError(''); }}>{label}</button>)}</div>{loadError && <p role="alert">Room options could not be loaded. <button type="button" onClick={() => window.location.reload()}>Try again</button></p>}<form onSubmit={submit}><fieldset><legend><span>01</span> {type === 'room' ? 'Your stay' : 'Your plans'}</legend><div className="reservation-fields"><div className="field"><label htmlFor="arrival">{type === 'room' ? 'Check-in' : 'Event date'} *</label><input id="arrival" type="date" min={hotelToday()} required value={checkin} onChange={e => setCheckin(e.target.value)}/></div><div className="field"><label htmlFor="departure">{type === 'room' ? 'Check-out *' : 'End date (optional)'}</label><input id="departure" type="date" min={checkin || hotelToday()} required={type === 'room'} value={checkout} onChange={e => setCheckout(e.target.value)}/></div><div className="field"><label htmlFor="room">{type === 'room' ? 'Room preference' : type === 'banquet' ? 'Package preference' : 'Enquiry'} *</label><select id="room" value={choice} onChange={e => setChoice(e.target.value)} required>{type === 'room' ? rooms.map(r => <option key={r.name}>{r.name}</option>) : type === 'banquet' ? <><option>Banquet hall</option>{packages.map(p => <option key={p.id} value={'Banquet - ' + p.name}>{p.name} — {p.price}</option>)}</> : <option>Dining enquiry</option>}</select></div>{type==='room'&&<div className="field"><label htmlFor="rooms-requested">Rooms requested *</label><input id="rooms-requested" type="number" min={1} max={10} value={roomsRequested} onChange={e=>setRoomsRequested(Number(e.target.value))} required/></div>}<div className="field"><label htmlFor="guests">Total guests in your party *</label><input id="guests" type="number" min="1" max={type === 'banquet' ? 300 : 20} required value={guests} onChange={e => setGuests(Number(e.target.value))}/></div></div>{type === 'room' && nightly > 0 && <div className="quote-summary"><span>{nights > 0 ? nightly.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }) + ' × ' + roomsRequested + ' room(s) × ' + nights + ' night' + (nights === 1 ? '' : 's') : 'Indicative nightly rate'}</span><strong>₹{(nightly * roomsRequested * (nights > 0 ? nights : 1)).toLocaleString('en-IN')}</strong><small>Estimate for the requested room count, before taxes. Guest capacity, inclusions and final rate are subject to hotel confirmation.</small></div>}</fieldset><fieldset><legend><span>02</span> How can we reach you?</legend><div className="field"><label htmlFor="name">Full name *</label><input id="name" name="name" autoComplete="name" maxLength={100} required/></div><div className="reservation-fields"><div className="field"><label htmlFor="mobile">Phone number *</label><input id="mobile" name="mobile" type="tel" autoComplete="tel" inputMode="tel" pattern="[+0-9 ()-]{10,25}" maxLength={25} required/><small>Include your country code.</small></div><div className="field"><label htmlFor="email">Email (optional)</label><input id="email" name="email" type="email" autoComplete="email" maxLength={150}/></div></div></fieldset>{error && <div className="reservation-error" role="alert">{error}</div>}<p className="small-note">We use your details to respond to this request. <Link href="/privacy">Privacy information</Link>. Read the <Link href="/guest-information">guest guide and policies</Link> before confirmation.</p><button className="btn btn-solid request-submit" disabled={busy || !loaded} type="submit">{busy ? 'Sending your request…' : 'Send reservation request ↗'}</button></form></>}</section></main></div>;
 }

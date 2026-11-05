@@ -15,7 +15,7 @@ export default function Offers() {
   useEffect(() => {
     fetch("/api/offers")
       .then(r => r.json())
-      .then((data: Offer[]) => setOffers(data.filter(o => o.active)))
+      .then((data: Offer[]) => setOffers(data.filter(o => o.active && (!o.validFrom || o.validFrom <= new Date().toLocaleDateString("en-CA", {timeZone:"Asia/Kolkata"})) && (!o.validTo || o.validTo >= new Date().toLocaleDateString("en-CA", {timeZone:"Asia/Kolkata"})))))
       .catch(() => {});
   }, []);
 
@@ -37,11 +37,11 @@ export default function Offers() {
               {(o.validFrom || o.validTo) && (
                 <div className="offer-valid">
                   {o.validFrom && o.validTo
-                    ? `Valid ${o.validFrom} to ${o.validTo}`
+                    ? `Valid ${new Date(o.validFrom).toLocaleDateString("en-IN", {day:"numeric",month:"short",year:"numeric"})} to ${new Date(o.validTo).toLocaleDateString("en-IN", {day:"numeric",month:"short",year:"numeric"})}`
                     : o.validFrom ? `From ${o.validFrom}` : `Until ${o.validTo}`}
                 </div>
               )}
-              <a className="btn btn-solid" href="/book">Book Now</a>
+              <a className="btn btn-solid" href="/book">Request offer</a>
             </div>
           ))}
         </div>

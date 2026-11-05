@@ -1,0 +1,1 @@
+import type {MetadataRoute} from 'next';export default function robots():MetadataRoute.Robots{const site=process.env.NEXT_PUBLIC_SITE_URL;const ready=process.env.SITE_READY_FOR_INDEXING==='true';return {rules:{userAgent:'*',...(ready?{allow:'/',disallow:['/admin','/api/','/login','/book']}:{disallow:'/'})},...(site&&ready?{sitemap:new URL('/sitemap.xml',site).href}:{})}}
