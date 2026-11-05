@@ -5,23 +5,23 @@ export const translations: Record<Lang, Record<string, string>> = {
     // Header
     "nav.home": "Home",
     "nav.about": "About",
-    "nav.rooms": "Rooms",
+    "nav.rooms": "Stay",
     "nav.amenities": "Amenities",
     "nav.banquet": "Banquet",
     "nav.dining": "Dining",
     "nav.gallery": "Gallery",
     "nav.enquire": "Enquire",
-    "nav.book": "Book Now",
+    "nav.book": "Request a stay",
 
     // Hero
     "hero.title": "Hotel Ganga Imperial",
     "hero.subtitle": "Premium rooms, a rooftop swimming pool and a banquet hall under one warmly lit roof.",
-    "hero.book": "Book Now",
+    "hero.book": "Request a stay",
     "hero.rooms": "See the rooms",
 
     // About
     "about.title": "Where marble meets warmth",
-    "about.p1": "Hotel Ganga Imperial is a premium stay in the heart of the city. Every floor is finished in polished marble and brass, with cove-lit corridors that lead to spacious, thoughtfully designed rooms.",
+    "about.p1": "Warm interiors, marble details and considered spaces set the scene for a restful stay. Explore our rooms, unwind by the rooftop pool, or bring everyone together for a celebration.",
     "about.p2": "Above the city, a rooftop swimming pool catches the morning light while the spa and gym sit one floor below. On the ground level, a chandeliered banquet hall opens its doors for weddings, receptions and family celebrations.",
     "about.roomTypes": "Room types",
     "about.rooftopPool": "Rooftop pool",
@@ -29,7 +29,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     "about.banquetHall": "Banquet hall",
 
     // Rooms
-    "rooms.title": "Rooms",
+    "rooms.title": "Stay",
     "rooms.subtitle": "Each room is designed for comfort, with marble flooring, cove lighting and a city view.",
     "rooms.types": "Room types",
     "rooms.typesSubtitle": "Rates depend on dates and availability. Choose a room and send an enquiry.",
@@ -108,7 +108,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     "book.checkin": "Check-in",
     "book.checkout": "Check-out",
     "book.guests": "Number of Guests",
-    "book.submit": "Book Now",
+    "book.submit": "Request a stay",
     "book.submitting": "Submitting...",
     "book.another": "Make Another Booking",
     "book.back": "Back to website",
