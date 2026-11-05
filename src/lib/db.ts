@@ -1,4 +1,4 @@
-import { Enquiry, Booking, Offer, Room, BanquetPackage, DiningOption, Review } from "./types";
+import { NotificationJob, Enquiry, Booking, Offer, Room, BanquetPackage, DiningOption, Review } from "./types";
 
 // ---------- Detect environment ----------
 const IS_POSTGRES = !!process.env.DATABASE_URL;
@@ -40,7 +40,7 @@ async function pgDeleteEnquiry(id: string): Promise<boolean> {
 
 // ---------- Bookings (Postgres) ----------
 function mapBookingRow(r: Record<string, unknown>): Booking {
-  return { id: r.id, name: r.name, mobile: r.mobile, email: r.email, city: r.city, country: r.country, gender: r.gender, roomType: r.room_type, checkin: r.checkin, checkout: r.checkout, guests: r.guests, amount: r.amount, paymentStatus: r.payment_status, bookingStatus: r.booking_status, paymentId: r.payment_id, createdAt: r.created_at } as Booking;
+  return { id: r.id, name: r.name, mobile: r.mobile, email: r.email, city: r.city, country: r.country, gender: r.gender, roomType: r.room_type, checkin: r.checkin, checkout: r.checkout, guests: r.guests, amount: r.amount, paymentStatus: r.payment_status, bookingStatus: r.booking_status, paymentId: r.payment_id, roomsRequested: Number(r.rooms_requested ?? 1), createdAt: r.created_at } as Booking;
 }
 async function pgGetBookings(): Promise<Booking[]> {
   const sql = getSQL();
@@ -51,7 +51,8 @@ async function pgAddBooking(b: Omit<Booking, "id" | "createdAt" | "paymentId" | 
   const sql = getSQL();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  await sql`INSERT INTO bookings (id, name, mobile, email, city, country, gender, room_type, checkin, checkout, guests, amount, payment_status, booking_status, payment_id, created_at) VALUES (${id}, ${b.name}, ${b.mobile}, ${b.email}, ${b.city}, ${b.country}, ${b.gender}, ${b.roomType}, ${b.checkin}, ${b.checkout}, ${b.guests}, ${b.amount}, 'pending', 'pending', '', ${now})`;
+  await prepareBookingExtensions();
+  await sql.transaction([sql`INSERT INTO bookings (id, name, mobile, email, city, country, gender, room_type, checkin, checkout, guests, amount, payment_status, booking_status, payment_id, created_at, rooms_requested) VALUES (${id}, ${b.name}, ${b.mobile}, ${b.email}, ${b.city}, ${b.country}, ${b.gender}, ${b.roomType}, ${b.checkin}, ${b.checkout}, ${b.guests}, ${b.amount}, 'pending', 'pending', '', ${now}, ${b.roomsRequested ?? 1})`, sql`INSERT INTO notification_outbox (id, booking_id, status, attempts, created_at) VALUES (${id}, ${id}, 'pending', 0, ${now})`]);
   return { ...b, id, createdAt: now, paymentId: "", paymentStatus: "pending", bookingStatus: "pending" };
 }
 async function pgUpdateBooking(id: string, updates: Partial<Pick<Booking, "paymentStatus" | "bookingStatus" | "paymentId">>): Promise<Booking | null> {
@@ -70,7 +71,8 @@ async function pgUpdateBooking(id: string, updates: Partial<Pick<Booking, "payme
 }
 async function pgDeleteBooking(id: string): Promise<boolean> {
   const sql = getSQL();
-  const rows = await sql`DELETE FROM bookings WHERE id = ${id} RETURNING id`;
+  await prepareBookingExtensions();
+  const [, rows] = await sql.transaction([sql`DELETE FROM notification_outbox WHERE booking_id = ${id}`,sql`DELETE FROM bookings WHERE id = ${id} RETURNING id`]);
   return rows.length > 0;
 }
 
@@ -269,7 +271,8 @@ function readDB(): DB {
     if (!data.diningOptions) data.diningOptions = [];
     if (!data.reviews) data.reviews = [];
     return data;
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     const initial: DB = { enquiries: [], bookings: [], offers: [], banquetPackages: [], diningOptions: [], reviews: [], config: SITE_CONFIG };
     writeDB(initial);
     return initial;
@@ -279,7 +282,13 @@ function readDB(): DB {
 function writeDB(data: DB): void {
   const dir = path.dirname(DB_PATH);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), "utf-8");
+  const temporaryPath = DB_PATH + "." + crypto.randomUUID() + ".tmp";
+  try {
+    fs.writeFileSync(temporaryPath, JSON.stringify(data, null, 2), "utf-8");
+    fs.renameSync(temporaryPath, DB_PATH);
+  } finally {
+    if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
+  }
 }
 
 function jsonGetEnquiries(): Enquiry[] { return readDB().enquiries; }
@@ -300,7 +309,10 @@ function jsonGetBookings(): Booking[] { return readDB().bookings; }
 function jsonAddBooking(booking: Omit<Booking, "id" | "createdAt" | "paymentId" | "paymentStatus" | "bookingStatus">): Booking {
   const db = readDB();
   const n: Booking = { ...booking, id: crypto.randomUUID(), createdAt: new Date().toISOString(), paymentId: "", paymentStatus: "pending", bookingStatus: "pending" };
-  db.bookings.push(n); writeDB(db); return n;
+  db.bookings.push(n);
+  db.notificationJobs ??= [];
+  db.notificationJobs.push({id:n.id,bookingId:n.id,status:"pending",attempts:0,createdAt:n.createdAt});
+  writeDB(db); return n;
 }
 function jsonUpdateBooking(id: string, updates: Partial<Pick<Booking, "paymentStatus" | "bookingStatus" | "paymentId">>): Booking | null {
   const db = readDB(); const idx = db.bookings.findIndex(b => b.id === id);
@@ -308,7 +320,7 @@ function jsonUpdateBooking(id: string, updates: Partial<Pick<Booking, "paymentSt
 }
 function jsonDeleteBooking(id: string): boolean {
   const db = readDB(); const idx = db.bookings.findIndex(b => b.id === id);
-  if (idx === -1) return false; db.bookings.splice(idx, 1); writeDB(db); return true;
+  if (idx === -1) return false; db.bookings.splice(idx, 1); db.notificationJobs = (db.notificationJobs||[]).filter(j=>j.bookingId!==id); writeDB(db); return true;
 }
 function jsonGetRooms(): Room[] { return readDB().config.rooms; }
 function jsonAddRoom(room: Room): Room[] { const db = readDB(); db.config.rooms.push(room); writeDB(db); return db.config.rooms; }
@@ -413,3 +425,19 @@ export async function deleteReview(id: string) { return IS_POSTGRES ? pgDeleteRe
 
 export function getConfig() { return readDB().config; }
 export function updateConfig(config: Partial<DB["config"]>) { const db = readDB(); db.config = { ...db.config, ...config }; writeDB(db); return db.config; }
+
+// Durable event outbox: booking and notification are saved in the same transaction/write.
+let bookingSetup: Promise<void> | undefined;
+async function prepareBookingExtensions() {
+ if(!IS_POSTGRES)return;
+ if(!bookingSetup) bookingSetup=(async()=>{const sql=getSQL();await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rooms_requested INT DEFAULT 1`;await sql`CREATE TABLE IF NOT EXISTS notification_outbox (id TEXT PRIMARY KEY, booking_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW())`;})().catch(error=>{bookingSetup=undefined;throw error});
+ await bookingSetup;
+}
+export async function getNotificationJobs():Promise<NotificationJob[]> {
+ if(IS_POSTGRES){await prepareBookingExtensions();const sql=getSQL();const rows=await sql`SELECT * FROM notification_outbox ORDER BY created_at ASC`;return rows.map((r:Record<string,unknown>)=>({id:String(r.id),bookingId:String(r.booking_id),status:r.status as NotificationJob['status'],attempts:Number(r.attempts),createdAt:String(r.created_at)}));}
+ return readDB().notificationJobs||[];
+}
+export async function markNotification(id:string,delivered:boolean) {
+ if(IS_POSTGRES){const sql=getSQL();await sql`UPDATE notification_outbox SET status=CASE WHEN status='delivered' THEN status ELSE ${delivered ? "delivered" : "pending"} END, attempts=attempts+1 WHERE id=${id}`;return;}
+ const db=readDB();const job=db.notificationJobs?.find(j=>j.id===id);if(job){job.attempts++;job.status=job.status==='delivered'||delivered?'delivered':'pending';writeDB(db);}
+}

@@ -1,10 +1,13 @@
 "use client";
+import NotificationPanel from "@/components/NotificationPanel";
+import Link from "next/link";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "@/lib/context";
 
 interface Booking {
+  roomsRequested?: number;
   id: string; name: string; mobile: string; email: string; city: string; country: string;
   gender: "male" | "female" | "other"; roomType: string; checkin: string; checkout: string;
   guests: number; amount: number; paymentStatus: string; bookingStatus: string; paymentId: string; createdAt: string;
@@ -291,7 +294,7 @@ export default function AdminPage() {
         <h1>{t("admin.title")}</h1>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           <button className="adm-btn" onClick={() => setLang(lang === "en" ? "hi" : "en")}>{lang === "en" ? "हि" : "EN"}</button>
-          <a href="/" style={{ color: "#8a8070", textDecoration: "none", fontSize: ".85rem" }}>{t("admin.viewSite")}</a>
+          <Link href="/" style={{ color: "#8a8070", textDecoration: "none", fontSize: ".85rem" }}>{t("admin.viewSite")}</Link>
           <button className="adm-btn" onClick={logout}>{t("admin.logout")}</button>
         </div>
       </div>
@@ -308,6 +311,7 @@ export default function AdminPage() {
         {/* DASHBOARD */}
         {tab === "dashboard" && (
           <>
+            <NotificationPanel/>
             <div className="stat-grid">
               <div className="stat-card"><div className="num">{bookings.length}</div><div className="lbl">{t("admin.totalBookings")}</div></div>
               <div className="stat-card"><div className="num">{confirmedBookings}</div><div className="lbl">{t("admin.activeGuests")}</div></div>
@@ -326,7 +330,7 @@ export default function AdminPage() {
                   {bookings.slice(-5).reverse().map(b => (
                     <tr key={b.id}>
                       <td>{genderIcon(b.gender)} {b.name}</td>
-                      <td>{b.roomType}</td>
+                      <td>{b.roomType}{(b.roomsRequested||1)>1 ? ` (${b.roomsRequested} rooms requested)` : ""}</td>
                       <td>{b.checkin} {b.checkout ? `to ${b.checkout}` : ""}</td>
                       <td><span className={`badge badge-${b.bookingStatus}`}>{b.bookingStatus}</span></td>
                     </tr>
@@ -427,6 +431,8 @@ export default function AdminPage() {
                 <RoomForm key={i} room={editRoom.room} onSave={(r) => saveRoom(i, r)} onCancel={() => setEditRoom(null)} />
               ) : (
                 <div key={i} className="room-card">
+                  {/* Admin previews support arbitrary image URLs. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={room.image} alt={room.name} />
                   <div className="room-info">
                     <h4>{room.name} {room.hidden && <span className="badge badge-hidden">Hidden</span>}</h4>
