@@ -3,11 +3,11 @@ import { SiteConfig } from "./types";
 export const SITE_CONFIG: SiteConfig = {
   hotelName: "Hotel Ganga Imperial",
   contact: {
-    phone: process.env.NEXT_PUBLIC_HOTEL_PHONE || "",
-    whatsapp: process.env.NEXT_PUBLIC_HOTEL_WHATSAPP || "",
-    email: process.env.NEXT_PUBLIC_HOTEL_EMAIL || "",
-    address: process.env.NEXT_PUBLIC_HOTEL_ADDRESS || "",
-    mapEmbedUrl: process.env.NEXT_PUBLIC_HOTEL_MAP_URL || "",
+    phone: "+91 6388360881",
+    whatsapp: "916388360881",
+    email: "info@hotelgangaimperial.com",
+    address: "Hotel Ganga Imperial, Tilamapur, Varanasi, Rustampur, Uttar Pradesh 221112",
+    mapEmbedUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3606.5!2d83.0!3d25.3!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2sHotel+Ganga+Imperial!5e0!3m2!1sen!2sin!4v1",
   },
   rooms: [
     {

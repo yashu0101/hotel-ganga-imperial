@@ -12,6 +12,7 @@ export interface Offer {
   title: string;
   description: string;
   discount: string;
+  code: string;
   validFrom: string;
   validTo: string;
   active: boolean;

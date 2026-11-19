@@ -10,11 +10,11 @@ export async function POST(req: NextRequest) {
   const session = await verifySession();
   if (!session.authenticated) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json();
-  const { title, description, discount, validFrom, validTo, active } = body;
+  const { title, description, discount, code, validFrom, validTo, active } = body;
   if (!title?.trim()) return NextResponse.json({ error: "Title required" }, { status: 400 });
   const offer = await addOffer({
     title: title.trim(), description: description || "", discount: discount || "",
-    validFrom: validFrom || "", validTo: validTo || "", active: active !== false,
+    code: code || "", validFrom: validFrom || "", validTo: validTo || "", active: active !== false,
   });
   return NextResponse.json({ offer }, { status: 201 });
 }

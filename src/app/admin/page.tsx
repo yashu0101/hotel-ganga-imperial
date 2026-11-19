@@ -18,7 +18,7 @@ interface Enquiry {
 }
 interface Room { name: string; text: string; image: string; rate: string; sample: boolean; hidden?: boolean; }
 interface Offer {
-  id: string; title: string; description: string; discount: string;
+  id: string; title: string; description: string; discount: string; code: string;
   validFrom: string; validTo: string; active: boolean; createdAt: string;
 }
 interface BanquetPackage {
@@ -36,7 +36,7 @@ interface Review {
 
 const genderIcon = (g: string) => g === "female" ? "\u{1F469}" : g === "male" ? "\u{1F468}" : "\u{1F9D1}";
 
-type Tab = "dashboard" | "bookings" | "enquiries" | "rooms" | "banquet" | "dining" | "offers" | "reviews" | "analytics";
+type Tab = "dashboard" | "bookings" | "enquiries" | "rooms" | "banquet" | "dining" | "offers" | "reviews" | "analytics" | "calendar";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -226,7 +226,7 @@ export default function AdminPage() {
     return counts;
   };
 
-  const tabKeys: Tab[] = ["dashboard", "bookings", "enquiries", "rooms", "banquet", "dining", "offers", "reviews", "analytics"];
+  const tabKeys: Tab[] = ["dashboard", "bookings", "enquiries", "rooms", "banquet", "dining", "offers", "reviews", "analytics", "calendar"];
 
   return (
     <div style={{ minHeight: "100vh", background: "#0f1422", color: "#EDE6DA", fontFamily: "'Mulish', sans-serif" }}>
@@ -537,7 +537,7 @@ export default function AdminPage() {
                     </h3>
                     <p style={{ color: "#8a8070", fontSize: ".88rem", margin: "4px 0" }}>{o.description}</p>
                     <p style={{ fontSize: ".82rem", color: "#C9A15B" }}>
-                      Discount: {o.discount} | Valid: {o.validFrom || "--"} to {o.validTo || "--"}
+                      Discount: {o.discount}{o.code ? ` | Code: ${o.code}` : ""} | Valid: {o.validFrom || "--"} to {o.validTo || "--"}
                     </p>
                   </div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
@@ -685,6 +685,128 @@ export default function AdminPage() {
             </div>
           </>
         )}
+
+        {tab === "calendar" && (
+          <>
+            <h2 style={{ margin: "0 0 24px", fontFamily: "Marcellus, serif", fontWeight: 400, color: "#C9A15B" }}>{t("admin.calendar")}</h2>
+            <CalendarView bookings={bookings} rooms={rooms} />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CalendarView({ bookings, rooms }: { bookings: Booking[]; rooms: Room[] }) {
+  const [monthOffset, setMonthOffset] = useState(0);
+  const now = new Date();
+  const viewDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDow = new Date(year, month, 1).getDay();
+  const monthName = viewDate.toLocaleString("default", { month: "long", year: "numeric" });
+
+  const roomNames = rooms.filter(r => !r.hidden).map(r => r.name);
+  const activeBookings = bookings.filter(b => b.bookingStatus !== "cancelled" && b.bookingStatus !== "checked-out" && !b.roomType.startsWith("Banquet"));
+
+  const isOccupied = (roomName: string, day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return activeBookings.some(b =>
+      b.roomType === roomName &&
+      b.checkin <= dateStr &&
+      (b.checkout || b.checkin) >= dateStr
+    );
+  };
+
+  const getBookingForCell = (roomName: string, day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return activeBookings.find(b =>
+      b.roomType === roomName &&
+      b.checkin <= dateStr &&
+      (b.checkout || b.checkin) >= dateStr
+    );
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+        <button className="adm-btn" onClick={() => setMonthOffset(m => m - 1)}>&larr;</button>
+        <span style={{ fontFamily: "Marcellus, serif", fontSize: "1.1rem", color: "#C9A15B", minWidth: 180, textAlign: "center" }}>{monthName}</span>
+        <button className="adm-btn" onClick={() => setMonthOffset(m => m + 1)}>&rarr;</button>
+        <button className="adm-btn" onClick={() => setMonthOffset(0)} style={{ marginLeft: 8 }}>Today</button>
+      </div>
+
+      {/* Room occupancy grid */}
+      <div style={{ overflowX: "auto" }}>
+        <table className="adm-table" style={{ minWidth: `${daysInMonth * 36 + 120}px` }}>
+          <thead>
+            <tr>
+              <th style={{ position: "sticky", left: 0, background: "#151b2e", zIndex: 2, minWidth: 110 }}>Room</th>
+              {Array.from({ length: daysInMonth }, (_, i) => (
+                <th key={i} style={{ textAlign: "center", padding: "8px 2px", minWidth: 32 }}>{i + 1}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {roomNames.map(room => (
+              <tr key={room}>
+                <td style={{ position: "sticky", left: 0, background: "#1a2035", zIndex: 1, fontWeight: 600, fontSize: ".82rem" }}>{room}</td>
+                {Array.from({ length: daysInMonth }, (_, i) => {
+                  const day = i + 1;
+                  const occupied = isOccupied(room, day);
+                  const b = occupied ? getBookingForCell(room, day) : null;
+                  return (
+                    <td key={day} title={b ? `${b.name} (${b.checkin} to ${b.checkout || b.checkin})` : ""} style={{
+                      textAlign: "center",
+                      padding: "6px 2px",
+                      background: occupied ? "rgba(201,161,91,.2)" : "transparent",
+                      borderLeft: "1px solid #1e2640",
+                      cursor: occupied ? "help" : "default",
+                    }}>
+                      {occupied && <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: b?.bookingStatus === "confirmed" ? "#7db8df" : b?.bookingStatus === "checked-in" ? "#7ddfa8" : "#E2C68E" }} />}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: "flex", gap: 20, marginTop: 16, fontSize: ".82rem", color: "#8a8070" }}>
+        <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#E2C68E", marginRight: 6, verticalAlign: "middle" }} />Pending</span>
+        <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#7db8df", marginRight: 6, verticalAlign: "middle" }} />Confirmed</span>
+        <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#7ddfa8", marginRight: 6, verticalAlign: "middle" }} />Checked-in</span>
+      </div>
+
+      {/* Mini calendar grid */}
+      <div className="adm-card" style={{ marginTop: 24 }}>
+        <h3>Month Overview</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, fontSize: ".78rem", textAlign: "center" }}>
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
+            <div key={d} style={{ color: "#8a8070", fontWeight: 600, padding: 6 }}>{d}</div>
+          ))}
+          {Array.from({ length: firstDow }, (_, i) => <div key={`e${i}`} />)}
+          {Array.from({ length: daysInMonth }, (_, i) => {
+            const day = i + 1;
+            const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+            const dayBookings = activeBookings.filter(b => b.checkin <= dateStr && (b.checkout || b.checkin) >= dateStr);
+            const isToday = dateStr === new Date().toISOString().split("T")[0];
+            return (
+              <div key={day} style={{
+                padding: "6px 4px",
+                background: dayBookings.length > 0 ? "rgba(201,161,91,.15)" : "transparent",
+                border: isToday ? "1px solid #C9A15B" : "1px solid transparent",
+                borderRadius: 4,
+              }}>
+                <div style={{ fontWeight: isToday ? 700 : 400 }}>{day}</div>
+                {dayBookings.length > 0 && <div style={{ fontSize: ".65rem", color: "#C9A15B" }}>{dayBookings.length} {dayBookings.length === 1 ? "booking" : "bookings"}</div>}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -787,6 +909,7 @@ function OfferForm({ offer, onSave, onCancel }: { offer?: Offer; onSave: (o: Omi
   const [title, setTitle] = useState(offer?.title || "");
   const [description, setDescription] = useState(offer?.description || "");
   const [discount, setDiscount] = useState(offer?.discount || "");
+  const [code, setCode] = useState(offer?.code || "");
   const [validFrom, setValidFrom] = useState(offer?.validFrom || "");
   const [validTo, setValidTo] = useState(offer?.validTo || "");
   const [active, setActive] = useState(offer?.active ?? true);
@@ -797,6 +920,7 @@ function OfferForm({ offer, onSave, onCancel }: { offer?: Offer; onSave: (o: Omi
       <div className="adm-form">
         <div><label>Title *</label><input value={title} onChange={e => setTitle(e.target.value)} /></div>
         <div><label>Discount</label><input value={discount} onChange={e => setDiscount(e.target.value)} placeholder="e.g. 20% or Complimentary" /></div>
+        <div><label>Coupon Code</label><input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. EARLY20" style={{ textTransform: "uppercase" }} /></div>
         <div className="full"><label>Description</label><textarea value={description} onChange={e => setDescription(e.target.value)} /></div>
         <div><label>Valid From</label><input type="date" value={validFrom} onChange={e => setValidFrom(e.target.value)} /></div>
         <div><label>Valid To</label><input type="date" value={validTo} onChange={e => setValidTo(e.target.value)} /></div>
@@ -805,7 +929,7 @@ function OfferForm({ offer, onSave, onCancel }: { offer?: Offer; onSave: (o: Omi
         </div>
       </div>
       <div className="adm-actions">
-        <button className="adm-btn primary" onClick={() => title.trim() && onSave({ title: title.trim(), description, discount, validFrom, validTo, active })}>Save</button>
+        <button className="adm-btn primary" onClick={() => title.trim() && onSave({ title: title.trim(), description, discount, code, validFrom, validTo, active })}>Save</button>
         <button className="adm-btn" onClick={onCancel}>Cancel</button>
       </div>
     </div>

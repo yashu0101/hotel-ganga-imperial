@@ -1,5 +1,11 @@
 import { NotificationJob, Enquiry, Booking, Offer, Room, BanquetPackage, DiningOption, Review } from "./types";
 
+// Parse rate string like "₹3,000/night" -> 3000
+export function parseRate(rate: string): number {
+  const cleaned = rate.replace(/[^\d]/g, "");
+  return parseInt(cleaned, 10) || 0;
+}
+
 // ---------- Detect environment ----------
 const IS_POSTGRES = !!process.env.DATABASE_URL;
 
@@ -114,7 +120,7 @@ async function pgDeleteRoom(index: number): Promise<Room[]> {
 
 // ---------- Offers (Postgres) ----------
 function mapOfferRow(r: Record<string, unknown>): Offer {
-  return { id: r.id, title: r.title, description: r.description, discount: r.discount, validFrom: r.valid_from, validTo: r.valid_to, active: r.active, createdAt: r.created_at } as Offer;
+  return { id: r.id, title: r.title, description: r.description, discount: r.discount, code: r.code || "", validFrom: r.valid_from, validTo: r.valid_to, active: r.active, createdAt: r.created_at } as Offer;
 }
 async function pgGetOffers(): Promise<Offer[]> {
   const sql = getSQL();
@@ -125,7 +131,7 @@ async function pgAddOffer(o: Omit<Offer, "id" | "createdAt">): Promise<Offer> {
   const sql = getSQL();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  await sql`INSERT INTO offers (id, title, description, discount, valid_from, valid_to, active, created_at) VALUES (${id}, ${o.title}, ${o.description}, ${o.discount}, ${o.validFrom}, ${o.validTo}, ${o.active}, ${now})`;
+  await sql`INSERT INTO offers (id, title, description, discount, code, valid_from, valid_to, active, created_at) VALUES (${id}, ${o.title}, ${o.description}, ${o.discount}, ${o.code || ""}, ${o.validFrom}, ${o.validTo}, ${o.active}, ${now})`;
   return { ...o, id, createdAt: now };
 }
 async function pgUpdateOffer(id: string, updates: Partial<Offer>): Promise<Offer | null> {
@@ -134,6 +140,7 @@ async function pgUpdateOffer(id: string, updates: Partial<Offer>): Promise<Offer
     title = COALESCE(${updates.title ?? null}, title),
     description = COALESCE(${updates.description ?? null}, description),
     discount = COALESCE(${updates.discount ?? null}, discount),
+    code = COALESCE(${updates.code ?? null}, code),
     valid_from = COALESCE(${updates.validFrom ?? null}, valid_from),
     valid_to = COALESCE(${updates.validTo ?? null}, valid_to),
     active = COALESCE(${updates.active ?? null}, active)
@@ -393,6 +400,10 @@ export async function addEnquiry(e: Omit<Enquiry, "id" | "createdAt" | "status">
 export async function updateEnquiryStatus(id: string, status: Enquiry["status"]) { return IS_POSTGRES ? pgUpdateEnquiryStatus(id, status) : jsonUpdateEnquiryStatus(id, status); }
 export async function deleteEnquiry(id: string) { return IS_POSTGRES ? pgDeleteEnquiry(id) : jsonDeleteEnquiry(id); }
 
+export async function getBookingByIdAndEmail(id: string, email: string): Promise<Booking | null> {
+  const all = await (IS_POSTGRES ? pgGetBookings() : jsonGetBookings());
+  return all.find(b => b.id === id && b.email.toLowerCase() === email.toLowerCase()) || null;
+}
 export async function getBookings() { return IS_POSTGRES ? pgGetBookings() : jsonGetBookings(); }
 export async function addBooking(b: Omit<Booking, "id" | "createdAt" | "paymentId" | "paymentStatus" | "bookingStatus">) { return IS_POSTGRES ? pgAddBooking(b) : jsonAddBooking(b); }
 export async function updateBooking(id: string, updates: Partial<Pick<Booking, "paymentStatus" | "bookingStatus" | "paymentId">>) { return IS_POSTGRES ? pgUpdateBooking(id, updates) : jsonUpdateBooking(id, updates); }
