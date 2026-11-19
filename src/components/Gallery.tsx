@@ -1,40 +1,19 @@
 "use client";
-
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { GALLERY_IMAGES } from "@/lib/config";
-import { useApp } from "@/lib/context";
-
 export default function Gallery() {
-  const { t } = useApp();
-  const [lightbox, setLightbox] = useState<number | null>(null);
-  const show = (i: number) => setLightbox(((i % GALLERY_IMAGES.length) + GALLERY_IMAGES.length) % GALLERY_IMAGES.length);
-
-  return (
-    <>
-      <section className="gallery" id="gallery">
-        <div className="wrap">
-          <div className="head"><h2>{t("gallery.title")}</h2><p>{t("gallery.subtitle")}</p></div>
-          <div className="g-grid">
-            {GALLERY_IMAGES.map((photo, i) => (
-              <button key={i} type="button" onClick={() => show(i)} aria-label={`Open photo: ${photo.caption}`}>
-                <Image src={photo.src} alt={photo.caption} width={400} height={300} loading="lazy" />
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
-      {lightbox !== null && (
-        <div className="lightbox-overlay" onClick={() => setLightbox(null)} role="dialog" aria-label="Photo viewer">
-          <div className="lb-inner" onClick={(e) => e.stopPropagation()}>
-            <Image src={GALLERY_IMAGES[lightbox].src} alt={GALLERY_IMAGES[lightbox].caption} width={1200} height={800} priority />
-          </div>
-          <button className="lb-btn lb-close" onClick={() => setLightbox(null)} aria-label="Close">&#10005;</button>
-          <button className="lb-btn lb-prev" onClick={() => show(lightbox - 1)} aria-label="Previous">&#8249;</button>
-          <button className="lb-btn lb-next" onClick={() => show(lightbox + 1)} aria-label="Next">&#8250;</button>
-          <div className="lb-cap">{GALLERY_IMAGES[lightbox].caption} ({lightbox + 1} of {GALLERY_IMAGES.length})</div>
-        </div>
-      )}
-    </>
-  );
+    const [current, setCurrent] = useState<number | null>(null);
+    const dialog = useRef<HTMLDialogElement>(null);
+    const trigger = useRef<HTMLButtonElement | null>(null);
+    const isOpen = current !== null;
+    useEffect(() => { if (!isOpen)
+        return; const el = dialog.current; if (!el)
+        return; el.showModal(); const old = document.body.style.overflow; document.body.style.overflow = 'hidden'; return () => { el.close(); document.body.style.overflow = old; trigger.current?.focus(); }; }, [isOpen]);
+    function close() { setCurrent(null); }
+    function move(delta: number) { setCurrent(value => value === null ? null : (value + delta + GALLERY_IMAGES.length) % GALLERY_IMAGES.length); }
+    return <section className="gallery" id="gallery"><div className="wrap"><span className="eyebrow">A CLOSER LOOK</span><div className="head"><h2>Picture your time here</h2><p>A selection of interiors and shared spaces. Images are representative; ask us about your chosen room.</p></div><div className="g-grid">{GALLERY_IMAGES.map((p, i) => <button key={p.src} type="button" onClick={e => { trigger.current = e.currentTarget; setCurrent(i); }} aria-label={'View ' + p.caption}><Image src={p.src} alt={p.caption} width={480} height={360} sizes="(max-width:800px) 50vw, 25vw"/></button>)}</div></div>{current !== null && <dialog className="photo-dialog" ref={dialog} aria-label="Hotel photo viewer" onCancel={close} onClick={e => { if (e.target === e.currentTarget)
+        close(); }} onKeyDown={e => { if (e.key === 'ArrowLeft')
+        move(-1); if (e.key === 'ArrowRight')
+        move(1); }}><button className="photo-close" type="button" onClick={close} aria-label="Close photo viewer">✕</button><Image src={GALLERY_IMAGES[current].src} alt={GALLERY_IMAGES[current].caption} width={1200} height={850} sizes="90vw"/><div className="photo-controls"><button onClick={() => move(-1)} aria-label="Previous photo">←</button><p aria-live="polite">{GALLERY_IMAGES[current].caption} · {current + 1} / {GALLERY_IMAGES.length}</p><button onClick={() => move(1)} aria-label="Next photo">→</button></div></dialog>}</section>;
 }

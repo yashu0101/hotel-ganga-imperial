@@ -3,11 +3,11 @@ import { SiteConfig } from "./types";
 export const SITE_CONFIG: SiteConfig = {
   hotelName: "Hotel Ganga Imperial",
   contact: {
-    phone: "",
-    whatsapp: "",
-    email: "",
-    address: "",
-    mapEmbedUrl: "",
+    phone: process.env.NEXT_PUBLIC_HOTEL_PHONE || "",
+    whatsapp: process.env.NEXT_PUBLIC_HOTEL_WHATSAPP || "",
+    email: process.env.NEXT_PUBLIC_HOTEL_EMAIL || "",
+    address: process.env.NEXT_PUBLIC_HOTEL_ADDRESS || "",
+    mapEmbedUrl: process.env.NEXT_PUBLIC_HOTEL_MAP_URL || "",
   },
   rooms: [
     {
@@ -60,43 +60,18 @@ export const NAV_ITEMS = [
 ];
 
 export const GALLERY_IMAGES = [
-  { src: "/images/image-18.jpeg", caption: "Hotel entrance at night" },
-  { src: "/images/image-19.jpeg", caption: "Lobby" },
-  { src: "/images/image-20.jpeg", caption: "Reception area" },
-  { src: "/images/image-21.jpeg", caption: "Premium room interior" },
-  { src: "/images/image-22.jpeg", caption: "Room with city view" },
-  { src: "/images/image-23.jpeg", caption: "Rooftop swimming pool" },
-  { src: "/images/image-24.jpeg", caption: "Spa treatment room" },
-  { src: "/images/image-25.jpeg", caption: "Fitness gym" },
-  { src: "/images/image-26.jpeg", caption: "Club lounge" },
-  { src: "/images/image-27.jpeg", caption: "Banquet hall setup" },
-  { src: "/images/image-28.jpeg", caption: "Wedding reception" },
-  { src: "/images/image-29.jpeg", caption: "Dining area" },
-  { src: "/images/image-30.jpeg", caption: "Evening ambiance" },
-  { src: "/images/image-31.jpeg", caption: "Building exterior" },
-  { src: "/images/image-32.jpeg", caption: "Corridor" },
-  { src: "/images/image-33.jpeg", caption: "Suite bathroom" },
+  { src: "/images/image-43.jpeg", caption: "Hotel exterior at night" },
+  { src: "/images/image-49.jpeg", caption: "Guest room with seating area" },
+  { src: "/images/image-52.jpeg", caption: "Guest room interior detail" },
+  { src: "/images/image-45.jpeg", caption: "Rooftop swimming pool" },
+  { src: "/images/image-48.jpeg", caption: "Banquet hall" },
+  { src: "/images/image-51.jpeg", caption: "Dining and lounge area" },
+  { src: "/images/image-50.jpeg", caption: "Spa treatment room" },
+  { src: "/images/image-53.jpeg", caption: "Fitness room" },
 ];
-
 export const EXPERIENCE_STEPS = [
-  {
-    title: "Arrive in the glow",
-    description: "A lit-up entrance and a marble lobby welcome you in, day or night.",
-    image: "/images/image-3.jpeg",
-  },
-  {
-    title: "Rest in premium rooms",
-    description: "Cove-lit ceilings, upholstered headboards and calm, warm interiors.",
-    image: "/images/image-6.jpeg",
-  },
-  {
-    title: "Unwind on the rooftop",
-    description: "A swimming pool above the city, with a spa and gym for the rest of the day.",
-    image: "/images/image-8.jpeg",
-  },
-  {
-    title: "Celebrate together",
-    description: "A chandeliered banquet hall for weddings, receptions and family functions.",
-    image: "/images/image-9.jpeg",
-  },
+  { title: "A welcome that glows", description: "Step inside warm interiors, marble details and spaces made for slowing down.", image: "/images/image-44.jpeg" },
+  { title: "Your own quiet retreat", description: "Discover welcoming guest rooms, soft lighting and a little space to make yourself at home.", image: "/images/image-49.jpeg" },
+  { title: "Above the everyday", description: "Take a moment by the rooftop swimming pool, with the city stretching out beyond.", image: "/images/image-45.jpeg" },
+  { title: "Room for celebration", description: "Bring your people together in a chandelier-lit banquet hall for life's special occasions.", image: "/images/image-48.jpeg" },
 ];

@@ -32,7 +32,10 @@ export interface Enquiry {
   status: "new" | "contacted" | "confirmed" | "cancelled";
 }
 
+export interface NotificationJob { id: string; bookingId: string; status: "pending" | "delivered"; attempts: number; createdAt: string; }
+
 export interface Booking {
+  roomsRequested?: number;
   id: string;
   name: string;
   mobile: string;
@@ -103,6 +106,7 @@ export interface SiteConfig {
 }
 
 export interface DB {
+  notificationJobs?: NotificationJob[];
   enquiries: Enquiry[];
   bookings: Booking[];
   offers: Offer[];

@@ -16,6 +16,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
+  if (!(await verifySession()).authenticated) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const { id, status } = await req.json();
     if (!id || !status) {
@@ -41,6 +42,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  if (!(await verifySession()).authenticated) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const { id } = await req.json();
     if (!id) {

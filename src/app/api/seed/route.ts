@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { initDB } from "@/lib/db-schema";
 import { neon } from "@neondatabase/serverless";
+import { verifySession } from "@/lib/auth";
 
 export async function POST() {
+  const session = await verifySession();
+  if (!session.authenticated) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!process.env.DATABASE_URL) {
     return NextResponse.json({ error: "No DATABASE_URL configured" }, { status: 400 });
   }
-  if (process.env.SEED_SECRET && process.env.SEED_SECRET !== "allow") {
+  if (process.env.ALLOW_DATABASE_SEED !== "true") {
     return NextResponse.json({ error: "Seeding disabled" }, { status: 403 });
   }
 

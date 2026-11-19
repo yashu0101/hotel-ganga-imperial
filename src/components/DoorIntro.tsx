@@ -1,28 +1,28 @@
 "use client";
-
 import { useEffect, useState } from "react";
 
 export default function DoorIntro() {
-  const [open, setOpen] = useState(false);
-  const [hidden, setHidden] = useState(false);
-
+  const [phase, setPhase] = useState("closed");
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion:reduce)").matches) {
-      setHidden(true);
-      return;
-    }
-    const t1 = setTimeout(() => setOpen(true), 450);
-    const t2 = setTimeout(() => setHidden(true), 1900);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let opening: ReturnType<typeof setTimeout>;
+    let finish: ReturnType<typeof setTimeout>;
+    const play = () => {
+      clearTimeout(opening); clearTimeout(finish);
+      setPhase(motion.matches ? "hidden" : "closed");
+      opening = setTimeout(() => setPhase("open"), 350);
+      finish = setTimeout(() => setPhase("hidden"), 1850);
+    };
+    // Schedule after hydration; the initial closed state supplies the entrance frame.
+    const start = requestAnimationFrame(play);
+    window.addEventListener("replay-hotel-welcome", play);
+    return () => { cancelAnimationFrame(start); clearTimeout(opening); clearTimeout(finish); window.removeEventListener("replay-hotel-welcome", play); };
   }, []);
-
-  if (hidden) return null;
-
-  return (
-    <div className={`doors${open ? " open" : ""}`} aria-hidden="true">
-      <div className="door l" />
-      <div className="door r" />
-      <div className="crest">GANGA IMPERIAL</div>
-    </div>
-  );
+  if (phase === "hidden") return null;
+  return <div className={`doors welcome-gates ${phase}`} aria-label="Welcome to Hotel Ganga Imperial">
+    <div className="door l" aria-hidden="true"><div className="gate-panel" /></div>
+    <div className="door r" aria-hidden="true"><div className="gate-panel" /></div>
+    <div className="crest"><small>WELCOME TO</small><span>Ganga Imperial</span><i>A warmer welcome awaits</i></div>
+    <button type="button" className="gate-skip" onClick={() => setPhase("hidden")}>Skip intro ↗</button>
+  </div>;
 }

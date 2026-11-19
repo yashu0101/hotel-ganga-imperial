@@ -1,3 +1,4 @@
+import { allowRequest } from "@/lib/request-limit";
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, getAdminCredentials, COOKIE_NAME } from "@/lib/auth";
 
@@ -12,7 +13,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (typeof email !== "string" || typeof password !== "string" || email.length > 150 || password.length > 256) return NextResponse.json({error:"Invalid credentials."},{status:400});
+    if (!allowRequest("login:"+email.trim().toLowerCase(), 10)) return NextResponse.json({error:"Too many attempts. Please try again later."},{status:429});
     const admin = getAdminCredentials();
+    if (!admin.email || !admin.password || !process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+      return NextResponse.json({ error: "Admin access is not configured. Contact the site administrator." }, { status: 503 });
+    }
 
     if (email !== admin.email || password !== admin.password) {
       return NextResponse.json(

@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -52,7 +53,7 @@ export default function LoginPage() {
           background: #1B2236;
           border: 1px solid #323A50;
           border-radius: 12px;
-          padding: 48px 40px;
+          padding: clamp(24px, 7vw, 48px) clamp(20px, 6vw, 40px);
           width: 100%;
           max-width: 400px;
         }
@@ -84,7 +85,7 @@ export default function LoginPage() {
           border-radius: 6px;
           color: #EDE6DA;
           font: inherit;
-          font-size: .95rem;
+          font-size: 1rem;
           margin-bottom: 20px;
           box-sizing: border-box;
         }
@@ -137,7 +138,7 @@ export default function LoginPage() {
           display: block;
           text-align: center;
           margin-top: 20px;
-          color: #665C50;
+          color: #c0b9ac;
           font-size: .85rem;
           text-decoration: none;
         }
@@ -178,7 +179,7 @@ export default function LoginPage() {
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
-        <a href="/" className="back-link">Back to website</a>
+        <Link href="/" className="back-link">Back to website</Link>
       </div>
     </div>
   );

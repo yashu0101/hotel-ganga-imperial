@@ -1,3 +1,5 @@
+import { dateError } from "@/lib/reservation";
+import { allowRequest } from "@/lib/request-limit";
 import { NextRequest, NextResponse } from "next/server";
 import { addEnquiry } from "@/lib/db";
 
@@ -14,6 +16,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if ([name,phone,type,checkin].some(v => typeof v !== "string" || v.length > 200) || (message && (typeof message !== "string" || message.length > 3000))) return NextResponse.json({error:"Invalid enquiry details."},{status:400});
+    const invalidDate = dateError(checkin,checkout,false);
+    if (invalidDate || !Number.isInteger(Number(guests)) || Number(guests)<1 || Number(guests)>300) return NextResponse.json({error: invalidDate || "Enter between 1 and 300 guests."},{status:400});
+    if (!allowRequest("enquiry:"+phone.replace(/\D/g,""))) return NextResponse.json({error:"Too many requests. Please try again later."},{status:429});
     const phoneClean = phone.replace(/[^\d+]/g, "");
     if (phoneClean.length < 10) {
       return NextResponse.json(

@@ -5,9 +5,9 @@ import Image from "next/image";
 import { useApp } from "@/lib/context";
 
 const FAN_ITEMS = [
-  { i: -1, a: 1, src: "/images/image-30.jpeg", alt: "Rooftop evenings", caption: "Rooftop evenings", sample: true },
-  { i: 1, a: 1, src: "/images/image-26.jpeg", alt: "Club lounge", caption: "Club lounge", sample: false },
-  { i: 0, a: 0, src: "/images/image-29.jpeg", alt: "Restaurant", caption: "Restaurant", sample: true },
+  { i: -1, a: 1, src: "/images/image-51.jpeg", alt: "Dining and lounge", caption: "Dining and lounge", sample: false },
+  { i: 1, a: 1, src: "/images/image-51.jpeg", alt: "Club lounge", caption: "Club lounge", sample: false },
+  { i: 0, a: 0, src: "/images/image-51.jpeg", alt: "Restaurant", caption: "Restaurant", sample: false },
 ];
 
 interface DiningOption {
@@ -15,16 +15,17 @@ interface DiningOption {
   category: string; active: boolean;
 }
 
-export default function Dining() {
+export default function Dining({preview=false}:{preview?:boolean}) {
   const { t } = useApp();
   const fanRef = useRef<HTMLDivElement>(null);
   const [options, setOptions] = useState<DiningOption[]>([]);
 
   useEffect(() => {
+    if(preview)return;
     fetch("/api/dining").then(r => r.json())
       .then((data: DiningOption[]) => setOptions(data.filter(d => d.active)))
       .catch(() => {});
-  }, []);
+  }, [preview]);
 
   useEffect(() => {
     const fan = fanRef.current;
@@ -52,7 +53,7 @@ export default function Dining() {
         <div>
           <h2>{t("dining.title")}</h2>
           <p style={{ marginTop: 24 }}>{t("dining.subtitle")}</p>
-          <a className="btn btn-solid" href="#enquire">Ask about dining</a>
+          <a className="btn btn-solid" href="/book?type=dining">Ask about dining</a>
         </div>
         <div className="fan" id="fan" ref={fanRef}>
           {FAN_ITEMS.map((item, idx) => (
@@ -65,7 +66,8 @@ export default function Dining() {
         </div>
       </div>
 
-      {options.length > 0 && (
+      {preview&&<div className="wrap section-action"><a className="text-action" href="/dining">Explore dining & menu ↗</a></div>}
+      {!preview && options.length > 0 && (
         <div className="wrap">
           <div className="head" style={{ marginTop: 48 }}>
             <h2>{t("dining.menu")}</h2>
