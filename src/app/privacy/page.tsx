@@ -1,5 +1,7 @@
+import { canonical } from "@/lib/seo";
 import Link from "next/link";
 export const metadata = {
+  ...canonical("/privacy"),
   title: "Privacy | Hotel Ganga Imperial",
   description: "How Hotel Ganga Imperial uses the details you share in a reservation request.",
 };

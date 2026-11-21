@@ -138,7 +138,7 @@ export default function BookPage() {
             alt="Representative guest room with warm lighting"
             width={700}
             height={600}
-            sizes="(max-width:800px) 100vw, 40vw"
+            sizes="(max-width:900px) 100vw, 40vw"
           />
           <div>
             <span className="eyebrow">YOUR NEXT CHAPTER</span>
@@ -372,12 +372,10 @@ export default function BookPage() {
                 {error && (
                   <div className="reservation-error" role="alert">
                     <p>{error}</p>
-                    {sendFailed && (
-                      <>
-                        <p>You can also reach the hotel directly:</p>
-                        <ContactActions message="Hello, I tried to send a reservation request on your website." />
-                      </>
-                    )}
+                    <p>
+                      {sendFailed ? "You can also reach the hotel directly:" : "Need help? Reach the hotel directly:"}
+                    </p>
+                    <ContactActions message="Hello, I tried to send a reservation request on your website." />
                   </div>
                 )}
                 <p className="small-note">
@@ -387,6 +385,10 @@ export default function BookPage() {
                 <button className="btn btn-solid request-submit" disabled={busy || !loaded} type="submit">
                   {busy ? "Sending your request…" : "Send reservation request ↗"}
                 </button>
+                <div className="request-alt">
+                  <span>Questions before you send? Call or WhatsApp the hotel directly:</span>
+                  <ContactActions message="Hello, I would like to ask about a reservation at Hotel Ganga Imperial." />
+                </div>
               </form>
             </>
           )}

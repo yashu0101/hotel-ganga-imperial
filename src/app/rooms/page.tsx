@@ -1,3 +1,4 @@
+import { canonical } from "@/lib/seo";
 import Image from "next/image";
 import Link from "next/link";
 import InteriorShell from "@/components/InteriorShell";
@@ -6,6 +7,7 @@ import { getRooms } from "@/lib/db";
 import { ROOM_SPECIFICATIONS, roomSlug, roomPhoto } from "@/lib/hotel-content";
 export const revalidate = 300;
 export const metadata = {
+  ...canonical("/rooms"),
   title: "Rooms & suites | Hotel Ganga Imperial",
   description: "Compare room preferences, indicative rates and the details to confirm before your stay.",
 };

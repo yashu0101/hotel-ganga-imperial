@@ -1,7 +1,9 @@
+import { canonical } from "@/lib/seo";
 import Link from "next/link";
 import InteriorShell from "@/components/InteriorShell";
 import { HOTEL_INFORMATION as info, GUEST_FAQS } from "@/lib/hotel-content";
 export const metadata = {
+  ...canonical("/guest-information"),
   title: "Guest information & policies | Hotel Ganga Imperial",
   description:
     "How reservation requests work at Hotel Ganga Imperial, plus cancellation, payment, children, identification and accessibility information.",

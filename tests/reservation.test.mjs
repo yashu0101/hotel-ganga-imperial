@@ -518,7 +518,8 @@ test("admin launch checklist lists every missing guest-facing detail", () => {
 });
 
 test("Hotel JSON-LD uses only known facts and is safe to embed in a script tag", () => {
-  const seo = load("src/lib/seo.ts", { "@/lib/reservation": dates });
+  const info = { HOTEL_INFORMATION: { checkIn: "", checkOut: "" } };
+  const seo = load("src/lib/seo.ts", { "@/lib/reservation": dates, "@/lib/hotel-content": info });
   const rooms = [
     { name: "Deluxe Room", rate: "₹3,000/night", hidden: false },
     { name: "Suite", rate: "₹7,500/night", hidden: false },
@@ -537,6 +538,8 @@ test("Hotel JSON-LD uses only known facts and is safe to embed in a script tag",
   assert.equal(bare.address, undefined);
   assert.equal(bare.url, undefined);
   assert.equal(bare.priceRange, "₹3,000–₹7,500 per night");
+  assert.equal(bare.checkinTime, undefined);
+  assert.equal(bare.checkoutTime, undefined);
   assert.ok(bare.amenityFeature.some(a => a.name === "Rooftop swimming pool"));
   const full = seo.hotelJsonLd({
     rooms: [],
@@ -555,6 +558,16 @@ test("Hotel JSON-LD uses only known facts and is safe to embed in a script tag",
   assert.equal(full.address, "Main Road, Patna");
   assert.equal(full.hasMap, "https://maps.example/x");
   assert.equal(full.priceRange, undefined);
+  const timed = load("src/lib/seo.ts", {
+    "@/lib/reservation": dates,
+    "@/lib/hotel-content": { HOTEL_INFORMATION: { checkIn: "12:00", checkOut: "11:00" } },
+  }).hotelJsonLd({
+    rooms: [],
+    contact: { phone: "", whatsapp: "", email: "", address: "", mapEmbedUrl: "" },
+    siteUrl: "",
+  });
+  assert.equal(timed.checkinTime, "12:00");
+  assert.equal(timed.checkoutTime, "11:00");
   assert.doesNotMatch(seo.jsonLdScript({ name: "</script><script>alert(1)</script>" }), /<\/script/i);
 });
 

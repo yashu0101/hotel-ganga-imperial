@@ -1,8 +1,10 @@
+import { canonical } from "@/lib/seo";
 import Link from "next/link";
 import InteriorShell from "@/components/InteriorShell";
 import { SITE_CONFIG } from "@/lib/config";
 import { telHref, whatsappHref } from "@/lib/contact";
 export const metadata = {
+  ...canonical("/contact"),
   title: "Contact & location | Hotel Ganga Imperial",
   description:
     "Get in touch with Hotel Ganga Imperial to plan a stay, a meal or a celebration, and find directions to the hotel.",

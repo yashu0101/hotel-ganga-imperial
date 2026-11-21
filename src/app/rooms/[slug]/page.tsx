@@ -1,3 +1,4 @@
+import { canonical } from "@/lib/seo";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -11,7 +12,11 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const room = (await getRooms()).find(r => !r.hidden && roomSlug(r.name) === slug);
-  return { title: (room?.name || "Room") + " | Hotel Ganga Imperial", description: room?.text };
+  return {
+    title: (room?.name || "Room") + " | Hotel Ganga Imperial",
+    description: room?.text,
+    ...canonical("/rooms/" + slug),
+  };
 }
 export default async function RoomDetail({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -31,7 +36,7 @@ export default async function RoomDetail({ params }: { params: Promise<{ slug: s
               alt={room.sample ? "Representative room imagery" : room.name}
               width={1000}
               height={750}
-              sizes="(max-width:800px) 100vw, 55vw"
+              sizes="(max-width:900px) 100vw, 55vw"
               preload
             />
             {room.sample && <p>Representative photo. Your room’s layout and furnishings may differ.</p>}

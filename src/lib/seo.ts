@@ -1,6 +1,7 @@
 // schema.org Hotel structured data for the homepage. Only facts the site actually knows are
 // included: unset contact details and unapproved times are omitted, never guessed.
 import { nightlyRate } from "@/lib/reservation";
+import { HOTEL_INFORMATION } from "@/lib/hotel-content";
 
 const AMENITIES = [
   "Rooftop swimming pool",
@@ -39,9 +40,19 @@ export function hotelJsonLd({
     ...(contact.email ? { email: contact.email } : {}),
     ...(contact.address ? { address: contact.address } : {}),
     ...(contact.mapEmbedUrl ? { hasMap: contact.mapEmbedUrl } : {}),
+    ...(HOTEL_INFORMATION.checkIn ? { checkinTime: HOTEL_INFORMATION.checkIn } : {}),
+    ...(HOTEL_INFORMATION.checkOut ? { checkoutTime: HOTEL_INFORMATION.checkOut } : {}),
     ...(rates.length ? { priceRange: `${rupees(Math.min(...rates))}–${rupees(Math.max(...rates))} per night` } : {}),
     amenityFeature: AMENITIES.map(name => ({ "@type": "LocationFeatureSpecification", name, value: true })),
   };
+}
+
+/**
+ * Canonical URL metadata for a page path. Omitted when NEXT_PUBLIC_SITE_URL (metadataBase) is unset,
+ * so builds never emit localhost canonicals.
+ */
+export function canonical(path: string) {
+  return process.env.NEXT_PUBLIC_SITE_URL ? { alternates: { canonical: path } } : {};
 }
 
 /** Serialise for a <script type="application/ld+json"> tag without allowing it to close the tag. */

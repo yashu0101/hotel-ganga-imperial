@@ -8,6 +8,24 @@ import { AppProvider } from "@/lib/context";
 const display = Marcellus({ weight: "400", subsets: ["latin"], display: "swap", variable: "--font-display" });
 const body = Mulish({ subsets: ["latin"], display: "swap", variable: "--font-body" });
 
+// Runs before first paint: applies the saved theme, and marks returning visitors (same session or
+// arriving from another page of this site) so CSS hides the welcome gates without a flash.
+// Kept as plain ES5 because it runs before any bundle loads.
+const BEFORE_PAINT_SCRIPT = `(function () {
+  var root = document.documentElement;
+  try {
+    var theme = localStorage.getItem("theme");
+    if (theme === "light" || theme === "dark") {
+      root.dataset.theme = theme;
+      root.style.colorScheme = theme;
+    }
+  } catch (e) {}
+  try {
+    var internal = document.referrer && new URL(document.referrer).origin === location.origin;
+    if (internal || sessionStorage.getItem("welcome-seen")) root.dataset.welcomeSeen = "1";
+  } catch (e) {}
+})();`;
+
 export const metadata: Metadata = {
   ...(process.env.NEXT_PUBLIC_SITE_URL ? { metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL) } : {}),
   robots: { index: process.env.SITE_READY_FOR_INDEXING === "true", follow: true },
@@ -17,10 +35,16 @@ export const metadata: Metadata = {
     ...(process.env.NEXT_PUBLIC_SITE_URL
       ? {
           images: [
-            { url: "/images/image-43.jpeg", width: 1020, height: 850, alt: "Hotel Ganga Imperial exterior at night" },
+            { url: "/images/og-image.jpg", width: 1200, height: 630, alt: "Hotel Ganga Imperial exterior at night" },
           ],
         }
       : {}),
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Hotel Ganga Imperial",
+    description: "A warmer welcome. Explore rooms, dining and celebrations.",
+    ...(process.env.NEXT_PUBLIC_SITE_URL ? { images: ["/images/og-image.jpg"] } : {}),
   },
   title: "Hotel Ganga Imperial - Rooms, rooftop pool & banquet hall",
   description:
@@ -33,9 +57,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t}}catch(e){}try{var internal=document.referrer&&new URL(document.referrer).origin===location.origin;if(internal||sessionStorage.getItem('welcome-seen'))document.documentElement.dataset.welcomeSeen='1'}catch(e){}})()`,
+            __html: BEFORE_PAINT_SCRIPT,
           }}
         />
+        <noscript>
+          <style>{`.welcome-gates{display:none}`}</style>
+        </noscript>
       </head>
       <body>
         <AppProvider>{children}</AppProvider>

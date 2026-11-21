@@ -15,10 +15,11 @@ import Experience from "@/components/Experience";
 import MotionEffects from "@/components/MotionEffects";
 import { getOffers, getRooms } from "@/lib/db";
 import { SITE_CONFIG } from "@/lib/config";
-import { hotelJsonLd, jsonLdScript } from "@/lib/seo";
+import { canonical, hotelJsonLd, jsonLdScript } from "@/lib/seo";
 
 // Static, refreshed every 5 minutes and immediately after admin edits (revalidatePath).
 export const revalidate = 300;
+export const metadata = { ...canonical("/") };
 
 export default async function Home() {
   const [rooms, offers] = await Promise.all([getRooms(), getOffers()]);

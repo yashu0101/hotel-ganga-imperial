@@ -1,8 +1,10 @@
+import { canonical } from "@/lib/seo";
 import InteriorShell from "@/components/InteriorShell";
 import Dining from "@/components/Dining";
 import { getDiningOptions } from "@/lib/db";
 export const revalidate = 300;
 export const metadata = {
+  ...canonical("/dining"),
   title: "Dining & menu | Hotel Ganga Imperial",
   description:
     "Breakfast to candlelit dinners prepared by our in-house chefs. Browse the menu and ask about dining or event catering.",
