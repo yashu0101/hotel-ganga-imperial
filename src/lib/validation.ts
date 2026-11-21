@@ -84,7 +84,7 @@ export function parseInput(schema: Schema, body: unknown, { partial = false } = 
 export const ROOM_SCHEMA: Schema = {
   name: { type: "string", max: 80, required: true },
   text: { type: "string", max: 600 },
-  image: { type: "imagePath", default: "/images/image-14.jpeg" },
+  image: { type: "imagePath", default: "/images/image-49.jpeg" },
   rate: { type: "string", max: 40 },
   sample: { type: "boolean", default: false },
   hidden: { type: "boolean", default: false },

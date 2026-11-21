@@ -16,7 +16,7 @@ export default function Rooms({
   return (
     <section className="rooms" id="rooms">
       <div className="wrap">
-        {showHeading && (
+        {showHeading ? (
           <>
             <span className="eyebrow">MAKE YOURSELF AT HOME</span>
             <div className="head">
@@ -24,6 +24,8 @@ export default function Rooms({
               <p>Rates depend on dates and availability. Choose a room and send an enquiry.</p>
             </div>
           </>
+        ) : (
+          <h2 className="sr-only">Our rooms</h2>
         )}
         <div className="stay-grid">
           {(preview ? rooms.slice(0, 2) : rooms).map((room, i) => (
@@ -35,6 +37,8 @@ export default function Rooms({
                   width={640}
                   height={440}
                   sizes="(max-width:700px) 100vw, 50vw"
+                  // On /rooms the first cards sit above the fold; on the home page they are further down.
+                  loading={!preview && i < 2 ? "eager" : "lazy"}
                 />
                 {room.sample && (
                   <span className="chip">
@@ -47,7 +51,7 @@ export default function Rooms({
                 <h3>{room.name}</h3>
                 <p>{room.text}</p>
                 <Link className="room-details-link" href={"/rooms/" + roomSlug(room.name)}>
-                  Room details & practical information ↗
+                  Room details & practical information <span aria-hidden="true">↗</span>
                 </Link>
                 <div className="stay-price">
                   <div>
@@ -65,7 +69,7 @@ export default function Rooms({
         {preview && (
           <div className="section-action">
             <Link className="btn btn-solid" href="/rooms">
-              Explore all rooms & compare ↗
+              Explore all rooms & compare <span aria-hidden="true">↗</span>
             </Link>
           </div>
         )}

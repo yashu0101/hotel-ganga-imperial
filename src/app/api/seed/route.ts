@@ -26,7 +26,7 @@ export async function POST() {
 
   // Seed rooms
   await sql`INSERT INTO rooms (name, text, image, rate, sample, hidden) VALUES
-    ('Deluxe Room', 'A warm, cove-lit room with an upholstered headboard, work desk and city view. Includes AC, Wi-Fi, TV, mini-bar and complimentary breakfast.', '/images/image-14.jpeg', '₹3,000/night', true, false),
+    ('Deluxe Room', 'A warm, cove-lit room with an upholstered headboard, work desk and city view. Includes AC, Wi-Fi, TV, mini-bar and complimentary breakfast.', '/images/image-49.jpeg', '₹3,000/night', true, false),
     ('Premium Room', 'Extra space, brass accents and a sitting area for a more relaxed stay. Includes all Deluxe amenities plus a lounge area and premium toiletries.', '/images/image-15.jpeg', '₹4,500/night', true, false),
     ('Suite', 'A separate living room, king bed and premium bath amenities for longer visits. Includes butler service, welcome drink and late checkout.', '/images/image-16.jpeg', '₹8,000/night', true, false),
     ('Family Room', 'Twin beds, extra floor space and everything a family needs under one roof. Includes kids welcome kit, extra bedding and family breakfast.', '/images/image-17.jpeg', '₹5,500/night', true, false)`;

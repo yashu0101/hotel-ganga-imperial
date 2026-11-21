@@ -78,8 +78,24 @@ test("rejects unknown rooms, invalid guest counts and incomplete stays", async (
     { checkout: "" },
     { checkin: "2099-02-30" },
     { email: "bad" },
+    { mobile: "(((((-----" },
+    { mobile: "+91 98765 43210 12345" },
+    { mobile: "98765x43210" },
+    { name: "  " },
   ])
     assert.equal((await booking.POST(request({ ...payload, ...change }))).status, 400);
+});
+test("checks phone numbers with one rule shared by the form and the server", async () => {
+  for (const ok of ["+91 98765 43210", "(022) 1234-5678", "9876543210"]) assert.equal(dates.phoneError(ok), "");
+  for (const bad of ["", "12345", "(((((-----", "+1234567890123456", "98765x43210", "+91 " + "9".repeat(30)])
+    assert.ok(dates.phoneError(bad), bad);
+  const res = await booking.POST(request({ ...payload, mobile: "12345" }));
+  assert.equal((await res.json()).error, dates.phoneError("12345"));
+});
+test("formats request dates for guests instead of showing ISO dates", () => {
+  assert.match(dates.displayDate("2026-12-05"), /^Sat, 5 Dec,? 2026$/);
+  assert.equal(dates.displayDate("2026-12-05", false), "Sat, 5 Dec");
+  assert.equal(dates.displayDate("not-a-date"), "not-a-date");
 });
 test("accepts single-day event request and only exposes request reference", async () => {
   const result = await booking.POST(request({ ...payload, roomType: "Banquet - Gold", checkout: "", guests: 100 }));
@@ -493,6 +509,20 @@ test("guests only see known room facts; unknown ones are hidden rather than show
     for (const value of Object.values(spec)) assert.doesNotMatch(value, /to be (updated|confirmed)/i);
   for (const value of Object.values(content.HOTEL_INFORMATION))
     assert.doesNotMatch(value, /to be (updated|confirmed)|not yet/i);
+});
+
+test("room inclusions belong to known room types and contain no placeholders", () => {
+  const content = load("src/lib/hotel-content.ts");
+  for (const [name, inclusions] of Object.entries(content.ROOM_INCLUSIONS)) {
+    assert.ok(content.ROOM_SPECIFICATIONS[name], "unknown room " + name);
+    for (const item of [...inclusions.inRoom, ...inclusions.services]) {
+      assert.ok(item.trim(), name + " has an empty inclusion");
+      assert.doesNotMatch(item, /to be (updated|confirmed)|tbd/i);
+    }
+  }
+  assert.deepEqual(content.roomFacts({ ...content.ROOM_SPECIFICATIONS.Suite, location: "Floor 5" }), [
+    ["Location in the hotel", "Floor 5"],
+  ]);
 });
 
 test("admin launch checklist lists every missing guest-facing detail", () => {

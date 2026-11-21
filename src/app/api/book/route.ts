@@ -2,7 +2,7 @@ import { deliverNotifications } from "@/lib/notifications";
 import { NextRequest, NextResponse } from "next/server";
 import { addBooking, getRooms, getBanquetPackages, StorageUnavailableError } from "@/lib/db";
 import { allowRequest, clientKey } from "@/lib/request-limit";
-import { cleanText, dateError } from "@/lib/reservation";
+import { cleanText, dateError, phoneError } from "@/lib/reservation";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -16,13 +16,11 @@ export async function POST(req: NextRequest) {
       email = cleanText(b.email, 150),
       roomType = cleanText(b.roomType, 150),
       specialRequests = cleanText(b.specialRequests, 500);
-    const digits = mobile.replace(/\D/g, "").length;
-    if (!name || digits < 10 || digits > 15 || (email && !EMAIL.test(email))) {
-      return NextResponse.json(
-        { error: "Enter your name, a valid phone number and a valid email if provided." },
-        { status: 400 },
-      );
-    }
+    if (!name) return NextResponse.json({ error: "Enter your full name." }, { status: 400 });
+    const phoneProblem = phoneError(mobile);
+    if (phoneProblem) return NextResponse.json({ error: phoneProblem }, { status: 400 });
+    if (email && !EMAIL.test(email))
+      return NextResponse.json({ error: "Enter a valid email address, or leave it blank." }, { status: 400 });
     // Limited per client address: changing the phone number does not bypass it, and nobody can
     // block a guest by submitting with the guest's number.
     if (!allowRequest("reservation:" + clientKey(req.headers), 8))

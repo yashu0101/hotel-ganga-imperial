@@ -8,7 +8,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 22px max(24px, calc((100vw - 1200px) / 2 + 24px));
+  /* Full-bleed bar, matching /book: wordmark at the far left, actions at the far right. */
+  padding: 22px clamp(20px, 3vw, 40px);
   background: var(--night);
   border-bottom: 1px solid color-mix(in srgb, var(--brass) 20%, transparent);
 }
@@ -25,40 +26,18 @@
   display: flex;
   align-items: center;
 }
-.theme-switch {
-  background: transparent;
-  border: 1px solid color-mix(in srgb, var(--brass) 40%, transparent);
-  border-radius: 24px;
-  min-height: 40px;
-  padding: 8px 14px;
+.interior-header nav a:hover {
   color: var(--brass-soft);
-  font: 12px var(--body);
-  cursor: pointer;
 }
-.theme-switch:hover {
-  background: color-mix(in srgb, var(--brass) 8%, transparent);
-}
-.interior-header a:focus-visible,
-.theme-switch:focus-visible {
-  outline-color: var(--brass-soft);
-}
-.interior-footer {
+.interior-actions {
   display: flex;
-  gap: 22px;
-  flex-wrap: wrap;
   align-items: center;
-  padding: 28px max(24px, calc((100vw - 1200px) / 2 + 24px));
-  background: var(--night-deep);
-  color: var(--muted-on-night);
+  gap: 14px;
 }
-.interior-footer span {
-  margin-right: auto;
-}
-.interior-footer a {
-  font-size: 13px;
+.interior-cta.btn {
   min-height: 44px;
-  display: flex;
-  align-items: center;
+  padding: 0 18px;
+  font-size: 13px;
 }
 .page-intro {
   padding-top: 64px;
@@ -108,6 +87,10 @@
 }
 .clarity-section {
   background: var(--surface);
+}
+/* Same background as the gallery above it, so one section of padding is enough between them. */
+.gallery + .clarity-section {
+  padding-top: 0;
 }
 .clarity-grid {
   display: grid;
@@ -182,15 +165,46 @@
   color: var(--accent);
   white-space: nowrap;
 }
+/* Room detail page: photo + sticky summary, then content sections separated by hairlines. */
 .room-detail {
-  padding-top: 40px;
+  padding-top: 24px;
   padding-bottom: 64px;
+}
+.crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--muted);
+}
+.crumbs li + li::before {
+  content: "/";
+  margin-right: 10px;
+  color: var(--line);
+}
+.crumbs a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--accent);
+}
+.crumbs [aria-current] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }
 .room-detail-grid {
   display: grid;
-  grid-template-columns: 1.15fr 1fr;
+  grid-template-columns: 1.2fr 1fr;
   gap: 56px;
-  align-items: center;
+  align-items: start;
+}
+.detail-photograph {
+  position: relative;
+  margin: 0;
 }
 .detail-photograph img {
   width: 100%;
@@ -198,15 +212,214 @@
   aspect-ratio: 4/3;
   object-fit: cover;
 }
-.detail-photograph > p {
+.detail-photograph figcaption {
   font-size: 11px;
   color: var(--muted);
   margin-top: 12px;
 }
-.room-detail-grid > div > p:not(.small-note) {
+.room-summary {
+  position: sticky;
+  top: 24px;
+  padding: 32px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--brass);
+}
+.room-summary h1 {
+  margin-bottom: 16px;
+}
+.room-summary > p:not(.small-note) {
   color: var(--muted);
   font-size: 15px;
-  line-height: 1.9;
+  line-height: 1.85;
+}
+.room-highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.room-highlights li {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+.room-summary .btn {
+  width: 100%;
+}
+.room-section {
+  border-top: 1px solid var(--line);
+  margin-top: 56px;
+}
+.interior-page .room-section {
+  padding-top: 48px;
+  padding-bottom: 0;
+}
+.room-section > h2 {
+  margin: 0 0 24px;
+}
+.room-section > .small-note {
+  margin-top: 20px;
+}
+.inclusion-columns {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 32px;
+}
+.inclusion-columns h3 {
+  font-size: 13px;
+  font-family: var(--body);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+.inclusion-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.inclusion-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 14px;
+}
+.inclusion-list li::before {
+  content: "";
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  background: var(--brass);
+  transform: rotate(45deg);
+}
+.allocation-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24px;
+  margin: 32px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.allocation-steps li {
+  border-top: 2px solid var(--brass);
+  padding-top: 18px;
+}
+.allocation-steps span {
+  font: 28px var(--display);
+  color: var(--accent);
+}
+.allocation-steps h3 {
+  font-size: 19px;
+  margin: 10px 0;
+}
+.allocation-steps p {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+}
+.facility-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.facility-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  font-size: 13px;
+}
+.facility-list svg {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  stroke: var(--brass);
+  fill: none;
+  stroke-width: 1.3;
+}
+.room-policies {
+  margin: 0;
+}
+.room-policies > div {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 24px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.room-policies dt {
+  font-weight: 600;
+  font-size: 14px;
+}
+.room-policies dd {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.other-rooms {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.other-rooms a {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.other-rooms img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 7/5;
+  object-fit: cover;
+  margin-bottom: 14px;
+  transition: opacity 0.25s;
+}
+.other-rooms a:hover img {
+  opacity: 0.85;
+}
+.other-rooms strong {
+  display: block;
+  font: 22px var(--display);
+}
+.other-rooms small {
+  font-size: 13px;
+  color: var(--muted);
+}
+.room-cta {
+  margin-top: 64px;
+  padding: 48px;
+  background: var(--night);
+  color: var(--ink-on-night);
+  text-align: center;
+}
+.interior-page .room-cta {
+  padding: 48px;
+}
+.room-cta h2 {
+  color: var(--cream-on-night);
+  margin: 0 0 12px;
+}
+.room-cta p {
+  color: var(--muted);
+  max-width: 52ch;
+  margin: 0 auto 24px;
 }
 .detail-rate {
   padding: 22px 0;
@@ -396,18 +609,27 @@
 .location-card .btn {
   align-self: start;
 }
-.booking-header-actions {
+/* /book header: back link at the far left, then the wordmark; theme toggle on the right. */
+.booking-header-start {
   display: flex;
   align-items: center;
   gap: 22px;
+  min-width: 0;
 }
-.booking-header-actions > a {
+.booking-back {
   display: inline-flex;
   align-items: center;
+  gap: 8px;
   min-height: 44px;
+  padding-right: 22px;
+  border-right: 1px solid var(--line-on-night);
   color: var(--muted-on-night);
   font-size: 13px;
   text-decoration: none;
+  white-space: nowrap;
+}
+.booking-back:hover {
+  color: var(--brass-soft);
 }
 .reservation-success h2 {
   font-size: 32px;
@@ -459,6 +681,22 @@
 .reservation-success .btn {
   margin-top: 14px;
 }
+@media (max-width: 1100px) {
+  /* The page links drop to their own row under the wordmark and actions. */
+  .interior-header {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .interior-header nav {
+    order: 3;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .allocation-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 32px;
+  }
+}
 @media (max-width: 900px) {
   .interior-header {
     padding: 20px 22px;
@@ -469,18 +707,10 @@
     font-size: 16px;
   }
   .interior-header nav {
-    gap: 18px;
-    flex-wrap: wrap;
-    width: 100%;
-    justify-content: space-between;
+    gap: 4px 18px;
   }
   .interior-header nav a {
     font-size: 12px;
-  }
-  .theme-switch {
-    font-size: 11px;
-    min-height: 44px;
-    padding: 8px 12px;
   }
   .page-intro {
     padding-top: 40px;
@@ -513,10 +743,35 @@
     gap: 24px;
   }
   .room-detail {
-    padding-top: 24px;
+    padding-top: 8px;
   }
-  .room-detail-grid .btn {
-    width: 100%;
+  .room-summary {
+    position: static;
+    padding: 24px;
+  }
+  .room-section {
+    margin-top: 40px;
+  }
+  .interior-page .room-section {
+    padding-top: 36px;
+  }
+  .inclusion-columns {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .inclusion-list {
+    grid-template-columns: 1fr 1fr;
+  }
+  .room-policies > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .other-rooms {
+    grid-template-columns: 1fr 1fr;
+  }
+  .interior-page .room-cta {
+    margin-top: 48px;
+    padding: 32px 22px;
   }
   .spec-grid {
     grid-template-columns: 1fr 1fr;
@@ -554,28 +809,15 @@
   .location-card {
     padding: 24px;
   }
-  .interior-footer {
-    padding: 26px 22px;
-    gap: 14px;
+  .booking-header-start {
+    gap: 12px;
   }
-  .interior-footer span {
-    flex-basis: 100%;
-    font-size: 13px;
-  }
-  .booking-header-actions {
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-  .booking-header-actions > a {
+  .booking-back {
     font-size: 12px;
+    padding-right: 12px;
   }
   .reservation-header {
     gap: 12px;
-  }
-  .booking-header-actions .theme-switch {
-    font-size: 11px;
-    min-height: 44px;
   }
   .receipt-details > div {
     grid-template-columns: 100px 1fr;
@@ -591,22 +833,36 @@
     padding-top: 28px;
   }
 }
+@media (max-width: 600px) {
+  /* Phones get the floating MobileReserve bar instead of a header button. */
+  .interior-cta.btn {
+    display: none;
+  }
+  .allocation-steps,
+  .other-rooms {
+    grid-template-columns: 1fr;
+  }
+  .inclusion-list {
+    grid-template-columns: 1fr;
+  }
+}
 @media (max-width: 360px) {
   .interior-header nav {
-    gap: 8px;
+    gap: 0 12px;
   }
   .interior-header nav a {
     font-size: 11px;
   }
-  .interior-header nav .theme-switch {
-    font-size: 11px;
-    padding: 7px 8px;
-  }
   .spec-grid {
     grid-template-columns: 1fr;
   }
-  .booking-header-actions {
-    max-width: 125px;
+  /* Narrow phones: the arrow alone, labelled for screen readers. */
+  .booking-back {
+    font-size: 0;
+    gap: 0;
+  }
+  .booking-back span {
+    font-size: 18px;
   }
   .reservation-header .wordmark {
     font-size: 12px;
@@ -622,16 +878,14 @@
     color: black !important;
   }
   .reservation-header,
-  .reservation-aside,
-  .reservation-form > .eyebrow,
-  .reservation-form > h1,
+  .reservation-done > h1,
   .receipt-actions,
   .reservation-success > .btn,
   .reservation-success > .small-note,
   .reservation-success > .contact-actions {
     display: none !important;
   }
-  .reservation-layout {
+  .reservation-done {
     display: block;
     padding: 0;
     max-width: none;
@@ -651,7 +905,4 @@
   .request-status {
     border-color: black;
   }
-}
-.room-practical > h2 + .page-lead {
-  margin-top: 16px;
 }

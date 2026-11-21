@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "@/lib/context";
 import NotificationPanel from "@/components/NotificationPanel";
@@ -80,15 +80,42 @@ const enquiryRow = (e: Enquiry): RequestRow => ({
 export default function AdminPage() {
   const router = useRouter();
   const { t, lang, setLang } = useApp();
-  const [ready, setReady] = useState(false);
+  // "checking" until /api/auth/me answers; "offline" when it could not be reached at all.
+  const [session, setSession] = useState<"checking" | "ok" | "offline">("checking");
+  const ready = session === "ok";
   const [tab, setTab] = useState<Tab>("dashboard");
   const [data, setData] = useState<Data>(EMPTY);
-  const [loadError, setLoadError] = useState(false);
+  // Until the first load finishes, lists and counters show a loading state instead of looking empty.
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState<ReadonlySet<keyof Data>>(new Set());
   const [toast, setToast] = useState<{ message: string; kind: "ok" | "error" } | null>(null);
+  const toastTimer = useRef(0);
+  // Confirmations fade on their own; errors stay until dismissed so they cannot be missed.
   const notify = useCallback((message: string, kind: "ok" | "error" = "ok") => {
+    window.clearTimeout(toastTimer.current);
     setToast({ message, kind });
-    window.setTimeout(() => setToast(null), kind === "error" ? 6000 : 2500);
+    if (kind === "ok") toastTimer.current = window.setTimeout(() => setToast(null), 2500);
   }, []);
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+  // Tabs follow the ARIA tabs pattern: one tab stop, arrow keys/Home/End move between tabs and select them.
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const onTabKey = (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const last = TABS.length - 1;
+    const next =
+      e.key === "ArrowRight"
+        ? (index + 1) % TABS.length
+        : e.key === "ArrowLeft"
+          ? (index - 1 + TABS.length) % TABS.length
+          : e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? last
+              : -1;
+    if (next < 0) return;
+    e.preventDefault();
+    setTab(TABS[next]);
+    tabRefs.current[next]?.focus();
+  };
   const set =
     <K extends keyof Data>(key: K) =>
     (items: Data[K]) =>
@@ -108,12 +135,19 @@ export default function AdminPage() {
     return () => window.removeEventListener(SESSION_EXPIRED, expired);
   }, [router]);
 
+  const checkSession = useCallback(
+    () =>
+      fetch("/api/auth/me")
+        .then(r => {
+          if (!r.ok) router.push("/login");
+          else setSession("ok");
+        })
+        .catch(() => setSession("offline")),
+    [router],
+  );
   useEffect(() => {
-    fetch("/api/auth/me").then(r => {
-      if (!r.ok) router.push("/login");
-      else setReady(true);
-    });
-  }, [router]);
+    checkSession();
+  }, [checkSession]);
 
   useEffect(() => {
     if (!ready) return;
@@ -128,11 +162,14 @@ export default function AdminPage() {
     ];
     Promise.allSettled(endpoints.map(([, url]) => adminRequest<unknown[]>(url))).then(results => {
       const next = { ...EMPTY };
+      const missing = new Set<keyof Data>();
       results.forEach((r, i) => {
         if (r.status === "fulfilled" && Array.isArray(r.value)) (next[endpoints[i][0]] as unknown[]) = r.value;
+        else missing.add(endpoints[i][0]);
       });
-      setLoadError(results.some(r => r.status === "rejected"));
+      setFailed(missing);
       setData(next);
+      setLoaded(true);
     });
   }, [ready]);
 
@@ -143,11 +180,35 @@ export default function AdminPage() {
   if (!ready)
     return (
       <div className="adm" style={{ display: "grid", placeItems: "center" }}>
-        <p>Loading…</p>
+        {session === "offline" ? (
+          <div role="alert" style={{ textAlign: "center" }}>
+            <p>{t("admin.sessionError")}</p>
+            <button
+              className="adm-btn"
+              onClick={() => {
+                setSession("checking");
+                checkSession();
+              }}
+            >
+              {t("admin.retry")}
+            </button>
+          </div>
+        ) : (
+          <p role="status">Loading…</p>
+        )}
       </div>
     );
 
   const pending = data.bookings.filter(b => b.bookingStatus === "pending").length;
+  // A counter is only meaningful once its list has loaded; otherwise show a dash rather than a misleading 0.
+  const count = (key: keyof Data, n: number) => (loaded && !failed.has(key) ? n : "–");
+  const unavailable = (key: keyof Data) =>
+    failed.has(key) && (
+      <p className="adm-alert error" role="alert">
+        {t("admin.unavailable")}
+      </p>
+    );
+  const view = loaded ? tab : null;
   const labels = {
     save: t("admin.save"),
     saving: t("admin.saving"),
@@ -183,135 +244,172 @@ export default function AdminPage() {
         </nav>
       </header>
       <div className="adm-tabs" role="tablist">
-        {TABS.map(k => (
-          <button key={k} role="tab" aria-selected={tab === k} className="adm-tab" onClick={() => setTab(k)}>
+        {TABS.map((k, i) => (
+          <button
+            key={k}
+            ref={el => {
+              tabRefs.current[i] = el;
+            }}
+            id={"adm-tab-" + k}
+            role="tab"
+            type="button"
+            aria-selected={tab === k}
+            aria-controls="adm-panel"
+            tabIndex={tab === k ? 0 : -1}
+            className="adm-tab"
+            onClick={() => setTab(k)}
+            onKeyDown={e => onTabKey(e, i)}
+          >
             {t("admin." + k)}
-            {k === "bookings" && pending > 0 && <span className="count">{pending}</span>}
+            {k === "bookings" && loaded && pending > 0 && <span className="count">{pending}</span>}
           </button>
         ))}
       </div>
-      <main className="adm-body">
-        {loadError && (
+      <main className="adm-body" id="adm-panel" role="tabpanel" aria-labelledby={"adm-tab-" + tab} tabIndex={0}>
+        {!loaded && (
+          <p className="adm-loading" role="status">
+            {t("admin.loading")}
+          </p>
+        )}
+        {failed.size > 0 && (
           <p className="adm-alert error" role="alert">
             {t("admin.loadError")}
           </p>
         )}
-        {tab === "dashboard" && (
+        {view === "dashboard" && (
           <>
             <NotificationPanel />
             <LaunchChecklist rooms={data.rooms} />
             <div className="stat-grid">
               <div className="stat-card">
-                <div className="num">{pending}</div>
+                <div className="num">{count("bookings", pending)}</div>
                 <div className="lbl">{t("admin.pendingRequests")}</div>
               </div>
               <div className="stat-card">
-                <div className="num">{data.bookings.filter(b => b.bookingStatus === "confirmed").length}</div>
+                <div className="num">
+                  {count("bookings", data.bookings.filter(b => b.bookingStatus === "confirmed").length)}
+                </div>
                 <div className="lbl">{t("admin.confirmedRequests")}</div>
               </div>
               <div className="stat-card">
-                <div className="num">{data.bookings.length}</div>
+                <div className="num">{count("bookings", data.bookings.length)}</div>
                 <div className="lbl">{t("admin.totalBookings")}</div>
               </div>
               <div className="stat-card">
-                <div className="num">{data.enquiries.filter(e => e.status === "new").length}</div>
+                <div className="num">{count("enquiries", data.enquiries.filter(e => e.status === "new").length)}</div>
                 <div className="lbl">{t("admin.newEnquiries")}</div>
               </div>
               <div className="stat-card">
-                <div className="num">{data.offers.filter(o => o.active).length}</div>
+                <div className="num">{count("offers", data.offers.filter(o => o.active).length)}</div>
                 <div className="lbl">{t("admin.activeOffers")}</div>
               </div>
             </div>
             <h2>{t("admin.recentBookings")}</h2>
-            <RequestTable
-              rows={recent}
-              statuses={BOOKING_STATUSES}
-              endpoint="/api/bookings"
-              statusField="bookingStatus"
-              notify={notify}
-              t={t}
-              onChange={rows => set("bookings")(applyRows(data.bookings, recent, rows, withBookingStatus))}
-            />
+            {unavailable("bookings") || (
+              <RequestTable
+                rows={recent}
+                statuses={BOOKING_STATUSES}
+                endpoint="/api/bookings"
+                statusField="bookingStatus"
+                notify={notify}
+                t={t}
+                onChange={rows => set("bookings")(applyRows(data.bookings, recent, rows, withBookingStatus))}
+              />
+            )}
           </>
         )}
-        {tab === "bookings" && (
+        {view === "bookings" && (
           <>
             <h2>{t("admin.bookings")}</h2>
-            <RequestTable
-              rows={allBookings}
-              statuses={BOOKING_STATUSES}
-              endpoint="/api/bookings"
-              statusField="bookingStatus"
-              notify={notify}
-              t={t}
-              onChange={rows => set("bookings")(applyRows(data.bookings, allBookings, rows, withBookingStatus))}
-            />
+            {unavailable("bookings") || (
+              <RequestTable
+                rows={allBookings}
+                statuses={BOOKING_STATUSES}
+                endpoint="/api/bookings"
+                statusField="bookingStatus"
+                notify={notify}
+                t={t}
+                onChange={rows => set("bookings")(applyRows(data.bookings, allBookings, rows, withBookingStatus))}
+              />
+            )}
           </>
         )}
-        {tab === "enquiries" && (
+        {view === "enquiries" && (
           <>
             <h2>{t("admin.enquiries")}</h2>
-            <RequestTable
-              rows={allEnquiries}
-              statuses={ENQUIRY_STATUSES}
-              endpoint="/api/enquiries"
-              statusField="status"
-              notify={notify}
-              t={t}
-              onChange={rows => set("enquiries")(applyRows(data.enquiries, allEnquiries, rows, withEnquiryStatus))}
-            />
+            {unavailable("enquiries") || (
+              <RequestTable
+                rows={allEnquiries}
+                statuses={ENQUIRY_STATUSES}
+                endpoint="/api/enquiries"
+                statusField="status"
+                notify={notify}
+                t={t}
+                onChange={rows => set("enquiries")(applyRows(data.enquiries, allEnquiries, rows, withEnquiryStatus))}
+              />
+            )}
           </>
         )}
-        {tab === "rooms" && (
-          <CollectionEditor
-            config={collections.rooms}
-            items={data.rooms as never[]}
-            setItems={set("rooms") as never}
-            labels={labels}
-            notify={notify}
-          />
-        )}
-        {tab === "offers" && (
-          <CollectionEditor
-            config={collections.offers}
-            items={data.offers as never[]}
-            setItems={set("offers") as never}
-            labels={labels}
-            notify={notify}
-          />
-        )}
-        {tab === "banquet" && (
-          <CollectionEditor
-            config={collections.banquet}
-            items={data.banquet as never[]}
-            setItems={set("banquet") as never}
-            labels={labels}
-            notify={notify}
-          />
-        )}
-        {tab === "dining" && (
-          <CollectionEditor
-            config={collections.dining}
-            items={data.dining as never[]}
-            setItems={set("dining") as never}
-            labels={labels}
-            notify={notify}
-          />
-        )}
-        {tab === "reviews" && (
-          <CollectionEditor
-            config={collections.reviews}
-            items={data.reviews as never[]}
-            setItems={set("reviews") as never}
-            labels={labels}
-            notify={notify}
-          />
-        )}
-        {tab === "analytics" && <Analytics bookings={data.bookings} t={t} />}
+        {view === "rooms" &&
+          (unavailable("rooms") || (
+            <CollectionEditor
+              config={collections.rooms}
+              items={data.rooms as never[]}
+              setItems={set("rooms") as never}
+              labels={labels}
+              notify={notify}
+            />
+          ))}
+        {view === "offers" &&
+          (unavailable("offers") || (
+            <CollectionEditor
+              config={collections.offers}
+              items={data.offers as never[]}
+              setItems={set("offers") as never}
+              labels={labels}
+              notify={notify}
+            />
+          ))}
+        {view === "banquet" &&
+          (unavailable("banquet") || (
+            <CollectionEditor
+              config={collections.banquet}
+              items={data.banquet as never[]}
+              setItems={set("banquet") as never}
+              labels={labels}
+              notify={notify}
+            />
+          ))}
+        {view === "dining" &&
+          (unavailable("dining") || (
+            <CollectionEditor
+              config={collections.dining}
+              items={data.dining as never[]}
+              setItems={set("dining") as never}
+              labels={labels}
+              notify={notify}
+            />
+          ))}
+        {view === "reviews" &&
+          (unavailable("reviews") || (
+            <CollectionEditor
+              config={collections.reviews}
+              items={data.reviews as never[]}
+              setItems={set("reviews") as never}
+              labels={labels}
+              notify={notify}
+            />
+          ))}
+        {view === "analytics" && (unavailable("bookings") || <Analytics bookings={data.bookings} t={t} />)}
       </main>
       {toast && (
         <div className={"adm-toast " + toast.kind} role={toast.kind === "error" ? "alert" : "status"}>
-          {toast.message}
+          <span>{toast.message}</span>
+          {toast.kind === "error" && (
+            <button type="button" className="adm-toast-close" onClick={() => setToast(null)}>
+              {t("admin.dismiss")}
+            </button>
+          )}
         </div>
       )}
     </div>

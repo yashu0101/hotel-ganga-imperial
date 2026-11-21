@@ -1,5 +1,8 @@
 import Image from "next/image";
+import { PHOTOS } from "@/lib/config";
 import type { BanquetPackage } from "@/lib/types";
+
+const photo = PHOTOS.banquet;
 
 // In preview mode (homepage) only the introduction is shown; /celebrations passes the packages.
 export default function Events({ packages = [], preview = false }: { packages?: BanquetPackage[]; preview?: boolean }) {
@@ -19,20 +22,15 @@ export default function Events({ packages = [], preview = false }: { packages?: 
           </a>
         </div>
         <div className="media">
-          <Image
-            src="/images/image-48.jpeg"
-            alt="Banquet hall with chandeliers"
-            width={600}
-            height={450}
-            loading="lazy"
-          />
+          <Image src={photo.src} alt={photo.caption} width={600} height={450} loading={preview ? "lazy" : "eager"} />
+          {photo.sample && <span className="chip">Representative photo</span>}
         </div>
       </div>
 
       {preview && (
         <div className="wrap section-action">
           <a className="text-action" href="/celebrations">
-            Explore celebration packages ↗
+            Explore celebration packages <span aria-hidden="true">↗</span>
           </a>
         </div>
       )}

@@ -2,8 +2,28 @@
 import { useRef, useEffect, useState } from "react";
 import Link from "next/link";
 import ContactActions from "@/components/ContactActions";
+import { displayDate } from "@/lib/reservation";
+
+export type RequestKind = "room" | "banquet" | "dining";
+/** Row labels shared by the booking form's summary slip and the receipt, so both read the same. */
+export const CHOICE_LABEL: Record<RequestKind, string> = { room: "Room", banquet: "Package", dining: "Enquiry" };
+export const WHEN_LABEL: Record<RequestKind, string> = { room: "Stay", banquet: "Date", dining: "Date" };
+
+export function nightsBetween(checkin: string, checkout: string) {
+  return checkin && checkout ? Math.round((Date.parse(checkout) - Date.parse(checkin)) / 86400000) : 0;
+}
+/** "Sat, 5 Dec to Mon, 7 Dec" (with the year when asked). Empty when no arrival date is chosen. */
+export function whenText(kind: RequestKind, checkin: string, checkout: string, withYear = false) {
+  if (!checkin) return "";
+  const start = displayDate(checkin, withYear);
+  const hasEnd = kind === "room" ? Boolean(checkout) : Boolean(checkout) && checkout > checkin;
+  return hasEnd ? start + " to " + displayDate(checkout, withYear) : start;
+}
+
 export interface ReceiptDetails {
+  kind: RequestKind;
   name: string;
+  /** The choice as the guest saw it in the form, e.g. "Deluxe Room" or "Gold". */
   preference: string;
   checkin: string;
   checkout: string;
@@ -15,22 +35,27 @@ export default function RequestReceipt({ reference, details }: { reference: stri
   const heading = useRef<HTMLHeadingElement>(null);
   const [copied, setCopied] = useState("");
   useEffect(() => heading.current?.focus(), []);
+  const nights = details.kind === "room" ? nightsBetween(details.checkin, details.checkout) : 0;
+  const rows: [string, string][] = [
+    ["Name", details.name],
+    [CHOICE_LABEL[details.kind], details.preference],
+    [
+      WHEN_LABEL[details.kind],
+      whenText(details.kind, details.checkin, details.checkout, true) +
+        (nights > 0 ? ` (${nights} night${nights === 1 ? "" : "s"})` : ""),
+    ],
+    ...(details.kind === "room" ? [["Rooms", String(details.rooms)] as [string, string]] : []),
+    ["Guests", String(details.guests)],
+    ...(details.specialRequests ? [["Special requests", details.specialRequests] as [string, string]] : []),
+  ];
   const summary = [
     "HOTEL GANGA IMPERIAL — RESERVATION REQUEST",
     "Reference: " + reference,
     "Status: Pending hotel confirmation",
-    "Name: " + details.name,
-    "Preference: " + details.preference,
-    "Arrival / event: " + details.checkin,
-    details.checkout ? "Departure: " + details.checkout : "",
-    details.rooms ? "Rooms requested: " + details.rooms : "",
-    "Guests: " + details.guests,
-    details.specialRequests ? "Special requests: " + details.specialRequests : "",
+    ...rows.map(([label, value]) => label + ": " + value),
     "",
     "This request does not reserve a room or event space. No payment has been taken. Final availability, price and terms must be agreed with the hotel.",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].join("\n");
   function download() {
     const url = URL.createObjectURL(new Blob([summary], { type: "text/plain;charset=utf-8" }));
     const link = document.createElement("a");
@@ -49,15 +74,7 @@ export default function RequestReceipt({ reference, details }: { reference: stri
         Reference <strong>{reference.slice(0, 8).toUpperCase()}</strong>
       </p>
       <dl className="receipt-details">
-        {[
-          ["Guest", details.name],
-          ["Preference", details.preference],
-          ["Arrival / event", details.checkin],
-          ["Departure", details.checkout || "Not requested"],
-          ["Party size", String(details.guests)],
-          ...(details.rooms ? [["Rooms requested", String(details.rooms)]] : []),
-          ...(details.specialRequests ? [["Special requests", details.specialRequests]] : []),
-        ].map(([label, value]) => (
+        {rows.map(([label, value]) => (
           <div key={label}>
             <dt>{label}</dt>
             <dd>{value}</dd>
@@ -93,7 +110,7 @@ export default function RequestReceipt({ reference, details }: { reference: stri
         {copied}
       </p>
       <Link className="btn btn-solid" href="/">
-        Explore the hotel ↗
+        Explore the hotel <span aria-hidden="true">↗</span>
       </Link>
       <p className="small-note">
         Need to talk before the hotel replies? Quote reference {reference.slice(0, 8).toUpperCase()}.{" "}

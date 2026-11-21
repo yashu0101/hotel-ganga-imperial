@@ -10,7 +10,7 @@ export default function GuestClarity() {
             <br />A straightforward request.
           </h2>
           <Link className="text-action" href="/guest-information">
-            Guest guide & FAQs ↗
+            Guest guide & FAQs <span aria-hidden="true">↗</span>
           </Link>
         </div>
         <div className="clarity-grid">

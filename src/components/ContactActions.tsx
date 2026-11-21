@@ -23,7 +23,7 @@ export default function ContactActions({
       {tel && <a href={tel}>Call the hotel</a>}
       {whatsapp && (
         <a href={whatsapp} target="_blank" rel="noreferrer">
-          WhatsApp ↗
+          WhatsApp <span aria-hidden="true">↗</span>
         </a>
       )}
     </div>
