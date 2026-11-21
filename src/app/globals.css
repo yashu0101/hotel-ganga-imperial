@@ -1,5 +1,3 @@
-@import "tailwindcss";
-
 /*
   Hotel Ganga Imperial: global styles.
 
@@ -9,7 +7,9 @@
     3. Shared components      7. Responsive: one block per breakpoint, widest first
     4. Home page sections     8. Reduced motion (last, so it wins without !important)
 
-  Breakpoints (max-width): 1100 nav collapses · 900 tablet · 800 mobile layout · 600 small · 360 narrow.
+  Breakpoints (max-width): 1100 nav collapses · 900 tablet and phone layout · 600 small · 360 narrow.
+  The 900 rules are split in two blocks around the compact-height blocks on purpose: the phone
+  layout must come after them in the cascade.
   Height: (max-height:740px) compact screens. Do not add new values; extend these blocks.
   Each rule is written once. Night panels (hero, amenities, offers, experience, footer, dialog)
   keep light ink in both themes by re-pointing --muted/--accent, not by repeating colours.
@@ -24,6 +24,12 @@
   --brass-soft: #e2c68e;
   --muted-on-night: #c2c1bb;
   --accent-on-night: #e2c68e;
+  /* Fixed ink for night panels (same in both themes) */
+  --ink-on-night: #ece3d2;
+  --cream-on-night: #f4e6c6;
+  --gold-on-night: #d6b77f;
+  --line-on-night: #6e5c3e;
+  --on-brass: #1a140c;
   --display: var(--font-display), "Trajan Pro", "Cinzel", Georgia, serif;
   --body: var(--font-body), "Segoe UI", system-ui, -apple-system, sans-serif;
   --wrap: 1200px;
@@ -127,7 +133,7 @@ footer {
 }
 footer a {
   text-decoration: none;
-  color: #d8cdb8;
+  color: var(--ink-on-night);
 }
 footer a:not(.btn):hover {
   color: var(--brass-soft);
@@ -189,7 +195,7 @@ footer a:not(.btn):hover {
   top: 12px;
   left: 12px;
   background: rgba(18, 24, 39, 0.82);
-  color: #f1e5cc;
+  color: var(--cream-on-night);
   font-size: 0.75rem;
   padding: 4px 10px;
   border: 1px solid rgba(201, 161, 91, 0.6);
@@ -227,16 +233,16 @@ footer a:not(.btn):hover {
 }
 .btn-solid {
   background: var(--brass);
-  color: #1a140c;
+  color: var(--on-brass);
 }
 .btn-solid:hover,
 .btn-solid:focus-visible {
   background: var(--brass-soft);
-  color: #1a140c;
+  color: var(--on-brass);
 }
 .btn-ghost {
   background: transparent;
-  color: #f1e5cc;
+  color: var(--cream-on-night);
 }
 .btn-ghost:hover {
   background: rgba(201, 161, 91, 0.15);
@@ -244,7 +250,7 @@ footer a:not(.btn):hover {
 .ctrl-btn {
   background: none;
   border: 1px solid rgba(201, 161, 91, 0.5);
-  color: #e9dfcb;
+  color: var(--ink-on-night);
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -286,7 +292,7 @@ footer a:not(.btn):hover {
   justify-content: center;
   min-height: 44px;
   font-family: var(--display);
-  color: #f4e6c6;
+  color: var(--cream-on-night);
   text-decoration: none;
   font-size: 1.15rem;
   letter-spacing: 0.1em;
@@ -305,7 +311,7 @@ footer a:not(.btn):hover {
   align-items: center;
 }
 .nav a {
-  color: #e9dfcb;
+  color: var(--ink-on-night);
   text-decoration: none;
   font-size: 13px;
   padding: 6px 0;
@@ -356,7 +362,7 @@ footer a:not(.btn):hover {
   display: none;
   background: none;
   border: 1px solid rgba(201, 161, 91, 0.6);
-  color: #f4e6c6;
+  color: var(--cream-on-night);
   width: 44px;
   height: 44px;
   cursor: pointer;
@@ -379,8 +385,8 @@ footer a:not(.btn):hover {
   margin: auto;
   padding: 24px;
   background: var(--night);
-  color: #f1e5cc;
-  border: 1px solid #73603d;
+  color: var(--cream-on-night);
+  border: 1px solid var(--line-on-night);
   max-width: min(1000px, 94vw);
   max-height: 92dvh;
   overflow: auto;
@@ -400,8 +406,8 @@ footer a:not(.btn):hover {
 }
 .photo-dialog button {
   background: transparent;
-  border: 1px solid #756644;
-  color: #f1e5cc;
+  border: 1px solid var(--line-on-night);
+  color: var(--cream-on-night);
   min-width: 44px;
   min-height: 44px;
   cursor: pointer;
@@ -459,7 +465,7 @@ footer a:not(.btn):hover {
   min-height: 690px;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  color: #f6eedd;
+  color: var(--ink-on-night);
   background: var(--night);
   padding: 80px 0 0;
 }
@@ -493,23 +499,23 @@ footer a:not(.btn):hover {
   background: var(--night);
 }
 .hero .eyebrow {
-  color: #d6b77f;
+  color: var(--gold-on-night);
 }
 .hero h1 {
   font-size: clamp(40px, 4.7vw, 68px);
   line-height: 1.12;
   letter-spacing: -0.025em;
-  color: #f4ead9;
+  color: var(--cream-on-night);
 }
 .hero h1 em {
   font-weight: 400;
-  color: #d8b77a;
+  color: var(--gold-on-night);
 }
 .hero p {
   font-size: 16px;
   line-height: 1.85;
   margin: 28px 0 32px;
-  color: #c7c5bf;
+  color: var(--muted-on-night);
   max-width: 38ch;
 }
 .hero-caption {
@@ -519,18 +525,18 @@ footer a:not(.btn):hover {
   z-index: 2;
   font-size: 11px;
   letter-spacing: 0.2em;
-  color: #f4ead9;
+  color: var(--cream-on-night);
 }
 .hero-details {
   display: flex;
   gap: 24px;
   margin-top: 48px;
-  color: #cdb078;
+  color: var(--gold-on-night);
   font-size: 11px;
   letter-spacing: 0.2em;
 }
 .hero-details span + span {
-  border-left: 1px solid #685b43;
+  border-left: 1px solid var(--line-on-night);
   padding-left: 24px;
 }
 
@@ -662,13 +668,13 @@ footer a:not(.btn):hover {
     linear-gradient(180deg, rgba(18, 24, 39, 0.96), rgba(18, 24, 39, 0.9)),
     url("/images/image-15.jpeg") 50% 50% / cover fixed,
     var(--night);
-  color: #ece3d2;
+  color: var(--ink-on-night);
 }
 .amen h2 {
-  color: #f4e6c6;
+  color: var(--cream-on-night);
 }
 .amen .head p {
-  color: #c6c0b3;
+  color: var(--muted-on-night);
 }
 .amen-feature {
   display: grid;
@@ -695,7 +701,7 @@ footer a:not(.btn):hover {
   content: "";
   position: absolute;
   inset: 45% 0 0;
-  background: linear-gradient(transparent, #121827b3);
+  background: linear-gradient(transparent, color-mix(in srgb, var(--night) 70%, transparent));
   pointer-events: none;
 }
 .tile figcaption {
@@ -705,7 +711,7 @@ footer a:not(.btn):hover {
   z-index: 1;
   font-family: var(--display);
   font-size: 19px;
-  color: #f7e7c4;
+  color: var(--cream-on-night);
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
 }
 .amen-list {
@@ -720,7 +726,7 @@ footer a:not(.btn):hover {
   padding: 20px 12px 0;
   text-align: center;
   font-size: 12px;
-  color: #dcd1bd;
+  color: var(--ink-on-night);
 }
 .amen-list svg {
   width: 26px;
@@ -855,7 +861,7 @@ footer a:not(.btn):hover {
   bottom: 0;
   padding: 12px 14px;
   background: linear-gradient(0deg, rgba(18, 24, 39, 0.85), transparent);
-  color: #f4e6c6;
+  color: var(--cream-on-night);
   font-family: var(--display);
 }
 .fan .chip {
@@ -899,14 +905,14 @@ footer a:not(.btn):hover {
 /* Offers (night panel) */
 .offers-sec {
   background: linear-gradient(135deg, rgba(18, 24, 39, 0.97), rgba(27, 34, 54, 0.95));
-  color: #ece3d2;
+  color: var(--ink-on-night);
   overflow: hidden;
 }
 .offers-sec h2 {
-  color: #f4e6c6;
+  color: var(--cream-on-night);
 }
 .offers-sec .head p {
-  color: #c6c0b3;
+  color: var(--muted-on-night);
 }
 .offers-grid {
   display: grid;
@@ -933,18 +939,18 @@ footer a:not(.btn):hover {
 }
 .offer-card h3 {
   font-family: var(--display);
-  color: #f4e6c6;
+  color: var(--cream-on-night);
   font-size: 1.3rem;
   margin-bottom: 10px;
 }
 .offer-card p {
-  color: #c6c0b3;
+  color: var(--muted-on-night);
   font-size: 0.92rem;
   margin-bottom: 16px;
 }
 .offer-valid {
   font-size: 0.8rem;
-  color: #c4bbaa;
+  color: var(--muted-on-night);
   margin-bottom: 18px;
   padding-top: 12px;
   border-top: 1px solid rgba(201, 161, 91, 0.15);
@@ -1007,6 +1013,17 @@ footer a:not(.btn):hover {
 .welcome-gates.open {
   pointer-events: none;
 }
+/* Failsafe: if JavaScript fails to load or hydrate, the gates still get out of the way.
+   The scripted intro finishes in ~1.4s and unmounts the gates well before this fires. */
+.welcome-gates:not(.replaying) {
+  animation: welcome-gates-failsafe 0s linear 4s forwards;
+}
+@keyframes welcome-gates-failsafe {
+  to {
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
 html[data-welcome-seen] .welcome-gates:not(.replaying) {
   display: none;
 }
@@ -1035,7 +1052,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   width: 6px;
   height: 120px;
   margin-top: -60px;
-  background: linear-gradient(#e2c68e, #9c7738);
+  background: linear-gradient(var(--brass-soft), #9c7738);
   border-radius: 3px;
   box-shadow: 0 0 18px rgba(226, 198, 142, 0.6);
 }
@@ -1056,10 +1073,10 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
 .gate-panel {
   position: absolute;
   inset: 38px;
-  border: 1px solid #c9a15b55;
+  border: 1px solid color-mix(in srgb, var(--brass) 33%, transparent);
   box-shadow:
     inset 0 0 0 8px var(--night),
-    inset 0 0 0 9px #c9a15b33;
+    inset 0 0 0 9px color-mix(in srgb, var(--brass) 20%, transparent);
 }
 .crest {
   position: absolute;
@@ -1068,7 +1085,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   width: 80%;
   transform: translate(-50%, -50%);
   font-family: var(--display);
-  color: #f4e6c6;
+  color: var(--cream-on-night);
   letter-spacing: 0.04em;
   font-size: clamp(0.9rem, 2vw, 1.1rem);
   text-align: center;
@@ -1087,20 +1104,20 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
 .crest span {
   display: block;
   font-size: clamp(32px, 6vw, 72px);
-  text-shadow: 0 0 35px #c9a15b33;
+  text-shadow: 0 0 35px color-mix(in srgb, var(--brass) 20%, transparent);
 }
 .crest i {
   display: block;
   font: italic 16px var(--display);
   letter-spacing: 0.06em;
   margin-top: 18px;
-  color: #cbb78e;
+  color: var(--gold-on-night);
 }
 .gate-skip {
   position: absolute;
   right: 28px;
   bottom: 30px;
-  border: 1px solid #c9a15b66;
+  border: 1px solid color-mix(in srgb, var(--brass) 40%, transparent);
   background: var(--night);
   color: var(--brass-soft);
   padding: 12px 18px;
@@ -1115,9 +1132,9 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
 /* Architectural journey: sticky 3D building scene (night panel) */
 .restored-experience {
   position: relative;
-  height: 180svh;
+  height: 140svh;
   padding: 0;
-  color: #ece3d2;
+  color: var(--ink-on-night);
   background: radial-gradient(ellipse at 70% 50%, #293146, var(--night) 65%);
   isolation: isolate;
 }
@@ -1139,10 +1156,10 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   z-index: 2;
 }
 .experience-copy .eyebrow {
-  color: #d1b078;
+  color: var(--gold-on-night);
 }
 .experience-hint {
-  color: #adafae;
+  color: var(--muted-on-night);
   font-size: 12px;
   max-width: 32ch;
 }
@@ -1152,13 +1169,13 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
 }
 .experience-story h2 {
   font-size: clamp(30px, 3.8vw, 48px);
-  color: #f2e6cf;
+  color: var(--cream-on-night);
   max-width: 13ch;
   margin: 14px 0 20px;
 }
 .experience-story p {
   font-size: 15px;
-  color: #c0b9ac;
+  color: var(--muted-on-night);
   max-width: 36ch;
 }
 .experience-index {
@@ -1176,8 +1193,8 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
 .experience-controls button {
   width: 44px;
   height: 44px;
-  border: 1px solid #c9a15b55;
-  color: #c5b89e;
+  border: 1px solid color-mix(in srgb, var(--brass) 33%, transparent);
+  color: var(--gold-on-night);
   background: transparent;
   font: 12px var(--body);
   cursor: pointer;
@@ -1194,7 +1211,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
 .experience-track {
   width: 206px;
   height: 2px;
-  background: #c9a15b33;
+  background: color-mix(in srgb, var(--brass) 20%, transparent);
   margin-top: 18px;
   overflow: hidden;
 }
@@ -1212,8 +1229,8 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   min-height: 44px;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid #c9a15b55;
-  color: #d8be8b;
+  border-bottom: 1px solid color-mix(in srgb, var(--brass) 33%, transparent);
+  color: var(--gold-on-night);
   font: 12px var(--body);
   padding: 0 0 5px;
   margin-top: 24px;
@@ -1231,11 +1248,11 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   position: absolute;
   width: 380px;
   height: 380px;
-  border: 1px solid #c9a15b17;
+  border: 1px solid color-mix(in srgb, var(--brass) 9%, transparent);
   border-radius: 50%;
   box-shadow:
-    0 0 0 45px #c9a15b06,
-    0 0 0 90px #c9a15b03;
+    0 0 0 45px color-mix(in srgb, var(--brass) 2%, transparent),
+    0 0 0 90px color-mix(in srgb, var(--brass) 1%, transparent);
   transform: rotateX(60deg) translateY(140px);
 }
 .bld {
@@ -1329,7 +1346,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   bottom: 46px;
   height: 14px;
   background: #14161d;
-  border-top: 2px solid #e2c68e;
+  border-top: 2px solid var(--brass-soft);
   box-shadow: 0 -4px 20px rgba(226, 198, 142, 0.5);
 }
 .face .sign {
@@ -1341,7 +1358,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   font-family: var(--display);
   font-size: 11px;
   letter-spacing: 0.18em;
-  color: #f7e7c4;
+  color: var(--cream-on-night);
   text-shadow: 0 0 8px rgba(255, 220, 160, 0.9);
 }
 .face .door3d {
@@ -1361,7 +1378,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   bottom: 38px;
   width: 155px;
   margin: 0;
-  border: 4px solid #e9dfcb;
+  border: 4px solid var(--ink-on-night);
   transform: rotate(5deg);
   box-shadow: 0 15px 40px #0006;
   animation: photo-slide 0.6s ease both;
@@ -1372,7 +1389,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   object-fit: cover;
 }
 .experience-photo figcaption {
-  background: #e9dfcb;
+  background: var(--ink-on-night);
   color: #514733;
   font-size: 11px;
   text-align: center;
@@ -1392,7 +1409,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
 /* Footer (night panel) */
 .professional-footer {
   background: var(--night-deep);
-  color: #eee4d3;
+  color: var(--ink-on-night);
   padding: 64px 0 24px;
 }
 .footer-grid {
@@ -1409,17 +1426,17 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
 }
 .footer-grid p:not(.small-note) {
   font-size: 14px;
-  color: #bfc0c1;
+  color: var(--muted-on-night);
 }
 .footer-grid address {
   font-style: normal;
   font-size: 14px;
   margin-bottom: 14px;
-  color: #bfc0c1;
+  color: var(--muted-on-night);
 }
 .footer-grid a:not(.btn) {
   display: block;
-  color: #d6b77f;
+  color: var(--gold-on-night);
   font-size: 14px;
   margin-bottom: 10px;
 }
@@ -1440,11 +1457,11 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
 .footer-bottom span {
   margin-right: auto;
   font-size: 11px;
-  color: #bfc0c1;
+  color: var(--muted-on-night);
 }
 .footer-bottom > a:not(.wordmark) {
   font-size: 12px;
-  color: #d6b77f;
+  color: var(--gold-on-night);
 }
 
 /* ========== 5. Pages ========== */
@@ -1461,11 +1478,11 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   align-items: center;
   padding: 22px max(24px, calc((100vw - 1200px) / 2));
   background: var(--night);
-  border-bottom: 1px solid #4a3e2c;
+  border-bottom: 1px solid var(--line-on-night);
 }
 .reservation-header > a:last-child {
   font-size: 13px;
-  color: #d8c8ac;
+  color: var(--muted-on-night);
   text-decoration: none;
 }
 .reservation-layout {
@@ -1628,6 +1645,14 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   opacity: 0.5;
   cursor: wait;
 }
+.request-alt {
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.request-alt .contact-actions {
+  margin-top: 8px;
+}
 .reservation-error {
   padding: 15px;
   border: 1px solid var(--error);
@@ -1696,13 +1721,113 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   line-height: 1.85;
 }
 .login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: var(--night-deep);
   color-scheme: dark;
+}
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  padding: clamp(24px, 7vw, 48px) clamp(20px, 6vw, 40px);
+  background: var(--night-2);
+  border: 1px solid #323a50;
+  border-radius: 12px;
+}
+.login-card h1 {
+  margin: 0 0 8px;
+  color: var(--brass);
+  font-size: 1.6rem;
+  text-align: center;
+}
+.login-card .subtitle {
+  margin-bottom: 32px;
+  color: var(--muted-on-night);
+  font-size: 0.85rem;
+  text-align: center;
+}
+.login-card label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted-on-night);
+  font-size: 0.85rem;
+}
+.login-card input {
+  width: 100%;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  background: var(--night);
+  border: 1px solid #323a50;
+  border-radius: 6px;
+  color: var(--ink-on-night);
+  font: inherit;
+  font-size: 1rem;
+}
+.login-card input:focus {
+  outline: none;
+  border-color: var(--brass);
+}
+.login-btn {
+  width: 100%;
+  padding: 14px;
+  background: var(--brass);
+  color: var(--night);
+  border: none;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.login-btn:hover {
+  background: var(--brass-soft);
+}
+.login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.login-error {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: rgb(201 91 91 / 0.15);
+  border: 1px solid rgb(201 91 91 / 0.4);
+  border-radius: 6px;
+  color: #e88;
+  font-size: 0.85rem;
+  text-align: center;
+}
+.login-logo {
+  margin-bottom: 32px;
+  text-align: center;
+}
+.login-logo small {
+  display: block;
+  color: var(--muted-on-night);
+  font-size: 0.6rem;
+  letter-spacing: 0.4em;
+}
+.login-logo span {
+  color: var(--cream-on-night);
+  font-family: var(--display);
+  font-size: 1.1rem;
+  letter-spacing: 0.14em;
 }
 .login-page .back-link {
   min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-top: 20px;
+  color: var(--muted-on-night);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+.login-page .back-link:hover {
+  color: var(--brass);
 }
 
 /* Admin analytics charts */
@@ -1713,8 +1838,8 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   margin-bottom: 24px;
 }
 .chart-card {
-  background: #1a2035;
-  border: 1px solid #252d42;
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-line);
   border-radius: 8px;
   padding: 24px;
 }
@@ -1742,13 +1867,13 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
 .bar-fill {
   width: 100%;
   border-radius: 3px 3px 0 0;
-  background: linear-gradient(180deg, #c9a15b, #8c6a33);
+  background: linear-gradient(180deg, var(--brass), #8c6a33);
   min-height: 2px;
   transition: height 0.5s;
 }
 .bar-label {
   font-size: 0.65rem;
-  color: #8a8070;
+  color: var(--adm-muted);
   white-space: nowrap;
 }
 .bar-value {
@@ -1772,7 +1897,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   align-items: center;
   gap: 8px;
   font-size: 0.82rem;
-  color: #ada394;
+  color: var(--adm-muted);
 }
 .donut-legend i {
   display: inline-block;
@@ -1878,7 +2003,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
     height: 100dvh;
   }
   .menu-is-open .bar {
-    border-bottom: 1px solid #c9a15b22;
+    border-bottom: 1px solid color-mix(in srgb, var(--brass) 13%, transparent);
   }
   .menu-is-open .bar > .wordmark {
     position: relative;
@@ -1892,14 +2017,14 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    border-color: #c9a15b66;
-    background: #c9a15b09;
+    border-color: color-mix(in srgb, var(--brass) 40%, transparent);
+    background: color-mix(in srgb, var(--brass) 4%, transparent);
     transition:
       background 0.25s,
       border-color 0.25s;
   }
   .menu-btn:hover {
-    background: #c9a15b20;
+    background: color-mix(in srgb, var(--brass) 13%, transparent);
   }
   .menu-btn[aria-expanded="true"] span:nth-child(1) {
     transform: translateY(6px) rotate(45deg);
@@ -1919,11 +2044,11 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
     align-items: flex-start;
     gap: 0;
     padding: 104px 26px max(24px, env(safe-area-inset-bottom));
-    background: radial-gradient(ellipse at 100% 10%, #2b3042 0%, transparent 52%), #101725;
+    background: radial-gradient(ellipse at 100% 10%, #2b3042 0%, transparent 52%), var(--night-deep);
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
-    scrollbar-color: #6c5a3a #101725;
+    scrollbar-color: var(--line-on-night) var(--night-deep);
     opacity: 0;
     visibility: hidden;
     transform: translateY(-12px);
@@ -1939,7 +2064,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   }
   .nav a {
     font: 26px var(--display);
-    color: #f1e5cc;
+    color: var(--cream-on-night);
   }
   .nav .cta {
     font: 14px var(--body);
@@ -1957,7 +2082,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   }
   .mobile-menu-intro p {
     font: 25px/1.25 var(--display);
-    color: #efe5d4;
+    color: var(--ink-on-night);
     margin: 8px 0 0;
   }
   .nav-links {
@@ -1970,31 +2095,31 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
     gap: 17px;
     min-height: 69px;
     padding: 12px 0;
-    border-top: 1px solid #d4be921c;
+    border-top: 1px solid color-mix(in srgb, var(--brass) 11%, transparent);
     text-decoration: none;
     transition:
       background 0.2s,
       padding 0.25s;
   }
   .nav .menu-destination:last-child {
-    border-bottom: 1px solid #d4be921c;
+    border-bottom: 1px solid color-mix(in srgb, var(--brass) 11%, transparent);
   }
   .nav .menu-destination::after {
     display: none;
   }
   .nav .menu-destination:hover {
     padding-left: 8px;
-    background: #c9a15b08;
+    background: color-mix(in srgb, var(--brass) 3%, transparent);
   }
   .nav .menu-destination:focus-visible {
     outline-offset: 4px;
-    background: #c9a15b08;
+    background: color-mix(in srgb, var(--brass) 3%, transparent);
   }
   .menu-number {
     display: block;
     font: 11px var(--body);
     letter-spacing: 0.08em;
-    color: #c5ab7a;
+    color: var(--gold-on-night);
     align-self: flex-start;
     padding-top: 6px;
   }
@@ -2010,12 +2135,12 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   }
   .menu-link-copy > .mobile-menu-label {
     font: 24px/1.2 var(--display);
-    color: #f2e7d3;
+    color: var(--cream-on-night);
   }
   .menu-link-copy small {
     display: block;
     font: 12px/1.5 var(--body);
-    color: #c0c3c6;
+    color: var(--muted-on-night);
     margin-top: 4px;
     letter-spacing: 0.015em;
   }
@@ -2025,8 +2150,8 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
     width: 28px;
     height: 28px;
     font: 17px var(--body);
-    color: #d2b77f;
-    border: 1px solid #c9a15b26;
+    color: var(--gold-on-night);
+    border: 1px solid color-mix(in srgb, var(--brass) 15%, transparent);
     border-radius: 50%;
   }
   .menu-reservation {
@@ -2034,14 +2159,18 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
     width: 100%;
     padding: 20px;
     margin-top: 23px;
-    background: linear-gradient(125deg, #c9a15b14, #c9a15b04);
-    border: 1px solid #c9a15b38;
+    background: linear-gradient(
+      125deg,
+      color-mix(in srgb, var(--brass) 8%, transparent),
+      color-mix(in srgb, var(--brass) 2%, transparent)
+    );
+    border: 1px solid color-mix(in srgb, var(--brass) 22%, transparent);
     border-radius: 4px;
   }
   .menu-reservation-label {
     font: 11px/1.5 var(--body);
     letter-spacing: 0.2em;
-    color: #d8bb86;
+    color: var(--gold-on-night);
   }
   .nav .menu-reservation .cta {
     margin: 12px 0 0;
@@ -2058,7 +2187,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   .menu-reservation > small {
     display: block;
     font: 12px/1.5 var(--body);
-    color: #c0c3c6;
+    color: var(--muted-on-night);
     margin-top: 11px;
   }
   .menu-utilities {
@@ -2072,7 +2201,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   }
   .menu-utilities > .mobile-menu-label {
     font: 12px var(--body);
-    color: #c0c3c6;
+    color: var(--muted-on-night);
   }
   .menu-utilities .ctrl-btn {
     display: flex;
@@ -2082,8 +2211,8 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
     height: 44px;
     padding: 0 14px;
     font: 12px var(--body);
-    color: #d2c5a9;
-    border-color: #c9a15b3b;
+    color: var(--muted-on-night);
+    border-color: color-mix(in srgb, var(--brass) 23%, transparent);
   }
   .menu-utilities .ctrl-btn > .mobile-menu-label {
     font-size: 12px;
@@ -2109,7 +2238,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
   }
 
   .restored-experience {
-    height: 170svh;
+    height: 130svh;
   }
   .b3d-sticky {
     grid-template-columns: 1fr;
@@ -2271,7 +2400,7 @@ html[data-welcome-seen] .welcome-gates:not(.replaying) {
 }
 
 /* ≤800: single-column mobile layout */
-@media (max-width: 800px) {
+@media (max-width: 900px) {
   /* The architectural tour is tap-driven on phones: normal height, no sticky scroll scene. */
   .restored-experience {
     height: auto;

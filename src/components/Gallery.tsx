@@ -45,7 +45,7 @@ export default function Gallery() {
               }}
               aria-label={"View " + p.caption}
             >
-              <Image src={p.src} alt={p.caption} width={480} height={360} sizes="(max-width:800px) 50vw, 25vw" />
+              <Image src={p.src} alt={p.caption} width={480} height={360} sizes="(max-width:900px) 50vw, 25vw" />
             </button>
           ))}
         </div>

@@ -418,7 +418,9 @@ export async function addBooking(b: NewBooking): Promise<Booking> {
     const sql = getSQL();
     await prepareBookingExtensions();
     await sql.transaction([
-      sql`INSERT INTO bookings (id, name, mobile, email, city, country, gender, room_type, checkin, checkout, guests, amount, payment_status, booking_status, payment_id, created_at, rooms_requested, special_requests) VALUES (${id}, ${b.name}, ${b.mobile}, ${b.email}, ${b.city}, ${b.country}, ${b.gender}, ${b.roomType}, ${b.checkin}, ${b.checkout}, ${b.guests}, ${b.amount}, 'pending', 'pending', '', ${now}, ${b.roomsRequested ?? 1}, ${b.specialRequests ?? ""})`,
+      sql`INSERT INTO bookings (
+        id, name, mobile, email, city, country, gender, room_type, checkin, checkout, guests, amount,
+        payment_status, booking_status, payment_id, created_at, rooms_requested, special_requests) VALUES (${id}, ${b.name}, ${b.mobile}, ${b.email}, ${b.city}, ${b.country}, ${b.gender}, ${b.roomType}, ${b.checkin}, ${b.checkout}, ${b.guests}, ${b.amount}, 'pending', 'pending', '', ${now}, ${b.roomsRequested ?? 1}, ${b.specialRequests ?? ""})`,
       sql`INSERT INTO notification_outbox (id, booking_id, status, attempts, created_at) VALUES (${id}, ${id}, 'pending', 0, ${now})`,
     ]);
     return booking;

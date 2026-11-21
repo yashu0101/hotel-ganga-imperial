@@ -29,7 +29,8 @@ Before calling work done, run all of these: lint, `tsc --noEmit`, `format:check`
 **Rendering.** Public pages are server components. Pages that show stored content (`/`, `/rooms`, `/rooms/[slug]`, `/dining`, `/celebrations`) load it once on the server, pass it to components as props, and are statically generated with `revalidate = 300`. Admin writes call `revalidatePath("/", "layout")`, so changes appear on the next visit. Client components are only for real interactivity (header menu, `/book` form, gallery dialog, 3D tour, welcome gates, theme toggle). The public site is English-only.
 
 **Storage (`src/lib/db.ts`).** Two backends with identical behaviour, chosen by `DATABASE_URL`:
-- Postgres (Neon). Base tables come from `src/lib/db-schema.ts` (`initDB`, run via `/api/seed`, which needs admin auth plus `ALLOW_DATABASE_SEED=true`; it never seeds reviews). Newer columns/tables (`rooms_requested`, `special_requests`, `notification_outbox`) are added at runtime by additive DDL.
+
+- Postgres (Neon). Required for Vercel production deploys: `next.config.ts` fails the build when `VERCEL_ENV=production` and `DATABASE_URL` is unset. Base tables come from `src/lib/db-schema.ts` (`initDB`, run via `/api/seed`, which needs admin auth plus `ALLOW_DATABASE_SEED=true`; it never seeds reviews). Newer columns/tables (`rooms_requested`, `special_requests`, `notification_outbox`) are added at runtime by additive DDL.
 - `data/db.json` (committed; content only, no guest data). Writes replace the file atomically; a corrupt file throws instead of being overwritten. On a read-only filesystem (e.g. Vercel without `DATABASE_URL`) reads fall back to built-in content and writes throw `StorageUnavailableError`, which routes turn into a 503.
 - Enquiries, offers, banquet packages, dining options and reviews share one generic `collection()` implementation driven by a `CollectionDef` (field ↔ column map, encode/decode, sort order). To add a collection or field, extend its definition; both backends then store only declared fields. Bookings + outbox and rooms have their own code.
 - Rooms are addressed by a stable `id` (Postgres: serial `idx`; JSON: derived from the name on first read). Never by list position.
@@ -37,6 +38,7 @@ Before calling work done, run all of these: lint, `tsc --noEmit`, `format:check`
 **Notification outbox.** `addBooking` writes the booking and an outbox row in the same step (a Postgres transaction, or one JSON write). `src/lib/notifications.ts` delivers pending events to `NOTIFICATION_WEBHOOK_URL`. It needs an HTTPS URL plus a secret of at least 32 characters. Each event carries an HMAC-SHA256 `X-Hotel-Signature` over `timestamp + '.' + body`, and delivery is at least once. When delivery isn't configured, events stay queued. Retries are manual: admin dashboard → `/api/notifications`. No scheduled worker is bundled.
 
 **API routes (`src/app/api/*/route.ts`).**
+
 - Admin collections (`rooms`, `offers`, `banquet`, `dining`, `reviews`) are one-liners over `adminCollectionRoute()` in `src/lib/admin-route.ts`: session check, validation against the schema in `src/lib/validation.ts` (unknown fields rejected), responses `{ item }` / `{ success }`, revalidation. Only `rooms` and `banquet` have a public GET (filtered to visible/active, for the booking form).
 - `bookings` and `enquiries` only allow status changes. There is no middleware/proxy: every admin handler checks the session itself (use the helpers in `admin-route.ts`).
 - The only public write is `POST /api/book`, validated with `src/lib/reservation.ts` (Asia/Kolkata dates). The rate limiter (`src/lib/request-limit.ts`, per process) keys on the client address from the hosting proxy, never on form fields, and evicts instead of refusing when full. Logins count failures per address plus a higher per-account ceiling.
@@ -45,19 +47,20 @@ Before calling work done, run all of these: lint, `tsc --noEmit`, `format:check`
 **Admin dashboard.** `src/app/admin/page.tsx` is a thin shell; pieces live in `src/components/admin/` (`RequestTable` for requests/enquiries with search, filters and call/WhatsApp links; `CollectionEditor` configured per collection in `collections.tsx`; `Analytics`). `adminRequest()` throws on non-2xx, so the UI only changes after the server confirms. Admin strings are in `src/lib/i18n.ts` (en/hi, admin only).
 
 **Content.**
+
 - `src/lib/hotel-content.ts`: room details and policies. Unapproved facts stay `""`: guests never see them, and `missingLaunchDetails()` lists them in the admin launch checklist.
 - `src/lib/config.ts`: site config, contact details and images. Representative images are flagged as samples.
 - `src/lib/context.tsx`: the client `AppProvider` (theme, plus the admin's language).
 - `src/lib/seo.ts`: Hotel JSON-LD built only from known facts.
 - `public/images`: duplicates were removed; `src/lib/image-redirects.ts` redirects old filenames.
 
-Theme is set through `data-theme` on `<html>`; an inline script in `layout.tsx` sets it before paint. Fonts come from `next/font` (`--font-display`, `--font-body`). Styles live in `globals.css` (ordered: tokens, base, components, sections, pages, motion, then one block per breakpoint 1100/900/800/600/360, then reduced motion) and `hospitality.css`; `admin.css` is admin-only.
+Theme is set through `data-theme` on `<html>`; an inline script in `layout.tsx` sets it before paint. Fonts come from `next/font` (`--font-display`, `--font-body`). Styles live in `globals.css` (ordered: tokens, base, components, sections, pages, motion, then one block per breakpoint 1100/900/600/360 (900 is split around the compact-height blocks), then reduced motion) and `hospitality.css`; `admin.css` is admin-only.
 
 **Security headers** (CSP, frame/sniff/referrer/permissions, HSTS) are set in `next.config.ts`. Scripts need `'unsafe-inline'` because pages are static; don't add third-party script or font origins without updating the CSP.
 
 **SEO gating.** `robots`, `sitemap` and metadata stay non-indexable unless `SITE_READY_FOR_INDEXING=true`. `NEXT_PUBLIC_SITE_URL` sets `metadataBase`. Contact details come from the `NEXT_PUBLIC_HOTEL_*` env vars (baked in at build time). Unset ones are hidden from guests, never shown as placeholder text, and appear in the admin launch checklist. Don't present sample reviews or photos as genuine: sample photos keep a short "representative photo" disclosure. Every page should set a `description`.
 
-**Welcome gates.** `DoorIntro` plays once per browser session. The inline script in `layout.tsx` sets `<html data-welcome-seen>` before paint for returning visitors and same-site referrers, and CSS hides the gates, so they never flash. Any key, scroll or swipe skips them. See `.env.example` for all variables.
+**Welcome gates.** `DoorIntro` plays once per browser session. The inline script in `layout.tsx` sets `<html data-welcome-seen>` before paint for returning visitors and same-site referrers, and CSS hides the gates, so they never flash. Any key, scroll or swipe skips them. If JavaScript never runs, a `<noscript>` style hides them, and a CSS-only failsafe animation hides them after 4s if hydration fails. See `.env.example` for all variables.
 
 ## Tests
 

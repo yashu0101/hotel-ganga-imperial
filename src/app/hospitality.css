@@ -9,8 +9,8 @@
   justify-content: space-between;
   gap: 24px;
   padding: 22px max(24px, calc((100vw - 1200px) / 2 + 24px));
-  background: #121827;
-  border-bottom: 1px solid #c9a15b33;
+  background: var(--night);
+  border-bottom: 1px solid color-mix(in srgb, var(--brass) 20%, transparent);
 }
 .interior-header nav {
   display: flex;
@@ -18,7 +18,7 @@
   align-items: center;
 }
 .interior-header nav a {
-  color: #eee3cf;
+  color: var(--ink-on-night);
   text-decoration: none;
   font-size: 13px;
   min-height: 44px;
@@ -27,20 +27,20 @@
 }
 .theme-switch {
   background: transparent;
-  border: 1px solid #c9a15b66;
+  border: 1px solid color-mix(in srgb, var(--brass) 40%, transparent);
   border-radius: 24px;
   min-height: 40px;
   padding: 8px 14px;
-  color: #e2c68e;
+  color: var(--brass-soft);
   font: 12px var(--body);
   cursor: pointer;
 }
 .theme-switch:hover {
-  background: #c9a15b15;
+  background: color-mix(in srgb, var(--brass) 8%, transparent);
 }
 .interior-header a:focus-visible,
 .theme-switch:focus-visible {
-  outline-color: #e2c68e;
+  outline-color: var(--brass-soft);
 }
 .interior-footer {
   display: flex;
@@ -48,8 +48,8 @@
   flex-wrap: wrap;
   align-items: center;
   padding: 28px max(24px, calc((100vw - 1200px) / 2 + 24px));
-  background: #0d1320;
-  color: #c4c0b7;
+  background: var(--night-deep);
+  color: var(--muted-on-night);
 }
 .interior-footer span {
   margin-right: auto;
@@ -372,26 +372,26 @@
 }
 .location-card {
   padding: 36px;
-  background: linear-gradient(145deg, #263249, #121827);
-  color: #f1e7d6;
-  border: 1px solid #c9a15b55;
+  background: linear-gradient(145deg, #263249, var(--night));
+  color: var(--ink-on-night);
+  border: 1px solid color-mix(in srgb, var(--brass) 33%, transparent);
   display: flex;
   flex-direction: column;
   justify-content: center;
 }
 .location-card > span {
   font: 80px var(--display);
-  color: #c9a15b;
+  color: var(--brass);
 }
 .location-card p:not(.small-note) {
   font-size: 14px;
-  color: #c0beb7;
+  color: var(--muted-on-night);
 }
 .location-card .small-note {
-  color: #c0beb7;
+  color: var(--muted-on-night);
 }
 .location-card h2 {
-  color: #f1e7d6;
+  color: var(--ink-on-night);
 }
 .location-card .btn {
   align-self: start;
@@ -405,7 +405,7 @@
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  color: #d8c8ac;
+  color: var(--muted-on-night);
   font-size: 13px;
   text-decoration: none;
 }
@@ -459,7 +459,7 @@
 .reservation-success .btn {
   margin-top: 14px;
 }
-@media (max-width: 800px) {
+@media (max-width: 900px) {
   .interior-header {
     padding: 20px 22px;
     flex-wrap: wrap;

@@ -3,11 +3,11 @@ import { BOOKING_STATUSES } from "@/lib/validation";
 
 // Request volume only: no payments are taken on this site, so there is no revenue to chart.
 const COLORS: Record<string, string> = {
-  pending: "#E2C68E",
-  confirmed: "#9ccbec",
-  "checked-in": "#93e3a0",
-  "checked-out": "#c4c4c4",
-  cancelled: "#8d8d8d",
+  pending: "var(--brass-soft)",
+  confirmed: "var(--adm-info)",
+  "checked-in": "var(--adm-ok)",
+  "checked-out": "var(--adm-muted)",
+  cancelled: "var(--adm-muted)",
 };
 
 function Bars({ data }: { data: { label: string; value: number }[] }) {
@@ -62,7 +62,7 @@ export default function Analytics({ bookings, t }: { bookings: Booking[]; t: (ke
           <h3>{t("admin.bookingStatus")}</h3>
           <div className="donut-wrap">
             <svg width="140" height="140" viewBox="0 0 42 42" role="img" aria-label={t("admin.bookingStatus")}>
-              <circle cx="21" cy="21" r="15.9" fill="none" stroke="#252d42" strokeWidth="6" />
+              <circle cx="21" cy="21" r="15.9" fill="none" stroke="var(--adm-line)" strokeWidth="6" />
               {arcs.map(a => (
                 <circle
                   key={a.status}

@@ -4,8 +4,8 @@ import Image from "next/image";
 import { EXPERIENCE_STEPS } from "@/lib/config";
 
 // Desktop: scrolling through the tall sticky section turns the building.
-// Phones (<=800px) and reduced motion: the section is normal height and the 01-04 buttons turn it.
-const COMPACT = "(max-width: 800px)";
+// Phones and small tablets (<=900px) and reduced motion: the section is normal height and the 01-04 buttons turn it.
+const COMPACT = "(max-width: 900px)";
 export default function Experience() {
   const sectionRef = useRef<HTMLElement>(null);
   const buildingRef = useRef<HTMLDivElement>(null);
@@ -155,7 +155,7 @@ export default function Experience() {
               alt=""
               width={320}
               height={220}
-              sizes="(max-width:800px) 120px, 180px"
+              sizes="(max-width:900px) 120px, 180px"
             />
             <figcaption>Representative imagery</figcaption>
           </figure>

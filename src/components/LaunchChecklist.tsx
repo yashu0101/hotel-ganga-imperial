@@ -9,20 +9,20 @@ export default function LaunchChecklist({ rooms }: { rooms: { name: string; samp
   return (
     <details
       style={{
-        background: "#1a2035",
-        border: "1px solid #6b5a35",
+        background: "var(--adm-surface)",
+        border: "1px solid var(--line-on-night)",
         borderRadius: 8,
         padding: "16px 20px",
         marginBottom: 24,
       }}
     >
-      <summary style={{ cursor: "pointer", color: "#e2c68e" }}>
+      <summary style={{ cursor: "pointer", color: "var(--brass-soft)" }}>
         Launch checklist: {missing.length} guest-facing detail{missing.length === 1 ? "" : "s"} still missing
       </summary>
-      <p style={{ fontSize: ".85rem", color: "#c0beb7", margin: "12px 0 8px" }}>
+      <p style={{ fontSize: ".85rem", color: "var(--adm-muted)", margin: "12px 0 8px" }}>
         These are hidden from guests until provided. Contact details are environment variables and need a redeploy.
       </p>
-      <ul style={{ margin: 0, paddingLeft: 20, fontSize: ".85rem", color: "#ede6da", lineHeight: 1.8 }}>
+      <ul style={{ margin: 0, paddingLeft: 20, fontSize: ".85rem", color: "var(--adm-text)", lineHeight: 1.8 }}>
         {missing.map(item => (
           <li key={item}>{item}</li>
         ))}
