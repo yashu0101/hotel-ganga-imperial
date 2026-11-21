@@ -58,7 +58,7 @@ export default function LoginPage() {
           max-width: 400px;
         }
         .login-card h1 {
-          font-family: "Marcellus", Georgia, serif;
+          font-family: var(--display);
           font-weight: 400;
           font-size: 1.6rem;
           color: #C9A15B;
@@ -129,7 +129,7 @@ export default function LoginPage() {
           color: #ADA394;
         }
         .login-logo span {
-          font-family: "Marcellus", Georgia, serif;
+          font-family: var(--display);
           color: #F4E6C6;
           font-size: 1.1rem;
           letter-spacing: .14em;
@@ -161,7 +161,7 @@ export default function LoginPage() {
             id="email"
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={e => setEmail(e.target.value)}
             placeholder="admin@gangaimperial.com"
             required
             autoFocus
@@ -171,7 +171,7 @@ export default function LoginPage() {
             id="password"
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={e => setPassword(e.target.value)}
             placeholder="Enter password"
             required
           />
@@ -179,7 +179,9 @@ export default function LoginPage() {
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
-        <Link href="/" className="back-link">Back to website</Link>
+        <Link href="/" className="back-link">
+          Back to website
+        </Link>
       </div>
     </div>
   );

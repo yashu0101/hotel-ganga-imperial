@@ -63,15 +63,31 @@ export const GALLERY_IMAGES = [
   { src: "/images/image-43.jpeg", caption: "Hotel exterior at night" },
   { src: "/images/image-49.jpeg", caption: "Guest room with seating area" },
   { src: "/images/image-52.jpeg", caption: "Guest room interior detail" },
-  { src: "/images/image-45.jpeg", caption: "Rooftop swimming pool" },
+  { src: "/images/image-23.jpeg", caption: "Rooftop swimming pool" },
   { src: "/images/image-48.jpeg", caption: "Banquet hall" },
   { src: "/images/image-51.jpeg", caption: "Dining and lounge area" },
   { src: "/images/image-50.jpeg", caption: "Spa treatment room" },
   { src: "/images/image-53.jpeg", caption: "Fitness room" },
 ];
 export const EXPERIENCE_STEPS = [
-  { title: "A welcome that glows", description: "Step inside warm interiors, marble details and spaces made for slowing down.", image: "/images/image-44.jpeg" },
-  { title: "Your own quiet retreat", description: "Discover welcoming guest rooms, soft lighting and a little space to make yourself at home.", image: "/images/image-49.jpeg" },
-  { title: "Above the everyday", description: "Take a moment by the rooftop swimming pool, with the city stretching out beyond.", image: "/images/image-45.jpeg" },
-  { title: "Room for celebration", description: "Bring your people together in a chandelier-lit banquet hall for life's special occasions.", image: "/images/image-48.jpeg" },
+  {
+    title: "A welcome that glows",
+    description: "Step inside warm interiors, marble details and spaces made for slowing down.",
+    image: "/images/image-14.jpeg",
+  },
+  {
+    title: "Your own quiet retreat",
+    description: "Discover welcoming guest rooms, soft lighting and a little space to make yourself at home.",
+    image: "/images/image-49.jpeg",
+  },
+  {
+    title: "Above the everyday",
+    description: "Take a moment by the rooftop swimming pool, with the city stretching out beyond.",
+    image: "/images/image-23.jpeg",
+  },
+  {
+    title: "Room for celebration",
+    description: "Bring your people together in a chandelier-lit banquet hall for life's special occasions.",
+    image: "/images/image-48.jpeg",
+  },
 ];

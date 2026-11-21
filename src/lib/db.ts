@@ -1,443 +1,493 @@
-import { NotificationJob, Enquiry, Booking, Offer, Room, BanquetPackage, DiningOption, Review } from "./types";
+import fs from "fs";
+import path from "path";
+import type { NotificationJob, Enquiry, Booking, Offer, Room, BanquetPackage, DiningOption, Review, DB } from "./types";
+import { SITE_CONFIG } from "./config";
 
-// ---------- Detect environment ----------
+// Storage has two interchangeable backends with identical behaviour:
+//   - Postgres (Neon) when DATABASE_URL is set, e.g. on Vercel;
+//   - data/db.json otherwise, for local development.
+// Collections share one generic implementation (below) so both backends apply the same fields,
+// ordering and update semantics. Bookings and the notification outbox are written together
+// atomically and keep their own code.
 const IS_POSTGRES = !!process.env.DATABASE_URL;
 
-// ============================================================
-// POSTGRES (Neon) — used on Vercel
-// ============================================================
+/** Thrown when the JSON file cannot be written, e.g. on a read-only serverless filesystem. */
+export class StorageUnavailableError extends Error {
+  constructor() {
+    super("Storage is read-only. Set DATABASE_URL to save changes in production.");
+    this.name = "StorageUnavailableError";
+  }
+}
+
 function getSQL() {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { neon } = require("@neondatabase/serverless");
   return neon(process.env.DATABASE_URL!);
 }
 
-// ---------- Enquiries (Postgres) ----------
-async function pgGetEnquiries(): Promise<Enquiry[]> {
-  const sql = getSQL();
-  const rows = await sql`SELECT * FROM enquiries ORDER BY created_at DESC`;
-  return rows.map((r: Record<string, unknown>) => ({ id: r.id, name: r.name, phone: r.phone, email: r.email, type: r.type, guests: r.guests, checkin: r.checkin, checkout: r.checkout, message: r.message, status: r.status, createdAt: r.created_at })) as Enquiry[];
-}
-async function pgAddEnquiry(e: Omit<Enquiry, "id" | "createdAt" | "status">): Promise<Enquiry> {
-  const sql = getSQL();
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  await sql`INSERT INTO enquiries (id, name, phone, email, type, guests, checkin, checkout, message, status, created_at) VALUES (${id}, ${e.name}, ${e.phone}, ${e.email}, ${e.type}, ${e.guests}, ${e.checkin}, ${e.checkout}, ${e.message}, 'new', ${now})`;
-  return { ...e, id, createdAt: now, status: "new" };
-}
-async function pgUpdateEnquiryStatus(id: string, status: Enquiry["status"]): Promise<Enquiry | null> {
-  const sql = getSQL();
-  const rows = await sql`UPDATE enquiries SET status = ${status} WHERE id = ${id} RETURNING *`;
-  if (rows.length === 0) return null;
-  const r = rows[0];
-  return { id: r.id, name: r.name, phone: r.phone, email: r.email, type: r.type, guests: r.guests, checkin: r.checkin, checkout: r.checkout, message: r.message, status: r.status, createdAt: r.created_at } as Enquiry;
-}
-async function pgDeleteEnquiry(id: string): Promise<boolean> {
-  const sql = getSQL();
-  const rows = await sql`DELETE FROM enquiries WHERE id = ${id} RETURNING id`;
-  return rows.length > 0;
-}
-
-// ---------- Bookings (Postgres) ----------
-function mapBookingRow(r: Record<string, unknown>): Booking {
-  return { id: r.id, name: r.name, mobile: r.mobile, email: r.email, city: r.city, country: r.country, gender: r.gender, roomType: r.room_type, checkin: r.checkin, checkout: r.checkout, guests: r.guests, amount: r.amount, paymentStatus: r.payment_status, bookingStatus: r.booking_status, paymentId: r.payment_id, roomsRequested: Number(r.rooms_requested ?? 1), createdAt: r.created_at } as Booking;
-}
-async function pgGetBookings(): Promise<Booking[]> {
-  const sql = getSQL();
-  const rows = await sql`SELECT * FROM bookings ORDER BY created_at DESC`;
-  return rows.map(mapBookingRow);
-}
-async function pgAddBooking(b: Omit<Booking, "id" | "createdAt" | "paymentId" | "paymentStatus" | "bookingStatus">): Promise<Booking> {
-  const sql = getSQL();
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  await prepareBookingExtensions();
-  await sql.transaction([sql`INSERT INTO bookings (id, name, mobile, email, city, country, gender, room_type, checkin, checkout, guests, amount, payment_status, booking_status, payment_id, created_at, rooms_requested) VALUES (${id}, ${b.name}, ${b.mobile}, ${b.email}, ${b.city}, ${b.country}, ${b.gender}, ${b.roomType}, ${b.checkin}, ${b.checkout}, ${b.guests}, ${b.amount}, 'pending', 'pending', '', ${now}, ${b.roomsRequested ?? 1})`, sql`INSERT INTO notification_outbox (id, booking_id, status, attempts, created_at) VALUES (${id}, ${id}, 'pending', 0, ${now})`]);
-  return { ...b, id, createdAt: now, paymentId: "", paymentStatus: "pending", bookingStatus: "pending" };
-}
-async function pgUpdateBooking(id: string, updates: Partial<Pick<Booking, "paymentStatus" | "bookingStatus" | "paymentId">>): Promise<Booking | null> {
-  const sql = getSQL();
-  const ps = updates.paymentStatus;
-  const bs = updates.bookingStatus;
-  const pi = updates.paymentId;
-  // Update all three fields (use coalesce to keep existing values)
-  const rows = await sql`UPDATE bookings SET
-    payment_status = COALESCE(${ps ?? null}, payment_status),
-    booking_status = COALESCE(${bs ?? null}, booking_status),
-    payment_id = COALESCE(${pi ?? null}, payment_id)
-    WHERE id = ${id} RETURNING *`;
-  if (rows.length === 0) return null;
-  return mapBookingRow(rows[0]);
-}
-async function pgDeleteBooking(id: string): Promise<boolean> {
-  const sql = getSQL();
-  await prepareBookingExtensions();
-  const [, rows] = await sql.transaction([sql`DELETE FROM notification_outbox WHERE booking_id = ${id}`,sql`DELETE FROM bookings WHERE id = ${id} RETURNING id`]);
-  return rows.length > 0;
-}
-
-// ---------- Rooms (Postgres) ----------
-async function pgGetRooms(): Promise<Room[]> {
-  const sql = getSQL();
-  const rows = await sql`SELECT * FROM rooms ORDER BY idx`;
-  return rows.map((r: Record<string, unknown>) => ({ name: r.name, text: r.text, image: r.image, rate: r.rate, sample: r.sample, hidden: r.hidden })) as Room[];
-}
-async function pgAddRoom(room: Room): Promise<Room[]> {
-  const sql = getSQL();
-  await sql`INSERT INTO rooms (name, text, image, rate, sample, hidden) VALUES (${room.name}, ${room.text}, ${room.image}, ${room.rate}, ${room.sample}, ${!!room.hidden})`;
-  return pgGetRooms();
-}
-async function pgUpdateRoom(index: number, updates: Partial<Room>): Promise<Room[]> {
-  const sql = getSQL();
-  const allRows = await sql`SELECT idx FROM rooms ORDER BY idx`;
-  if (index < 0 || index >= allRows.length) return pgGetRooms();
-  const dbIdx = allRows[index].idx;
-  // Update all fields, using COALESCE to preserve existing values
-  await sql`UPDATE rooms SET
-    name = COALESCE(${updates.name ?? null}, name),
-    text = COALESCE(${updates.text ?? null}, text),
-    image = COALESCE(${updates.image ?? null}, image),
-    rate = COALESCE(${updates.rate ?? null}, rate),
-    sample = COALESCE(${updates.sample ?? null}, sample),
-    hidden = COALESCE(${updates.hidden ?? null}, hidden)
-    WHERE idx = ${dbIdx}`;
-  return pgGetRooms();
-}
-async function pgDeleteRoom(index: number): Promise<Room[]> {
-  const sql = getSQL();
-  const allRows = await sql`SELECT idx FROM rooms ORDER BY idx`;
-  if (index < 0 || index >= allRows.length) return pgGetRooms();
-  const dbIdx = allRows[index].idx;
-  await sql`DELETE FROM rooms WHERE idx = ${dbIdx}`;
-  return pgGetRooms();
-}
-
-// ---------- Offers (Postgres) ----------
-function mapOfferRow(r: Record<string, unknown>): Offer {
-  return { id: r.id, title: r.title, description: r.description, discount: r.discount, validFrom: r.valid_from, validTo: r.valid_to, active: r.active, createdAt: r.created_at } as Offer;
-}
-async function pgGetOffers(): Promise<Offer[]> {
-  const sql = getSQL();
-  const rows = await sql`SELECT * FROM offers ORDER BY created_at DESC`;
-  return rows.map(mapOfferRow);
-}
-async function pgAddOffer(o: Omit<Offer, "id" | "createdAt">): Promise<Offer> {
-  const sql = getSQL();
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  await sql`INSERT INTO offers (id, title, description, discount, valid_from, valid_to, active, created_at) VALUES (${id}, ${o.title}, ${o.description}, ${o.discount}, ${o.validFrom}, ${o.validTo}, ${o.active}, ${now})`;
-  return { ...o, id, createdAt: now };
-}
-async function pgUpdateOffer(id: string, updates: Partial<Offer>): Promise<Offer | null> {
-  const sql = getSQL();
-  const rows = await sql`UPDATE offers SET
-    title = COALESCE(${updates.title ?? null}, title),
-    description = COALESCE(${updates.description ?? null}, description),
-    discount = COALESCE(${updates.discount ?? null}, discount),
-    valid_from = COALESCE(${updates.validFrom ?? null}, valid_from),
-    valid_to = COALESCE(${updates.validTo ?? null}, valid_to),
-    active = COALESCE(${updates.active ?? null}, active)
-    WHERE id = ${id} RETURNING *`;
-  if (rows.length === 0) return null;
-  return mapOfferRow(rows[0]);
-}
-async function pgDeleteOffer(id: string): Promise<boolean> {
-  const sql = getSQL();
-  const rows = await sql`DELETE FROM offers WHERE id = ${id} RETURNING id`;
-  return rows.length > 0;
-}
-
-// ---------- Banquet Packages (Postgres) ----------
-function mapBanquetRow(r: Record<string, unknown>): BanquetPackage {
-  return { id: r.id, name: r.name, description: r.description, capacity: r.capacity, price: r.price, includes: JSON.parse((r.includes as string) || "[]"), active: r.active, createdAt: r.created_at } as BanquetPackage;
-}
-async function pgGetBanquetPackages(): Promise<BanquetPackage[]> {
-  const sql = getSQL();
-  const rows = await sql`SELECT * FROM banquet_packages ORDER BY created_at`;
-  return rows.map(mapBanquetRow);
-}
-async function pgAddBanquetPackage(p: Omit<BanquetPackage, "id" | "createdAt">): Promise<BanquetPackage> {
-  const sql = getSQL();
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  await sql`INSERT INTO banquet_packages (id, name, description, capacity, price, includes, active, created_at) VALUES (${id}, ${p.name}, ${p.description}, ${p.capacity}, ${p.price}, ${JSON.stringify(p.includes)}, ${p.active}, ${now})`;
-  return { ...p, id, createdAt: now };
-}
-async function pgUpdateBanquetPackage(id: string, updates: Partial<BanquetPackage>): Promise<BanquetPackage | null> {
-  const sql = getSQL();
-  const inc = updates.includes ? JSON.stringify(updates.includes) : null;
-  const rows = await sql`UPDATE banquet_packages SET
-    name = COALESCE(${updates.name ?? null}, name),
-    description = COALESCE(${updates.description ?? null}, description),
-    capacity = COALESCE(${updates.capacity ?? null}, capacity),
-    price = COALESCE(${updates.price ?? null}, price),
-    includes = COALESCE(${inc}, includes),
-    active = COALESCE(${updates.active ?? null}, active)
-    WHERE id = ${id} RETURNING *`;
-  if (rows.length === 0) return null;
-  return mapBanquetRow(rows[0]);
-}
-async function pgDeleteBanquetPackage(id: string): Promise<boolean> {
-  const sql = getSQL();
-  const rows = await sql`DELETE FROM banquet_packages WHERE id = ${id} RETURNING id`;
-  return rows.length > 0;
-}
-
-// ---------- Dining Options (Postgres) ----------
-function mapDiningRow(r: Record<string, unknown>): DiningOption {
-  return { id: r.id, name: r.name, description: r.description, price: r.price, category: r.category, active: r.active, createdAt: r.created_at } as DiningOption;
-}
-async function pgGetDiningOptions(): Promise<DiningOption[]> {
-  const sql = getSQL();
-  const rows = await sql`SELECT * FROM dining_options ORDER BY created_at`;
-  return rows.map(mapDiningRow);
-}
-async function pgAddDiningOption(d: Omit<DiningOption, "id" | "createdAt">): Promise<DiningOption> {
-  const sql = getSQL();
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  await sql`INSERT INTO dining_options (id, name, description, price, category, active, created_at) VALUES (${id}, ${d.name}, ${d.description}, ${d.price}, ${d.category}, ${d.active}, ${now})`;
-  return { ...d, id, createdAt: now };
-}
-async function pgUpdateDiningOption(id: string, updates: Partial<DiningOption>): Promise<DiningOption | null> {
-  const sql = getSQL();
-  const rows = await sql`UPDATE dining_options SET
-    name = COALESCE(${updates.name ?? null}, name),
-    description = COALESCE(${updates.description ?? null}, description),
-    price = COALESCE(${updates.price ?? null}, price),
-    category = COALESCE(${updates.category ?? null}, category),
-    active = COALESCE(${updates.active ?? null}, active)
-    WHERE id = ${id} RETURNING *`;
-  if (rows.length === 0) return null;
-  return mapDiningRow(rows[0]);
-}
-async function pgDeleteDiningOption(id: string): Promise<boolean> {
-  const sql = getSQL();
-  const rows = await sql`DELETE FROM dining_options WHERE id = ${id} RETURNING id`;
-  return rows.length > 0;
-}
-
-// ---------- Reviews (Postgres) ----------
-function mapReviewRow(r: Record<string, unknown>): Review {
-  return { id: r.id, name: r.name, rating: r.rating, text: r.text, city: r.city, active: r.active, createdAt: r.created_at } as Review;
-}
-async function pgGetReviews(): Promise<Review[]> {
-  const sql = getSQL();
-  const rows = await sql`SELECT * FROM reviews ORDER BY created_at DESC`;
-  return rows.map(mapReviewRow);
-}
-async function pgAddReview(rev: Omit<Review, "id" | "createdAt">): Promise<Review> {
-  const sql = getSQL();
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  await sql`INSERT INTO reviews (id, name, rating, text, city, active, created_at) VALUES (${id}, ${rev.name}, ${rev.rating}, ${rev.text}, ${rev.city}, ${rev.active}, ${now})`;
-  return { ...rev, id, createdAt: now };
-}
-async function pgUpdateReview(id: string, updates: Partial<Review>): Promise<Review | null> {
-  const sql = getSQL();
-  const rows = await sql`UPDATE reviews SET
-    name = COALESCE(${updates.name ?? null}, name),
-    rating = COALESCE(${updates.rating ?? null}, rating),
-    text = COALESCE(${updates.text ?? null}, text),
-    city = COALESCE(${updates.city ?? null}, city),
-    active = COALESCE(${updates.active ?? null}, active)
-    WHERE id = ${id} RETURNING *`;
-  if (rows.length === 0) return null;
-  return mapReviewRow(rows[0]);
-}
-async function pgDeleteReview(id: string): Promise<boolean> {
-  const sql = getSQL();
-  const rows = await sql`DELETE FROM reviews WHERE id = ${id} RETURNING id`;
-  return rows.length > 0;
-}
-
 // ============================================================
-// JSON FILE — used in local development
+// JSON file
 // ============================================================
-import fs from "fs";
-import path from "path";
-import { DB } from "./types";
-import { SITE_CONFIG } from "./config";
-
 const DB_PATH = path.join(process.cwd(), "data", "db.json");
+const emptyDB = (): DB => ({
+  enquiries: [],
+  bookings: [],
+  offers: [],
+  banquetPackages: [],
+  diningOptions: [],
+  reviews: [],
+  notificationJobs: [],
+  config: { ...SITE_CONFIG, rooms: SITE_CONFIG.rooms.map(r => ({ ...r })) },
+});
 
 function readDB(): DB {
+  let data: DB;
   try {
-    const raw = fs.readFileSync(DB_PATH, "utf-8");
-    const data = JSON.parse(raw);
-    if (!data.bookings) data.bookings = [];
-    if (!data.offers) data.offers = [];
-    if (!data.banquetPackages) data.banquetPackages = [];
-    if (!data.diningOptions) data.diningOptions = [];
-    if (!data.reviews) data.reviews = [];
-    return data;
+    data = JSON.parse(fs.readFileSync(DB_PATH, "utf-8"));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    const initial: DB = { enquiries: [], bookings: [], offers: [], banquetPackages: [], diningOptions: [], reviews: [], config: SITE_CONFIG };
-    writeDB(initial);
-    return initial;
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; // A corrupt file is never overwritten.
+    data = emptyDB();
+    try {
+      writeDB(data);
+    } catch (e) {
+      if (!(e instanceof StorageUnavailableError)) throw e;
+    }
+    return withRoomIds(data);
   }
+  for (const key of [
+    "enquiries",
+    "bookings",
+    "offers",
+    "banquetPackages",
+    "diningOptions",
+    "reviews",
+    "notificationJobs",
+  ] as const)
+    data[key] ??= [];
+  data.config ??= emptyDB().config;
+  return withRoomIds(data);
 }
 
 function writeDB(data: DB): void {
-  const dir = path.dirname(DB_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const temporaryPath = DB_PATH + "." + crypto.randomUUID() + ".tmp";
   try {
+    const dir = path.dirname(DB_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(temporaryPath, JSON.stringify(data, null, 2), "utf-8");
     fs.renameSync(temporaryPath, DB_PATH);
+  } catch (error) {
+    if (["EROFS", "EACCES", "EPERM"].includes((error as NodeJS.ErrnoException).code || ""))
+      throw new StorageUnavailableError();
+    throw error;
   } finally {
     if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
   }
 }
 
-function jsonGetEnquiries(): Enquiry[] { return readDB().enquiries; }
-function jsonAddEnquiry(enquiry: Omit<Enquiry, "id" | "createdAt" | "status">): Enquiry {
+// ============================================================
+// Generic collections (enquiries, offers, banquet packages, dining options, reviews)
+// ============================================================
+interface Field {
+  key: string;
+  column: string;
+  encode?: (v: unknown) => unknown;
+  decode?: (v: unknown) => unknown;
+}
+interface CollectionDef {
+  table: string;
+  jsonKey: "enquiries" | "offers" | "banquetPackages" | "diningOptions" | "reviews";
+  newestFirst: boolean;
+  fields: Field[];
+}
+const f = (key: string, column = key, codec: Partial<Pick<Field, "encode" | "decode">> = {}): Field => ({
+  key,
+  column,
+  ...codec,
+});
+const jsonList = {
+  encode: (v: unknown) => JSON.stringify(v ?? []),
+  decode: (v: unknown) => JSON.parse((v as string) || "[]"),
+};
+
+const ENQUIRIES: CollectionDef = {
+  table: "enquiries",
+  jsonKey: "enquiries",
+  newestFirst: true,
+  fields: ["name", "phone", "email", "type", "guests", "checkin", "checkout", "message", "status"].map(k => f(k)),
+};
+const OFFERS: CollectionDef = {
+  table: "offers",
+  jsonKey: "offers",
+  newestFirst: true,
+  fields: [
+    f("title"),
+    f("description"),
+    f("discount"),
+    f("validFrom", "valid_from"),
+    f("validTo", "valid_to"),
+    f("active"),
+  ],
+};
+const BANQUET: CollectionDef = {
+  table: "banquet_packages",
+  jsonKey: "banquetPackages",
+  newestFirst: false,
+  fields: [f("name"), f("description"), f("capacity"), f("price"), f("includes", "includes", jsonList), f("active")],
+};
+const DINING: CollectionDef = {
+  table: "dining_options",
+  jsonKey: "diningOptions",
+  newestFirst: false,
+  fields: [f("name"), f("description"), f("price"), f("category"), f("active")],
+};
+const REVIEWS: CollectionDef = {
+  table: "reviews",
+  jsonKey: "reviews",
+  newestFirst: true,
+  fields: [f("name"), f("rating"), f("text"), f("city"), f("active")],
+};
+
+type Item = { id: string; createdAt: string };
+/** Only declared fields are stored, in both backends. */
+function pick(def: CollectionDef, input: Record<string, unknown>) {
+  return Object.fromEntries(def.fields.filter(x => input[x.key] !== undefined).map(x => [x.key, input[x.key]]));
+}
+function fromRow<T>(def: CollectionDef, r: Record<string, unknown>): T {
+  const item: Record<string, unknown> = {
+    id: r.id,
+    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+  };
+  for (const x of def.fields) item[x.key] = x.decode ? x.decode(r[x.column]) : r[x.column];
+  return item as T;
+}
+const byCreated = (newestFirst: boolean) => (a: Item, b: Item) =>
+  (newestFirst ? -1 : 1) * a.createdAt.localeCompare(b.createdAt);
+
+function collection<T extends Item>(def: CollectionDef) {
+  const order = `ORDER BY created_at ${def.newestFirst ? "DESC" : "ASC"}`;
+  return {
+    async list(): Promise<T[]> {
+      if (IS_POSTGRES)
+        return (await getSQL().query(`SELECT * FROM ${def.table} ${order}`)).map((r: Record<string, unknown>) =>
+          fromRow<T>(def, r),
+        );
+      return ([...readDB()[def.jsonKey]] as unknown as T[]).sort(byCreated(def.newestFirst));
+    },
+    async add(input: Omit<T, "id" | "createdAt">): Promise<T> {
+      const item = {
+        ...pick(def, input as Record<string, unknown>),
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+      } as unknown as T;
+      if (IS_POSTGRES) {
+        const fields = def.fields.filter(x => (item as Record<string, unknown>)[x.key] !== undefined);
+        const columns = ["id", ...fields.map(x => x.column), "created_at"];
+        const values = [
+          item.id,
+          ...fields.map(x =>
+            x.encode ? x.encode((item as Record<string, unknown>)[x.key]) : (item as Record<string, unknown>)[x.key],
+          ),
+          item.createdAt,
+        ];
+        await getSQL().query(
+          `INSERT INTO ${def.table} (${columns.join(", ")}) VALUES (${columns.map((_, i) => "$" + (i + 1)).join(", ")})`,
+          values,
+        );
+        return item;
+      }
+      const db = readDB();
+      (db[def.jsonKey] as unknown as T[]).push(item);
+      writeDB(db);
+      return item;
+    },
+    async update(id: string, updates: Partial<T>): Promise<T | null> {
+      const changes = pick(def, updates as Record<string, unknown>);
+      if (IS_POSTGRES) {
+        const fields = def.fields.filter(x => x.key in changes);
+        if (!fields.length) {
+          const rows = await getSQL().query(`SELECT * FROM ${def.table} WHERE id = $1`, [id]);
+          return rows[0] ? fromRow<T>(def, rows[0]) : null;
+        }
+        const sets = fields.map((x, i) => `${x.column} = $${i + 1}`).join(", ");
+        const rows = await getSQL().query(
+          `UPDATE ${def.table} SET ${sets} WHERE id = $${fields.length + 1} RETURNING *`,
+          [...fields.map(x => (x.encode ? x.encode(changes[x.key]) : changes[x.key])), id],
+        );
+        return rows[0] ? fromRow<T>(def, rows[0]) : null;
+      }
+      const db = readDB();
+      const list = db[def.jsonKey] as unknown as T[];
+      const item = list.find(i => i.id === id);
+      if (!item) return null;
+      Object.assign(item, changes);
+      writeDB(db);
+      return item;
+    },
+    async remove(id: string): Promise<boolean> {
+      if (IS_POSTGRES)
+        return (await getSQL().query(`DELETE FROM ${def.table} WHERE id = $1 RETURNING id`, [id])).length > 0;
+      const db = readDB();
+      const list = db[def.jsonKey] as unknown as T[];
+      const index = list.findIndex(i => i.id === id);
+      if (index === -1) return false;
+      list.splice(index, 1);
+      writeDB(db);
+      return true;
+    },
+  };
+}
+
+const enquiries = collection<Enquiry>(ENQUIRIES);
+const offers = collection<Offer>(OFFERS);
+const banquet = collection<BanquetPackage>(BANQUET);
+const dining = collection<DiningOption>(DINING);
+const reviews = collection<Review>(REVIEWS);
+
+export const getEnquiries = enquiries.list;
+export const addEnquiry = (e: Omit<Enquiry, "id" | "createdAt" | "status">) => enquiries.add({ ...e, status: "new" });
+export const updateEnquiryStatus = (id: string, status: Enquiry["status"]) => enquiries.update(id, { status });
+export const deleteEnquiry = enquiries.remove;
+export const getOffers = offers.list,
+  addOffer = offers.add,
+  updateOffer = offers.update,
+  deleteOffer = offers.remove;
+export const getBanquetPackages = banquet.list,
+  addBanquetPackage = banquet.add,
+  updateBanquetPackage = banquet.update,
+  deleteBanquetPackage = banquet.remove;
+export const getDiningOptions = dining.list,
+  addDiningOption = dining.add,
+  updateDiningOption = dining.update,
+  deleteDiningOption = dining.remove;
+export const getReviews = reviews.list,
+  addReview = reviews.add,
+  updateReview = reviews.update,
+  deleteReview = reviews.remove;
+
+// ============================================================
+// Rooms: addressed by a stable id, never by list position.
+// Postgres uses the serial `idx` key; JSON rooms get an id from their name on first read.
+// ============================================================
+const ROOM_FIELDS = ["name", "text", "image", "rate", "sample", "hidden"] as const;
+type RoomInput = Omit<Room, "id">;
+const pickRoom = (input: Partial<Room>) =>
+  Object.fromEntries(ROOM_FIELDS.filter(k => input[k] !== undefined).map(k => [k, input[k]])) as Partial<RoomInput>;
+const slug = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || "room";
+function withRoomIds(data: DB): DB {
+  const used = new Set<string>();
+  for (const room of data.config.rooms) {
+    let id = room.id || slug(room.name);
+    for (let n = 2; used.has(id); n++) id = slug(room.name) + "-" + n;
+    room.id = id;
+    used.add(id);
+  }
+  return data;
+}
+const roomRow = (r: Record<string, unknown>): Room =>
+  ({
+    id: String(r.idx),
+    name: r.name,
+    text: r.text,
+    image: r.image,
+    rate: r.rate,
+    sample: !!r.sample,
+    hidden: !!r.hidden,
+  }) as Room;
+const pgRoomKey = (id: string) => (/^\d+$/.test(id) ? Number(id) : null);
+
+export async function getRooms(): Promise<Room[]> {
+  if (IS_POSTGRES) return (await getSQL().query("SELECT * FROM rooms ORDER BY idx")).map(roomRow);
+  return readDB().config.rooms;
+}
+export async function addRoom(input: RoomInput): Promise<Room> {
+  const room = pickRoom(input) as RoomInput;
+  if (IS_POSTGRES)
+    return roomRow(
+      (
+        await getSQL().query(
+          "INSERT INTO rooms (name, text, image, rate, sample, hidden) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
+          [room.name, room.text, room.image, room.rate, room.sample, !!room.hidden],
+        )
+      )[0],
+    );
   const db = readDB();
-  const n: Enquiry = { ...enquiry, id: crypto.randomUUID(), createdAt: new Date().toISOString(), status: "new" };
-  db.enquiries.push(n); writeDB(db); return n;
+  const created = { ...room, id: "" } as Room;
+  db.config.rooms.push(created);
+  withRoomIds(db);
+  writeDB(db);
+  return created;
 }
-function jsonUpdateEnquiryStatus(id: string, status: Enquiry["status"]): Enquiry | null {
-  const db = readDB(); const idx = db.enquiries.findIndex(e => e.id === id);
-  if (idx === -1) return null; db.enquiries[idx].status = status; writeDB(db); return db.enquiries[idx];
-}
-function jsonDeleteEnquiry(id: string): boolean {
-  const db = readDB(); const idx = db.enquiries.findIndex(e => e.id === id);
-  if (idx === -1) return false; db.enquiries.splice(idx, 1); writeDB(db); return true;
-}
-function jsonGetBookings(): Booking[] { return readDB().bookings; }
-function jsonAddBooking(booking: Omit<Booking, "id" | "createdAt" | "paymentId" | "paymentStatus" | "bookingStatus">): Booking {
+export async function updateRoom(id: string, updates: Partial<Room>): Promise<Room | null> {
+  const changes = pickRoom(updates);
+  if (IS_POSTGRES) {
+    const key = pgRoomKey(id);
+    if (key === null) return null;
+    const columns = Object.keys(changes);
+    const rows = columns.length
+      ? await getSQL().query(
+          `UPDATE rooms SET ${columns.map((c, i) => `${c} = $${i + 1}`).join(", ")} WHERE idx = $${columns.length + 1} RETURNING *`,
+          [...Object.values(changes), key],
+        )
+      : await getSQL().query("SELECT * FROM rooms WHERE idx = $1", [key]);
+    return rows[0] ? roomRow(rows[0]) : null;
+  }
   const db = readDB();
-  const n: Booking = { ...booking, id: crypto.randomUUID(), createdAt: new Date().toISOString(), paymentId: "", paymentStatus: "pending", bookingStatus: "pending" };
-  db.bookings.push(n);
-  db.notificationJobs ??= [];
-  db.notificationJobs.push({id:n.id,bookingId:n.id,status:"pending",attempts:0,createdAt:n.createdAt});
-  writeDB(db); return n;
+  const room = db.config.rooms.find(r => r.id === id);
+  if (!room) return null;
+  Object.assign(room, changes);
+  writeDB(db);
+  return room;
 }
-function jsonUpdateBooking(id: string, updates: Partial<Pick<Booking, "paymentStatus" | "bookingStatus" | "paymentId">>): Booking | null {
-  const db = readDB(); const idx = db.bookings.findIndex(b => b.id === id);
-  if (idx === -1) return null; Object.assign(db.bookings[idx], updates); writeDB(db); return db.bookings[idx];
-}
-function jsonDeleteBooking(id: string): boolean {
-  const db = readDB(); const idx = db.bookings.findIndex(b => b.id === id);
-  if (idx === -1) return false; db.bookings.splice(idx, 1); db.notificationJobs = (db.notificationJobs||[]).filter(j=>j.bookingId!==id); writeDB(db); return true;
-}
-function jsonGetRooms(): Room[] { return readDB().config.rooms; }
-function jsonAddRoom(room: Room): Room[] { const db = readDB(); db.config.rooms.push(room); writeDB(db); return db.config.rooms; }
-function jsonUpdateRoom(index: number, updates: Partial<Room>): Room[] {
-  const db = readDB(); if (index < 0 || index >= db.config.rooms.length) return db.config.rooms;
-  Object.assign(db.config.rooms[index], updates); writeDB(db); return db.config.rooms;
-}
-function jsonDeleteRoom(index: number): Room[] {
-  const db = readDB(); if (index < 0 || index >= db.config.rooms.length) return db.config.rooms;
-  db.config.rooms.splice(index, 1); writeDB(db); return db.config.rooms;
-}
-function jsonGetOffers(): Offer[] { return readDB().offers; }
-function jsonAddOffer(offer: Omit<Offer, "id" | "createdAt">): Offer {
-  const db = readDB(); const n: Offer = { ...offer, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
-  db.offers.push(n); writeDB(db); return n;
-}
-function jsonUpdateOffer(id: string, updates: Partial<Offer>): Offer | null {
-  const db = readDB(); const idx = db.offers.findIndex(o => o.id === id);
-  if (idx === -1) return null; Object.assign(db.offers[idx], updates); writeDB(db); return db.offers[idx];
-}
-function jsonDeleteOffer(id: string): boolean {
-  const db = readDB(); const idx = db.offers.findIndex(o => o.id === id);
-  if (idx === -1) return false; db.offers.splice(idx, 1); writeDB(db); return true;
-}
-function jsonGetBanquetPackages(): BanquetPackage[] { return readDB().banquetPackages; }
-function jsonAddBanquetPackage(pkg: Omit<BanquetPackage, "id" | "createdAt">): BanquetPackage {
-  const db = readDB(); const n: BanquetPackage = { ...pkg, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
-  db.banquetPackages.push(n); writeDB(db); return n;
-}
-function jsonUpdateBanquetPackage(id: string, updates: Partial<BanquetPackage>): BanquetPackage | null {
-  const db = readDB(); const idx = db.banquetPackages.findIndex(p => p.id === id);
-  if (idx === -1) return null; Object.assign(db.banquetPackages[idx], updates); writeDB(db); return db.banquetPackages[idx];
-}
-function jsonDeleteBanquetPackage(id: string): boolean {
-  const db = readDB(); const idx = db.banquetPackages.findIndex(p => p.id === id);
-  if (idx === -1) return false; db.banquetPackages.splice(idx, 1); writeDB(db); return true;
-}
-function jsonGetDiningOptions(): DiningOption[] { return readDB().diningOptions; }
-function jsonAddDiningOption(opt: Omit<DiningOption, "id" | "createdAt">): DiningOption {
-  const db = readDB(); const n: DiningOption = { ...opt, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
-  db.diningOptions.push(n); writeDB(db); return n;
-}
-function jsonUpdateDiningOption(id: string, updates: Partial<DiningOption>): DiningOption | null {
-  const db = readDB(); const idx = db.diningOptions.findIndex(d => d.id === id);
-  if (idx === -1) return null; Object.assign(db.diningOptions[idx], updates); writeDB(db); return db.diningOptions[idx];
-}
-function jsonDeleteDiningOption(id: string): boolean {
-  const db = readDB(); const idx = db.diningOptions.findIndex(d => d.id === id);
-  if (idx === -1) return false; db.diningOptions.splice(idx, 1); writeDB(db); return true;
-}
-function jsonGetReviews(): Review[] { return readDB().reviews; }
-function jsonAddReview(rev: Omit<Review, "id" | "createdAt">): Review {
-  const db = readDB(); const n: Review = { ...rev, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
-  db.reviews.push(n); writeDB(db); return n;
-}
-function jsonUpdateReview(id: string, updates: Partial<Review>): Review | null {
-  const db = readDB(); const idx = db.reviews.findIndex(r => r.id === id);
-  if (idx === -1) return null; Object.assign(db.reviews[idx], updates); writeDB(db); return db.reviews[idx];
-}
-function jsonDeleteReview(id: string): boolean {
-  const db = readDB(); const idx = db.reviews.findIndex(r => r.id === id);
-  if (idx === -1) return false; db.reviews.splice(idx, 1); writeDB(db); return true;
+export async function deleteRoom(id: string): Promise<boolean> {
+  if (IS_POSTGRES) {
+    const key = pgRoomKey(id);
+    return key !== null && (await getSQL().query("DELETE FROM rooms WHERE idx = $1 RETURNING idx", [key])).length > 0;
+  }
+  const db = readDB();
+  const index = db.config.rooms.findIndex(r => r.id === id);
+  if (index === -1) return false;
+  db.config.rooms.splice(index, 1);
+  writeDB(db);
+  return true;
 }
 
 // ============================================================
-// EXPORTED API
+// Bookings and the notification outbox (written in one transaction / one file write)
 // ============================================================
-export async function getEnquiries() { return IS_POSTGRES ? pgGetEnquiries() : jsonGetEnquiries(); }
-export async function addEnquiry(e: Omit<Enquiry, "id" | "createdAt" | "status">) { return IS_POSTGRES ? pgAddEnquiry(e) : jsonAddEnquiry(e); }
-export async function updateEnquiryStatus(id: string, status: Enquiry["status"]) { return IS_POSTGRES ? pgUpdateEnquiryStatus(id, status) : jsonUpdateEnquiryStatus(id, status); }
-export async function deleteEnquiry(id: string) { return IS_POSTGRES ? pgDeleteEnquiry(id) : jsonDeleteEnquiry(id); }
-
-export async function getBookings() { return IS_POSTGRES ? pgGetBookings() : jsonGetBookings(); }
-export async function addBooking(b: Omit<Booking, "id" | "createdAt" | "paymentId" | "paymentStatus" | "bookingStatus">) { return IS_POSTGRES ? pgAddBooking(b) : jsonAddBooking(b); }
-export async function updateBooking(id: string, updates: Partial<Pick<Booking, "paymentStatus" | "bookingStatus" | "paymentId">>) { return IS_POSTGRES ? pgUpdateBooking(id, updates) : jsonUpdateBooking(id, updates); }
-export async function deleteBooking(id: string) { return IS_POSTGRES ? pgDeleteBooking(id) : jsonDeleteBooking(id); }
-
-export async function getRooms() { return IS_POSTGRES ? pgGetRooms() : jsonGetRooms(); }
-export async function addRoom(room: Room) { return IS_POSTGRES ? pgAddRoom(room) : jsonAddRoom(room); }
-export async function updateRoom(index: number, updates: Partial<Room>) { return IS_POSTGRES ? pgUpdateRoom(index, updates) : jsonUpdateRoom(index, updates); }
-export async function deleteRoom(index: number) { return IS_POSTGRES ? pgDeleteRoom(index) : jsonDeleteRoom(index); }
-
-export async function getOffers() { return IS_POSTGRES ? pgGetOffers() : jsonGetOffers(); }
-export async function addOffer(offer: Omit<Offer, "id" | "createdAt">) { return IS_POSTGRES ? pgAddOffer(offer) : jsonAddOffer(offer); }
-export async function updateOffer(id: string, updates: Partial<Offer>) { return IS_POSTGRES ? pgUpdateOffer(id, updates) : jsonUpdateOffer(id, updates); }
-export async function deleteOffer(id: string) { return IS_POSTGRES ? pgDeleteOffer(id) : jsonDeleteOffer(id); }
-
-export async function getBanquetPackages() { return IS_POSTGRES ? pgGetBanquetPackages() : jsonGetBanquetPackages(); }
-export async function addBanquetPackage(pkg: Omit<BanquetPackage, "id" | "createdAt">) { return IS_POSTGRES ? pgAddBanquetPackage(pkg) : jsonAddBanquetPackage(pkg); }
-export async function updateBanquetPackage(id: string, updates: Partial<BanquetPackage>) { return IS_POSTGRES ? pgUpdateBanquetPackage(id, updates) : jsonUpdateBanquetPackage(id, updates); }
-export async function deleteBanquetPackage(id: string) { return IS_POSTGRES ? pgDeleteBanquetPackage(id) : jsonDeleteBanquetPackage(id); }
-
-export async function getDiningOptions() { return IS_POSTGRES ? pgGetDiningOptions() : jsonGetDiningOptions(); }
-export async function addDiningOption(opt: Omit<DiningOption, "id" | "createdAt">) { return IS_POSTGRES ? pgAddDiningOption(opt) : jsonAddDiningOption(opt); }
-export async function updateDiningOption(id: string, updates: Partial<DiningOption>) { return IS_POSTGRES ? pgUpdateDiningOption(id, updates) : jsonUpdateDiningOption(id, updates); }
-export async function deleteDiningOption(id: string) { return IS_POSTGRES ? pgDeleteDiningOption(id) : jsonDeleteDiningOption(id); }
-
-export async function getReviews() { return IS_POSTGRES ? pgGetReviews() : jsonGetReviews(); }
-export async function addReview(rev: Omit<Review, "id" | "createdAt">) { return IS_POSTGRES ? pgAddReview(rev) : jsonAddReview(rev); }
-export async function updateReview(id: string, updates: Partial<Review>) { return IS_POSTGRES ? pgUpdateReview(id, updates) : jsonUpdateReview(id, updates); }
-export async function deleteReview(id: string) { return IS_POSTGRES ? pgDeleteReview(id) : jsonDeleteReview(id); }
-
-export function getConfig() { return readDB().config; }
-export function updateConfig(config: Partial<DB["config"]>) { const db = readDB(); db.config = { ...db.config, ...config }; writeDB(db); return db.config; }
-
-// Durable event outbox: booking and notification are saved in the same transaction/write.
+type NewBooking = Omit<Booking, "id" | "createdAt" | "paymentId" | "paymentStatus" | "bookingStatus">;
+function mapBookingRow(r: Record<string, unknown>): Booking {
+  return {
+    id: r.id,
+    name: r.name,
+    mobile: r.mobile,
+    email: r.email,
+    city: r.city,
+    country: r.country,
+    gender: r.gender,
+    roomType: r.room_type,
+    checkin: r.checkin,
+    checkout: r.checkout,
+    guests: r.guests,
+    amount: r.amount,
+    paymentStatus: r.payment_status,
+    bookingStatus: r.booking_status,
+    paymentId: r.payment_id,
+    roomsRequested: Number(r.rooms_requested ?? 1),
+    specialRequests: String(r.special_requests ?? ""),
+    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+  } as Booking;
+}
 let bookingSetup: Promise<void> | undefined;
 async function prepareBookingExtensions() {
- if(!IS_POSTGRES)return;
- if(!bookingSetup) bookingSetup=(async()=>{const sql=getSQL();await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rooms_requested INT DEFAULT 1`;await sql`CREATE TABLE IF NOT EXISTS notification_outbox (id TEXT PRIMARY KEY, booking_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW())`;})().catch(error=>{bookingSetup=undefined;throw error});
- await bookingSetup;
+  if (!IS_POSTGRES) return;
+  bookingSetup ??= (async () => {
+    const sql = getSQL();
+    await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rooms_requested INT DEFAULT 1`;
+    await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS special_requests TEXT DEFAULT ''`;
+    await sql`CREATE TABLE IF NOT EXISTS notification_outbox (id TEXT PRIMARY KEY, booking_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW())`;
+  })().catch(error => {
+    bookingSetup = undefined;
+    throw error;
+  });
+  await bookingSetup;
 }
-export async function getNotificationJobs():Promise<NotificationJob[]> {
- if(IS_POSTGRES){await prepareBookingExtensions();const sql=getSQL();const rows=await sql`SELECT * FROM notification_outbox ORDER BY created_at ASC`;return rows.map((r:Record<string,unknown>)=>({id:String(r.id),bookingId:String(r.booking_id),status:r.status as NotificationJob['status'],attempts:Number(r.attempts),createdAt:String(r.created_at)}));}
- return readDB().notificationJobs||[];
+
+export async function getBookings(): Promise<Booking[]> {
+  if (IS_POSTGRES) {
+    const sql = getSQL();
+    return (await sql`SELECT * FROM bookings ORDER BY created_at DESC`).map(mapBookingRow);
+  }
+  return [...readDB().bookings].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
-export async function markNotification(id:string,delivered:boolean) {
- if(IS_POSTGRES){const sql=getSQL();await sql`UPDATE notification_outbox SET status=CASE WHEN status='delivered' THEN status ELSE ${delivered ? "delivered" : "pending"} END, attempts=attempts+1 WHERE id=${id}`;return;}
- const db=readDB();const job=db.notificationJobs?.find(j=>j.id===id);if(job){job.attempts++;job.status=job.status==='delivered'||delivered?'delivered':'pending';writeDB(db);}
+export async function addBooking(b: NewBooking): Promise<Booking> {
+  const id = crypto.randomUUID(),
+    now = new Date().toISOString();
+  const booking: Booking = {
+    ...b,
+    id,
+    createdAt: now,
+    paymentId: "",
+    paymentStatus: "pending",
+    bookingStatus: "pending",
+  };
+  if (IS_POSTGRES) {
+    const sql = getSQL();
+    await prepareBookingExtensions();
+    await sql.transaction([
+      sql`INSERT INTO bookings (id, name, mobile, email, city, country, gender, room_type, checkin, checkout, guests, amount, payment_status, booking_status, payment_id, created_at, rooms_requested, special_requests) VALUES (${id}, ${b.name}, ${b.mobile}, ${b.email}, ${b.city}, ${b.country}, ${b.gender}, ${b.roomType}, ${b.checkin}, ${b.checkout}, ${b.guests}, ${b.amount}, 'pending', 'pending', '', ${now}, ${b.roomsRequested ?? 1}, ${b.specialRequests ?? ""})`,
+      sql`INSERT INTO notification_outbox (id, booking_id, status, attempts, created_at) VALUES (${id}, ${id}, 'pending', 0, ${now})`,
+    ]);
+    return booking;
+  }
+  const db = readDB();
+  db.bookings.push(booking);
+  db.notificationJobs!.push({ id, bookingId: id, status: "pending", attempts: 0, createdAt: now });
+  writeDB(db);
+  return booking;
+}
+/** Staff can only change a request's status. Payment fields are not used: no payments are taken. */
+export async function updateBooking(id: string, updates: Pick<Booking, "bookingStatus">): Promise<Booking | null> {
+  if (IS_POSTGRES) {
+    const sql = getSQL();
+    const rows = await sql`UPDATE bookings SET booking_status = ${updates.bookingStatus} WHERE id = ${id} RETURNING *`;
+    return rows[0] ? mapBookingRow(rows[0]) : null;
+  }
+  const db = readDB();
+  const booking = db.bookings.find(x => x.id === id);
+  if (!booking) return null;
+  booking.bookingStatus = updates.bookingStatus;
+  writeDB(db);
+  return booking;
+}
+export async function deleteBooking(id: string): Promise<boolean> {
+  if (IS_POSTGRES) {
+    const sql = getSQL();
+    await prepareBookingExtensions();
+    const [, rows] = await sql.transaction([
+      sql`DELETE FROM notification_outbox WHERE booking_id = ${id}`,
+      sql`DELETE FROM bookings WHERE id = ${id} RETURNING id`,
+    ]);
+    return rows.length > 0;
+  }
+  const db = readDB();
+  const index = db.bookings.findIndex(x => x.id === id);
+  if (index === -1) return false;
+  db.bookings.splice(index, 1);
+  db.notificationJobs = db.notificationJobs!.filter(j => j.bookingId !== id);
+  writeDB(db);
+  return true;
+}
+
+export async function getNotificationJobs(): Promise<NotificationJob[]> {
+  if (IS_POSTGRES) {
+    await prepareBookingExtensions();
+    const sql = getSQL();
+    const rows = await sql`SELECT * FROM notification_outbox ORDER BY created_at ASC`;
+    return rows.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      bookingId: String(r.booking_id),
+      status: r.status as NotificationJob["status"],
+      attempts: Number(r.attempts),
+      createdAt: String(r.created_at),
+    }));
+  }
+  return readDB().notificationJobs!;
+}
+export async function markNotification(id: string, delivered: boolean) {
+  if (IS_POSTGRES) {
+    const sql = getSQL();
+    await sql`UPDATE notification_outbox SET status = CASE WHEN status = 'delivered' THEN status ELSE ${delivered ? "delivered" : "pending"} END, attempts = attempts + 1 WHERE id = ${id}`;
+    return;
+  }
+  const db = readDB();
+  const job = db.notificationJobs!.find(j => j.id === id);
+  if (job) {
+    job.attempts++;
+    job.status = job.status === "delivered" || delivered ? "delivered" : "pending";
+    writeDB(db);
+  }
 }

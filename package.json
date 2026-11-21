@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "format": "prettier --write src tests",
+    "format:check": "prettier --check src tests"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
@@ -24,6 +26,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
+    "prettier": "3.6.2",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

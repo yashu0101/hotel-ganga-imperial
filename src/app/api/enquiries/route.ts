@@ -1,68 +1,40 @@
-import { NextRequest, NextResponse } from "next/server";
-import {
-  getEnquiries,
-  updateEnquiryStatus,
-  deleteEnquiry,
-} from "@/lib/db";
-import { verifySession } from "@/lib/auth";
+import { NextRequest } from "next/server";
+import { getEnquiries, updateEnquiryStatus, deleteEnquiry } from "@/lib/db";
+import { isAdmin, json, readBody, serverError, unauthorized } from "@/lib/admin-route";
+import { parseInput, ENQUIRY_UPDATE_SCHEMA } from "@/lib/validation";
+import type { Enquiry } from "@/lib/types";
 
+// Enquiries from the earlier enquiry form. New guest requests arrive as bookings.
 export async function GET() {
-  const session = await verifySession();
-  if (!session.authenticated) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
+  try {
+    return json(await getEnquiries());
+  } catch (error) {
+    return serverError(error);
   }
-  const enquiries = await getEnquiries();
-  return NextResponse.json(enquiries);
 }
 
 export async function PATCH(req: NextRequest) {
-  if (!(await verifySession()).authenticated) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   try {
-    const { id, status } = await req.json();
-    if (!id || !status) {
-      return NextResponse.json(
-        { error: "id and status are required" },
-        { status: 400 }
-      );
-    }
-    const updated = await updateEnquiryStatus(id, status);
-    if (!updated) {
-      return NextResponse.json(
-        { error: "Enquiry not found" },
-        { status: 404 }
-      );
-    }
-    return NextResponse.json(updated);
-  } catch {
-    return NextResponse.json(
-      { error: "Server error" },
-      { status: 500 }
-    );
+    const { id, ...updates } = ((await readBody(req)) || {}) as Record<string, unknown>;
+    if (typeof id !== "string" || !id) return json({ error: "id required" }, 400);
+    const parsed = parseInput(ENQUIRY_UPDATE_SCHEMA, updates);
+    if (!parsed.ok) return json({ error: parsed.error }, 400);
+    const item = await updateEnquiryStatus(id, parsed.data.status as Enquiry["status"]);
+    return item ? json({ item }) : json({ error: "Not found" }, 404);
+  } catch (error) {
+    return serverError(error);
   }
 }
 
 export async function DELETE(req: NextRequest) {
-  if (!(await verifySession()).authenticated) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
   try {
-    const { id } = await req.json();
-    if (!id) {
-      return NextResponse.json(
-        { error: "id is required" },
-        { status: 400 }
-      );
-    }
-    const success = await deleteEnquiry(id);
-    if (!success) {
-      return NextResponse.json(
-        { error: "Enquiry not found" },
-        { status: 404 }
-      );
-    }
-    return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json(
-      { error: "Server error" },
-      { status: 500 }
-    );
+    const id = new URL(req.url).searchParams.get("id");
+    if (!id) return json({ error: "id required" }, 400);
+    return (await deleteEnquiry(id)) ? json({ success: true }) : json({ error: "Not found" }, 404);
+  } catch (error) {
+    return serverError(error);
   }
 }

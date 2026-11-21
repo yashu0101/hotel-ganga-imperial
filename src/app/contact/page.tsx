@@ -1,5 +1,79 @@
 import Link from "next/link";
 import InteriorShell from "@/components/InteriorShell";
-import {SITE_CONFIG} from "@/lib/config";
-export const metadata={title:"Contact & location | Hotel Ganga Imperial"};
-export default function Contact(){const c=SITE_CONFIG.contact;return <InteriorShell><div className="wrap guide-page"><span className="eyebrow">LET US HELP YOU PLAN</span><h1>Your next stay starts here.</h1><p className="page-lead">For room requests, dining or celebrations, share your plans through the reservation form.</p><div className="contact-grid"><div className="contact-card"><h2>Get in touch</h2><dl className="policy-list">{[['Phone',c.phone||'To be updated'],['Email',c.email||'To be updated'],['Address',c.address||'Verified hotel address to be added']].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><div className="guide-actions">{c.phone&&<a href={'tel:'+c.phone.replace(/[^+\d]/g,'')}>Call the hotel</a>}{c.email&&<a href={'mailto:'+c.email}>Email the hotel</a>}{c.whatsapp&&<a href={'https://wa.me/'+c.whatsapp.replace(/\D/g,'')} target="_blank" rel="noreferrer">WhatsApp ↗</a>}</div><Link className="btn btn-solid" href="/book">Send a reservation request ↗</Link></div><div className="location-card"><span aria-hidden="true">⌖</span><h2>Find your way here</h2>{c.mapEmbedUrl?<a className="btn btn-solid" href={c.mapEmbedUrl} target="_blank" rel="noreferrer">Open hotel directions ↗</a>:<p>A verified map and directions will appear here once the hotel location is added.</p>}<p className="small-note">Airport, railway station, parking and transfer information: to be updated.</p></div></div><div className="decision-note"><h3>Guest feedback</h3><p>Verified guest reviews and a link to the hotel’s official review profile will be added here. No sample testimonials are presented as real guest feedback.</p></div></div></InteriorShell>}
+import { SITE_CONFIG } from "@/lib/config";
+import { telHref, whatsappHref } from "@/lib/contact";
+export const metadata = {
+  title: "Contact & location | Hotel Ganga Imperial",
+  description:
+    "Get in touch with Hotel Ganga Imperial to plan a stay, a meal or a celebration, and find directions to the hotel.",
+};
+// Only configured details are shown. Missing ones are listed in the admin launch checklist.
+export default function Contact() {
+  const c = SITE_CONFIG.contact;
+  const tel = telHref(c.phone),
+    whatsapp = whatsappHref(c.whatsapp);
+  const details = [
+    ["Phone", c.phone],
+    ["Email", c.email],
+    ["Address", c.address],
+  ].filter(([, value]) => value);
+  return (
+    <InteriorShell>
+      <div className="wrap guide-page">
+        <span className="eyebrow">LET US HELP YOU PLAN</span>
+        <h1>Your next stay starts here.</h1>
+        <p className="page-lead">
+          For room requests, dining or celebrations, share your plans through the reservation form.
+        </p>
+        <div className="contact-grid">
+          <div className="contact-card">
+            <h2>Get in touch</h2>
+            {details.length > 0 ? (
+              <dl className="policy-list">
+                {details.map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="page-lead">
+                Send a reservation request with your dates. The hotel will reply by phone or email to confirm the
+                details.
+              </p>
+            )}
+            {(tel || c.email || whatsapp) && (
+              <div className="guide-actions">
+                {tel && <a href={tel}>Call the hotel</a>}
+                {c.email && <a href={"mailto:" + c.email}>Email the hotel</a>}
+                {whatsapp && (
+                  <a href={whatsapp} target="_blank" rel="noreferrer">
+                    WhatsApp ↗
+                  </a>
+                )}
+              </div>
+            )}
+            <Link className="btn btn-solid" href="/book">
+              Send a reservation request ↗
+            </Link>
+          </div>
+          <div className="location-card">
+            <span aria-hidden="true">⌖</span>
+            <h2>Find your way here</h2>
+            {c.mapEmbedUrl ? (
+              <a className="btn btn-solid" href={c.mapEmbedUrl} target="_blank" rel="noreferrer">
+                Open hotel directions ↗
+              </a>
+            ) : (
+              <p>Ask for directions in your request and the hotel will include them in its reply.</p>
+            )}
+            <p className="small-note">
+              Need an airport or railway transfer, or parking? Mention it in your request’s special requests.
+            </p>
+          </div>
+        </div>
+      </div>
+    </InteriorShell>
+  );
+}

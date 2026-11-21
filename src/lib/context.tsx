@@ -18,7 +18,7 @@ const AppContext = createContext<AppContextType>({
   setLang: () => {},
   theme: "dark",
   setTheme: () => {},
-  t: (key) => key,
+  t: key => key,
 });
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -28,15 +28,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-    let savedLang: Lang | null = null;
-    let savedTheme: Theme | null = null;
-    try {
-      savedLang = localStorage.getItem("lang") as Lang;
-      savedTheme = localStorage.getItem("theme") as Theme;
-    } catch { /* Preferences remain usable when storage is unavailable. */ }
-    if (savedLang === "en" || savedLang === "hi") setLang(savedLang);
-    if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
-    setReady(true);
+      let savedLang: Lang | null = null;
+      let savedTheme: Theme | null = null;
+      try {
+        savedLang = localStorage.getItem("lang") as Lang;
+        savedTheme = localStorage.getItem("theme") as Theme;
+      } catch {
+        /* Preferences remain usable when storage is unavailable. */
+      }
+      if (savedLang === "en" || savedLang === "hi") setLang(savedLang);
+      if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
+      setReady(true);
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
@@ -45,22 +47,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!ready) return;
     document.documentElement.setAttribute("data-theme", theme);
     document.documentElement.style.colorScheme = theme;
-    try { localStorage.setItem("theme", theme); } catch { /* Storage is optional. */ }
+    try {
+      localStorage.setItem("theme", theme);
+    } catch {
+      /* Storage is optional. */
+    }
   }, [theme, ready]);
 
+  // The public site is English-only. The language switch is used by the admin dashboard,
+  // which sets <html lang> itself while it is open.
   useEffect(() => {
     if (!ready) return;
-    document.documentElement.setAttribute("lang", lang);
-    try { localStorage.setItem("lang", lang); } catch { /* Storage is optional. */ }
+    try {
+      localStorage.setItem("lang", lang);
+    } catch {
+      /* Storage is optional. */
+    }
   }, [lang, ready]);
 
   const t = (key: string) => translate(lang, key);
 
-  return (
-    <AppContext.Provider value={{ lang, setLang, theme, setTheme, t }}>
-      {children}
-    </AppContext.Provider>
-  );
+  return <AppContext.Provider value={{ lang, setLang, theme, setTheme, t }}>{children}</AppContext.Provider>;
 }
 
 export function useApp() {
