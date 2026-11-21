@@ -3,6 +3,12 @@ import { IMAGE_REDIRECTS } from "./src/lib/image-redirects";
 
 const isDev = process.env.NODE_ENV !== "production";
 
+// A Vercel deployment has a read-only filesystem, so without a database every guest request
+// would fail. Refuse to build a production deployment rather than ship a site that can't save.
+if (process.env.VERCEL_ENV === "production" && !process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is required for production deployments: guest requests cannot be saved without it.");
+}
+
 // Next.js inlines its bootstrap scripts and the theme script in layout.tsx, so scripts need
 // 'unsafe-inline' unless every page is rendered dynamically with nonces. The policy still blocks
 // third-party scripts, framing, plugins and form posts to other sites.
@@ -36,12 +42,22 @@ const nextConfig: NextConfig = {
   // serve rooms and packages (read-only) on a serverless host without DATABASE_URL.
   outputFileTracingIncludes: { "/**": ["./data/db.json"] },
   async redirects() {
-    return IMAGE_REDIRECTS.map(([from, to]) => ({ source: "/images/" + from, destination: "/images/" + to, permanent: true }));
+    return IMAGE_REDIRECTS.map(([from, to]) => ({
+      source: "/images/" + from,
+      destination: "/images/" + to,
+      permanent: true,
+    }));
   },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
-      { source: "/(admin|login)(.*)", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }, { key: "Cache-Control", value: "no-store" }] },
+      {
+        source: "/(admin|login)(.*)",
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
       { source: "/api/:path*", headers: [{ key: "Cache-Control", value: "no-store" }] },
     ];
   },
