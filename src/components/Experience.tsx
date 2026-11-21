@@ -78,7 +78,12 @@ export default function Experience() {
       compact.removeEventListener("change", update);
     };
   }, []);
-  const select = (index: number) => goTo.current(index);
+  // Scrolling changes the step silently; only an explicit choice is announced to screen readers.
+  const [announcement, setAnnouncement] = useState("");
+  const select = (index: number) => {
+    goTo.current(index);
+    setAnnouncement(`${EXPERIENCE_STEPS[index].title}. ${EXPERIENCE_STEPS[index].description}`);
+  };
   const windows = (count: number) =>
     Array.from({ length: count }, (_, i) => (
       <div className="win lit" key={i} style={{ animationDelay: `${i * 45}ms` }} />
@@ -96,7 +101,10 @@ export default function Experience() {
           <p className="experience-hint">
             Scroll, or choose a number, to turn the building and discover each experience.
           </p>
-          <div className="experience-story" aria-live="polite">
+          <p className="sr-only" aria-live="polite">
+            {announcement}
+          </p>
+          <div className="experience-story">
             <div key={activeStep} className="experience-story-inner">
               <span className="experience-index">0{activeStep + 1} / 04</span>
               <h2>{EXPERIENCE_STEPS[activeStep].title}</h2>
@@ -108,7 +116,8 @@ export default function Experience() {
               <button
                 key={s.title}
                 type="button"
-                aria-label={s.title}
+                // Name starts with the visible number (WCAG 2.5.3) so voice-control users can say what they see.
+                aria-label={`0${i + 1}: ${s.title}`}
                 aria-pressed={activeStep === i}
                 onClick={() => select(i)}
               >
@@ -151,13 +160,13 @@ export default function Experience() {
           </div>
           <figure className="experience-photo" key={activeStep}>
             <Image
-              src={EXPERIENCE_STEPS[activeStep].image}
+              src={EXPERIENCE_STEPS[activeStep].photo.src}
               alt=""
               width={320}
               height={220}
               sizes="(max-width:900px) 120px, 180px"
             />
-            <figcaption>Representative imagery</figcaption>
+            {EXPERIENCE_STEPS[activeStep].photo.sample && <figcaption>Representative photo</figcaption>}
           </figure>
           <span className="model-label">ARCHITECTURAL ILLUSTRATION</span>
         </div>

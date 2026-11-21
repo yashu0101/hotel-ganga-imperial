@@ -18,19 +18,53 @@ export interface RoomSpecification {
   bed: string;
   occupancy: string;
   bathroom: string;
+  /** Where rooms of this type are, e.g. "Floors 2–4, city-facing wing". */
+  location: string;
+  view: string;
 }
+const EMPTY_SPEC: RoomSpecification = { size: "", bed: "", occupancy: "", bathroom: "", location: "", view: "" };
 export const ROOM_SPECIFICATIONS: Record<string, RoomSpecification> = {
-  "Deluxe Room": { size: "", bed: "", occupancy: "", bathroom: "" },
-  "Premium Room": { size: "", bed: "", occupancy: "", bathroom: "" },
-  Suite: { size: "", bed: "", occupancy: "", bathroom: "" },
-  "Family Room": { size: "", bed: "", occupancy: "", bathroom: "" },
+  "Deluxe Room": { ...EMPTY_SPEC },
+  "Premium Room": { ...EMPTY_SPEC },
+  Suite: { ...EMPTY_SPEC },
+  "Family Room": { ...EMPTY_SPEC },
 };
 const ROOM_FACT_LABELS: [keyof RoomSpecification, string][] = [
   ["size", "Room size"],
   ["bed", "Bed configuration"],
   ["occupancy", "Maximum occupancy"],
   ["bathroom", "Bathroom"],
+  ["location", "Location in the hotel"],
+  ["view", "View"],
 ];
+
+/**
+ * What comes with each room type, split into the room itself and services. Mirrors the room descriptions the hotel
+ * has approved (config.ts / admin): add an item here only once the description promises it. Rooms without an entry
+ * fall back to their description on the detail page.
+ */
+export interface RoomInclusions {
+  inRoom: string[];
+  services: string[];
+}
+export const ROOM_INCLUSIONS: Record<string, RoomInclusions> = {
+  "Deluxe Room": {
+    inRoom: ["Air conditioning", "Wi-Fi", "Television", "Mini-bar", "Work desk", "City view"],
+    services: ["Complimentary breakfast"],
+  },
+  "Premium Room": {
+    inRoom: ["Air conditioning", "Wi-Fi", "Television", "Mini-bar", "Sitting & lounge area", "Premium toiletries"],
+    services: ["Complimentary breakfast"],
+  },
+  Suite: {
+    inRoom: ["Separate living room", "King bed", "Premium bath amenities"],
+    services: ["Butler service", "Welcome drink", "Late checkout"],
+  },
+  "Family Room": {
+    inRoom: ["Twin beds", "Extra floor space", "Extra bedding"],
+    services: ["Kids’ welcome kit", "Family breakfast"],
+  },
+};
 /** Approved facts for a room as [label, value] pairs. Unknown facts are left out. */
 export function roomFacts(spec: RoomSpecification | undefined): [string, string][] {
   return ROOM_FACT_LABELS.filter(([key]) => spec?.[key]?.trim()).map(([key, label]) => [label, spec![key].trim()]);

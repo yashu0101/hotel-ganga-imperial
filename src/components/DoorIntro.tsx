@@ -75,7 +75,7 @@ export default function DoorIntro() {
         <i>A warmer welcome awaits</i>
       </div>
       <button type="button" className="gate-skip">
-        Skip intro ↗
+        Skip intro <span aria-hidden="true">↗</span>
       </button>
     </div>
   );

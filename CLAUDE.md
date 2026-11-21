@@ -26,7 +26,7 @@ Before calling work done, run all of these: lint, `tsc --noEmit`, `format:check`
 
 **Reservations are requests, not bookings.** There is no payment, no live inventory and no automatic confirmation. Pending requests never block a room. Staff confirm everything manually. Keep UI copy and notification text in line with this: never promise availability or confirmation. Requests can cover 1–10 rooms and carry optional special requests (≤500 chars). The amount shown is indicative and excludes taxes. Don't add payment/revenue UI.
 
-**Rendering.** Public pages are server components. Pages that show stored content (`/`, `/rooms`, `/rooms/[slug]`, `/dining`, `/celebrations`) load it once on the server, pass it to components as props, and are statically generated with `revalidate = 300`. Admin writes call `revalidatePath("/", "layout")`, so changes appear on the next visit. Client components are only for real interactivity (header menu, `/book` form, gallery dialog, 3D tour, welcome gates, theme toggle). The public site is English-only.
+**Rendering.** Public pages are server components. Pages that show stored content (`/`, `/rooms`, `/rooms/[slug]`, `/dining`, `/celebrations`) load it once on the server, pass it to components as props, and are statically generated with `revalidate = 300`. Admin writes call `revalidatePath("/", "layout")`, so changes appear on the next visit. Client components are only for real interactivity (header menu, `/book` form, gallery dialog, 3D tour, welcome gates, theme toggle, mobile reservation bar). The public site is English-only.
 
 **Storage (`src/lib/db.ts`).** Two backends with identical behaviour, chosen by `DATABASE_URL`:
 

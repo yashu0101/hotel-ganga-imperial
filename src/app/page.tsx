@@ -13,6 +13,7 @@ import BackToTop from "@/components/BackToTop";
 import DoorIntro from "@/components/DoorIntro";
 import Experience from "@/components/Experience";
 import MotionEffects from "@/components/MotionEffects";
+import MobileReserve from "@/components/MobileReserve";
 import { getOffers, getRooms } from "@/lib/db";
 import { SITE_CONFIG } from "@/lib/config";
 import { canonical, hotelJsonLd, jsonLdScript } from "@/lib/seo";
@@ -22,7 +23,8 @@ export const revalidate = 300;
 export const metadata = { ...canonical("/") };
 
 export default async function Home() {
-  const [rooms, offers] = await Promise.all([getRooms(), getOffers()]);
+  const [allRooms, offers] = await Promise.all([getRooms(), getOffers()]);
+  const rooms = allRooms.filter(r => !r.hidden);
   return (
     <>
       <script
@@ -41,9 +43,9 @@ export default async function Home() {
       <Header />
       <main id="main">
         {/* What guests decide on (rooms, rates, amenities) comes first; the scroll-driven tour follows. */}
-        <Hero />
+        <Hero rooms={rooms} />
         <About />
-        <Rooms rooms={rooms.filter(r => !r.hidden)} preview />
+        <Rooms rooms={rooms} preview />
         <Offers offers={offers} />
         <Amenities />
         <Experience />
@@ -53,9 +55,7 @@ export default async function Home() {
         <GuestClarity />
       </main>
       <Footer />
-      <a className="mobile-reserve" href="/book">
-        Request a reservation <span>↗</span>
-      </a>
+      <MobileReserve />
       <BackToTop />
     </>
   );

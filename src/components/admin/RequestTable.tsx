@@ -140,7 +140,7 @@ export default function RequestTable({ rows, statuses, endpoint, statusField, on
                       {tel && <a href={tel}>{t("admin.call")}</a>}
                       {wa && (
                         <a href={wa} target="_blank" rel="noreferrer">
-                          {t("admin.whatsapp")} ↗
+                          {t("admin.whatsapp")} <span aria-hidden="true">↗</span>
                         </a>
                       )}
                       {r.email && <a href={"mailto:" + r.email}>{t("admin.email")}</a>}

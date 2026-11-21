@@ -1,17 +1,33 @@
 "use client";
 import { useEffect } from "react";
+
+// Elements that rise into place as they scroll into view (home page sections and interior pages).
+// Keep in sync with the transition list under "6. Motion" in globals.css.
+const REVEAL = [
+  ".intro-media",
+  ".intro > div:last-child",
+  ".head",
+  ".stay-card",
+  ".amen-feature .tile",
+  ".banquet-card",
+  ".dining-card",
+  ".g-grid button",
+  ".footer-top > *",
+  ".footer-river",
+  ".interior-page main > section",
+  ".interior-page main > .wrap:not(.page-intro)",
+].join(", ");
+
 export default function MotionEffects() {
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     let observer: IntersectionObserver | undefined;
     const setup = () => {
       observer?.disconnect();
-      const elements = document.querySelectorAll(
-        ".intro-media, .intro > div:last-child, .head, .stay-card, .amen-feature .tile, .banquet-card, .dining-card, .g-grid button, .footer-grid > div, .reveal-luxury, .reveal-left-l, .reveal-right-l, .reveal-scale-l, .amen-icon-enter, .sec-divider",
-      );
+      const elements = document.querySelectorAll(REVEAL);
       elements.forEach((element, index) => {
         element.classList.remove("motion-pending");
-        (element as HTMLElement).style.setProperty("--reveal-delay", `${(index % 3) * 65}ms`);
+        (element as HTMLElement).style.setProperty("--reveal-delay", `${(index % 3) * 90}ms`);
       });
       if (media.matches) return;
       observer = new IntersectionObserver(
@@ -22,7 +38,7 @@ export default function MotionEffects() {
               observer?.unobserve(entry.target);
             }
           }),
-        { threshold: 0.08 },
+        { threshold: 0.08, rootMargin: "0px 0px -6% 0px" },
       );
       elements.forEach(element => {
         if (element.getBoundingClientRect().top > window.innerHeight) {

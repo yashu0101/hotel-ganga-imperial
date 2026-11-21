@@ -1,16 +1,15 @@
 import Image from "next/image";
+import { PHOTOS } from "@/lib/config";
+
+const photo = PHOTOS.lobby;
 
 export default function About() {
   return (
     <section id="about">
       <div className="wrap intro">
         <div className="intro-media">
-          <Image
-            src="/images/image-14.jpeg"
-            alt="Lounge with warm lighting and marble details"
-            width={600}
-            height={450}
-          />
+          <Image src={photo.src} alt={photo.caption} width={600} height={450} />
+          {photo.sample && <span className="chip">Representative photo</span>}
         </div>
         <div>
           <span className="eyebrow">THE GANGA IMPERIAL EXPERIENCE</span>

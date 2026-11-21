@@ -65,8 +65,8 @@ export default function Guide() {
           ))}
         </div>
         <div className="guide-actions">
-          <Link className="btn btn-solid" href="/book">
-            Plan your stay ↗
+          <Link className="btn btn-solid" href="/book" data-reserve-cta>
+            Request a reservation <span aria-hidden="true">↗</span>
           </Link>
           <Link href="/contact">Contact & location</Link>
         </div>

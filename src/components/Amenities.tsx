@@ -1,6 +1,18 @@
 import Image from "next/image";
+import { PHOTOS } from "@/lib/config";
 
-const AMENITY_LIST = [
+// Feature tiles: the first two are larger. Alt text and captions come from PHOTOS so they match everywhere else.
+const TILES = [
+  { photo: PHOTOS.pool, width: 700, height: 500 },
+  { photo: PHOTOS.banquet, width: 500, height: 500 },
+  { photo: PHOTOS.spa, width: 400, height: 300 },
+  { photo: PHOTOS.gym, width: 400, height: 300 },
+  { photo: PHOTOS.lounge, width: 400, height: 300 },
+  { photo: PHOTOS.tableTennis, width: 400, height: 300 },
+];
+
+// Also listed on each room page ("Around the hotel").
+export const AMENITY_LIST = [
   { icon: "M4 22h24M6 22a10 10 0 0 1 20 0M16 12V9M13 9h6M3 25h26", label: "Premium rooms" },
   {
     icon: "M3 20c3 0 3 2 6.5 2s3.5-2 6.5-2 3 2 6.5 2 3.5-2 6.5-2M3 26c3 0 3 2 6.5 2s3.5-2 6.5-2 3 2 6.5 2 3.5-2 6.5-2M10 18V6a2 2 0 0 1 4 0M18 18V6a2 2 0 0 1 4 0M10 10h8M10 14h8",
@@ -35,30 +47,13 @@ export default function Amenities() {
           <p>Everything you need for a comfortable and complete stay.</p>
         </div>
         <div className="amen-feature">
-          <figure className="tile">
-            <Image src="/images/image-23.jpeg" alt="Rooftop swimming pool" width={700} height={500} loading="lazy" />
-            <figcaption>Rooftop swimming pool</figcaption>
-          </figure>
-          <figure className="tile">
-            <Image src="/images/image-48.jpeg" alt="Banquet hall" width={500} height={500} loading="lazy" />
-            <figcaption>Banquet hall</figcaption>
-          </figure>
-          <figure className="tile">
-            <Image src="/images/image-50.jpeg" alt="Spa treatment room" width={400} height={300} loading="lazy" />
-            <figcaption>Spa</figcaption>
-          </figure>
-          <figure className="tile">
-            <Image src="/images/image-53.jpeg" alt="Gym" width={400} height={300} loading="lazy" />
-            <figcaption>Gym</figcaption>
-          </figure>
-          <figure className="tile">
-            <Image src="/images/image-51.jpeg" alt="Club lounge" width={400} height={300} loading="lazy" />
-            <figcaption>Club lounge</figcaption>
-          </figure>
-          <figure className="tile">
-            <Image src="/images/image-54.jpeg" alt="Table tennis" width={400} height={300} loading="lazy" />
-            <figcaption>Table tennis</figcaption>
-          </figure>
+          {TILES.map(({ photo, width, height }) => (
+            <figure className="tile" key={photo.src}>
+              <Image src={photo.src} alt={photo.caption} width={width} height={height} loading="lazy" />
+              {photo.sample && <span className="chip">Representative photo</span>}
+              <figcaption>{photo.caption}</figcaption>
+            </figure>
+          ))}
         </div>
         <ul className="amen-list" aria-label="All amenities">
           {AMENITY_LIST.map((a, i) => (

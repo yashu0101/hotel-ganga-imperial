@@ -47,7 +47,14 @@ export default function LoginPage() {
         <h1>Admin Login</h1>
         <p className="subtitle">Sign in to manage your hotel</p>
 
-        {error && <div className="login-error">{error}</div>}
+        {/* Always mounted so screen readers announce wrong-password and rate-limit messages when they appear. */}
+        <div role="alert" aria-live="assertive">
+          {error && (
+            <div className="login-error" id="login-error">
+              {error}
+            </div>
+          )}
+        </div>
 
         <form onSubmit={handleSubmit}>
           <label htmlFor="email">Email</label>
@@ -58,6 +65,8 @@ export default function LoginPage() {
             onChange={e => setEmail(e.target.value)}
             placeholder="admin@gangaimperial.com"
             required
+            aria-invalid={!!error || undefined}
+            aria-describedby={error ? "login-error" : undefined}
             autoFocus
           />
           <label htmlFor="password">Password</label>
@@ -68,6 +77,8 @@ export default function LoginPage() {
             onChange={e => setPassword(e.target.value)}
             placeholder="Enter password"
             required
+            aria-invalid={!!error || undefined}
+            aria-describedby={error ? "login-error" : undefined}
           />
           <button className="login-btn" type="submit" disabled={loading}>
             {loading ? "Signing in..." : "Sign in"}

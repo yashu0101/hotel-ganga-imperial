@@ -35,8 +35,8 @@ export default function Offers({ offers }: { offers: Offer[] }) {
                       : `Until ${formatDate(o.validTo)}`}
                 </div>
               )}
-              <a className="btn btn-solid" href="/book">
-                Request offer
+              <a className="btn btn-solid" href={"/book?offer=" + encodeURIComponent(o.title)}>
+                Request this offer
               </a>
             </div>
           ))}
