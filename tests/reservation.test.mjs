@@ -1,97 +1,853 @@
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import ts from 'typescript';
-import path from 'node:path';
-import {createHmac} from 'node:crypto';
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import ts from "typescript";
+import path from "node:path";
+import { createHmac } from "node:crypto";
 function load(file, mocks = {}, runtime = {}) {
-  const source = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const source = ts.transpileModule(fs.readFileSync(file, "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
   const compiledModule = { exports: {} };
-  new Function('require', 'module', 'exports', 'process', 'fetch', source)((id) => { if (!(id in mocks)) throw Error('Unexpected dependency: ' + id); return mocks[id]; }, compiledModule, compiledModule.exports, runtime.process || process, runtime.fetch || fetch);
+  new Function("require", "module", "exports", "process", "fetch", source)(
+    id => {
+      if (!(id in mocks)) throw Error("Unexpected dependency: " + id);
+      return mocks[id];
+    },
+    compiledModule,
+    compiledModule.exports,
+    runtime.process || process,
+    runtime.fetch || fetch,
+  );
   return compiledModule.exports;
 }
-const dates = load('src/lib/reservation.ts');
-const future = '2099-01-10';
+const dates = load("src/lib/reservation.ts");
+const future = "2099-01-10";
 const response = { NextResponse: { json: (value, options = {}) => Response.json(value, options) } };
 const records = [];
-const db = { getRooms: async () => [{ name: 'Deluxe Room', hidden: false }], getBanquetPackages: async () => [{ name: 'Gold', active: true }], addBooking: async (b) => { records.push(b); return { ...b, id: 'request-reference' }; } };
-const booking = load('src/app/api/book/route.ts', { '@/lib/notifications': {deliverNotifications:async()=>({configured:false})}, 'next/server': response, '@/lib/db': db, '@/lib/reservation': dates, '@/lib/request-limit': {allowRequest:()=>true} });
-const payload = {name:'Test Guest',mobile:'+919999999999',email:'',roomType:'Deluxe Room',checkin:future,checkout:'2099-01-12',guests:2};
-const request = b => new Request('http://localhost/api/book', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
-test('rejects impossible dates, past dates and non-overnight stays',()=>{
- assert.equal(dates.validDate('2099-02-30'),false);
- assert.ok(dates.dateError('2000-01-01','2000-01-02',true));
- assert.ok(dates.dateError(future,future,true));
- assert.ok(dates.dateError(future,'',true));
- assert.equal(dates.dateError(future,'',false),'');
+const db = {
+  StorageUnavailableError: class extends Error {},
+  getRooms: async () => [{ name: "Deluxe Room", hidden: false }],
+  getBanquetPackages: async () => [{ name: "Gold", active: true }],
+  getOffers: async () => [
+    { title: "Early Bird", discount: "20%", code: "EARLY20", validFrom: "2000-01-01", validTo: "2999-12-31", active: true },
+    { title: "Old", discount: "10%", code: "OLD10", validFrom: "2000-01-01", validTo: "2000-12-31", active: true },
+  ],
+  addBooking: async b => {
+    records.push(b);
+    return { ...b, id: "request-reference" };
+  },
+};
+const booking = load("src/app/api/book/route.ts", {
+  "@/lib/notifications": { deliverNotifications: async () => ({ configured: false }) },
+  "next/server": response,
+  "@/lib/db": db,
+  "@/lib/reservation": dates,
+  "@/lib/request-limit": { allowRequest: () => true, clientKey: () => "test" },
 });
-test('accepts multiple requests for the same category without falsely reserving all inventory',async()=>{
- assert.equal((await booking.POST(request(payload))).status,201);
- assert.equal((await booking.POST(request(payload))).status,201);
- assert.equal(records.length,2);
- assert.equal(records[0].amount,0);
+const payload = {
+  name: "Test Guest",
+  mobile: "+919999999999",
+  email: "",
+  roomType: "Deluxe Room",
+  checkin: future,
+  checkout: "2099-01-12",
+  guests: 2,
+};
+const request = b =>
+  new Request("http://localhost/api/book", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(b),
+  });
+test("rejects impossible dates, past dates and non-overnight stays", () => {
+  assert.equal(dates.validDate("2099-02-30"), false);
+  assert.ok(dates.dateError("2000-01-01", "2000-01-02", true));
+  assert.ok(dates.dateError(future, future, true));
+  assert.ok(dates.dateError(future, "", true));
+  assert.equal(dates.dateError(future, "", false), "");
 });
-test('rejects unknown rooms, invalid guest counts and incomplete stays',async()=>{
- for(const change of [{roomType:'Invalid'},{guests:-1},{guests:1.5},{guests:21},{checkout:''},{checkin:'2099-02-30'},{email:'bad'}]) assert.equal((await booking.POST(request({...payload,...change}))).status,400);
+test("accepts multiple requests for the same category without falsely reserving all inventory", async () => {
+  assert.equal((await booking.POST(request(payload))).status, 201);
+  assert.equal((await booking.POST(request(payload))).status, 201);
+  assert.equal(records.length, 2);
+  assert.equal(records[0].amount, 0);
 });
-test('accepts single-day event request and only exposes request reference',async()=>{
- const result=await booking.POST(request({...payload,roomType:'Banquet - Gold',checkout:'',guests:100}));
- assert.equal(result.status,201);assert.deepEqual(await result.json(),{success:true,reference:'request-reference'});
+test("rejects unknown rooms, invalid guest counts and incomplete stays", async () => {
+  for (const change of [
+    { roomType: "Invalid" },
+    { guests: -1 },
+    { guests: 1.5 },
+    { guests: 21 },
+    { checkout: "" },
+    { checkin: "2099-02-30" },
+    { email: "bad" },
+  ])
+    assert.equal((await booking.POST(request({ ...payload, ...change }))).status, 400);
 });
-test('unauthenticated users cannot mutate admin content or enquiries',async()=>{
- for(const name of ['rooms','offers','reviews','dining','banquet','enquiries']) {
-  const route=load('src/app/api/'+name+'/route.ts',{'next/server':response,'@/lib/db':{},'@/lib/auth':{verifySession:async()=>({authenticated:false})}});
-  for(const method of ['POST','PATCH','DELETE']) if(route[method]) assert.equal((await route[method](request({}))).status,401,name+' '+method);
- }
+test("accepts single-day event request and only exposes request reference", async () => {
+  const result = await booking.POST(request({ ...payload, roomType: "Banquet - Gold", checkout: "", guests: 100 }));
+  assert.equal(result.status, 201);
+  assert.deepEqual(await result.json(), { success: true, reference: "request-reference" });
 });
-test('rate limiter blocks excessive attempts',()=>{const limiter=load('src/lib/request-limit.ts');assert.equal(limiter.allowRequest('test',2),true);assert.equal(limiter.allowRequest('test',2),true);assert.equal(limiter.allowRequest('test',2),false)});
+// Admin routes: load a route with the real validation + admin-route modules and a fake db/session.
+const validation = load("src/lib/validation.ts");
+class StorageUnavailableError extends Error {}
+function adminRoute(name, db, authenticated, revalidated = []) {
+  const adminRouteModule = load("src/lib/admin-route.ts", {
+    "next/server": response,
+    "next/cache": { revalidatePath: (...a) => revalidated.push(a) },
+    "@/lib/auth": { verifySession: async () => ({ authenticated }) },
+    "@/lib/db": { StorageUnavailableError },
+    "@/lib/validation": validation,
+  });
+  return load("src/app/api/" + name + "/route.ts", {
+    "next/server": response,
+    "@/lib/admin-route": adminRouteModule,
+    "@/lib/db": db,
+    "@/lib/validation": validation,
+  });
+}
+const jsonRequest = (method, body, query = "") =>
+  new Request("http://localhost/api/x" + query, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
 
-test('validates and persists requested room counts',async()=>{
- assert.equal((await booking.POST(request({...payload,roomsRequested:0}))).status,400);
- assert.equal((await booking.POST(request({...payload,roomsRequested:11}))).status,400);
- assert.equal((await booking.POST(request({...payload,roomsRequested:2.5}))).status,400);
- assert.equal((await booking.POST(request({...payload,roomsRequested:3}))).status,201);
- assert.equal(records.at(-1).roomsRequested,3);
+test("unauthenticated users cannot read private data or change anything", async () => {
+  const forbidden = async () => {
+    throw Error("must not touch storage");
+  };
+  const db = new Proxy(
+    {},
+    { get: (_, key) => (key === "StorageUnavailableError" ? StorageUnavailableError : forbidden) },
+  );
+  for (const name of ["rooms", "offers", "reviews", "dining", "banquet", "enquiries", "bookings"]) {
+    const route = adminRoute(name, db, false);
+    for (const method of ["POST", "PATCH", "DELETE"])
+      if (route[method])
+        assert.equal(
+          (await route[method](jsonRequest(method, { id: "x", name: "x" }, "?id=x"))).status,
+          401,
+          name + " " + method,
+        );
+  }
+  for (const name of ["offers", "reviews", "dining", "enquiries", "bookings"])
+    assert.equal((await adminRoute(name, db, false).GET()).status, 401, name + " GET");
 });
 
-test('local booking and its notification event are persisted in one atomic file replacement',async()=>{
- const files=new Map([['/virtual/data/db.json',JSON.stringify({bookings:[],config:{rooms:[]}})]]);let renames=0;
- const fakeFs={readFileSync:p=>files.get(p),writeFileSync:(p,v)=>files.set(p,v),existsSync:p=>files.has(p)||p==='/virtual/data',mkdirSync:()=>{},renameSync:(a,b)=>{renames++;files.set(b,files.get(a));files.delete(a)},unlinkSync:p=>files.delete(p)};
- const dbModule=load('src/lib/db.ts',{'fs':{default:fakeFs},'path':{default:path.posix},'./config':{SITE_CONFIG:{rooms:[]}}},{process:{env:{},cwd:()=>'/virtual'}});
- const saved=await dbModule.addBooking({...payload,roomsRequested:2,gender:'other',country:'',city:'',amount:0});
- const result=JSON.parse(files.get('/virtual/data/db.json'));
- assert.equal(renames,1);assert.equal(result.bookings[0].id,saved.id);assert.equal(result.notificationJobs[0].bookingId,saved.id);assert.equal(result.notificationJobs[0].status,'pending');
- files.set('/virtual/data/db.json','broken JSON');
- await assert.rejects(()=>dbModule.getBookings());assert.equal(files.get('/virtual/data/db.json'),'broken JSON');
+test("guests only receive visible rooms and active packages from the public endpoints", async () => {
+  const rooms = adminRoute(
+    "rooms",
+    {
+      getRooms: async () => [
+        { id: "a", name: "A" },
+        { id: "b", name: "B", hidden: true },
+      ],
+    },
+    false,
+  );
+  assert.deepEqual(
+    (await (await rooms.GET()).json()).map(r => r.id),
+    ["a"],
+  );
+  const banquet = adminRoute(
+    "banquet",
+    {
+      getBanquetPackages: async () => [
+        { id: "p", active: true },
+        { id: "q", active: false },
+      ],
+    },
+    false,
+  );
+  assert.deepEqual(
+    (await (await banquet.GET()).json()).map(p => p.id),
+    ["p"],
+  );
 });
 
-test('Postgres saves the booking and event in the same transaction',async()=>{
- let transaction=[];const sql=(strings,...values)=>({query:strings.join('?'),values});sql.transaction=async queries=>{transaction=queries;return [[],[]]};
- const dbModule=load('src/lib/db.ts',{'fs':{default:{}},'path':{default:path.posix},'./config':{SITE_CONFIG:{rooms:[]}},'@neondatabase/serverless':{neon:()=>sql}},{process:{env:{DATABASE_URL:'test-only'},cwd:()=>'/virtual'}});
- const saved=await dbModule.addBooking({...payload,roomsRequested:2,gender:'other',country:'',city:'',amount:0});
- assert.equal(transaction.length,2);assert.match(transaction[0].query,/INSERT INTO bookings/);assert.match(transaction[1].query,/INSERT INTO notification_outbox/);assert.equal(transaction[1].values[0],saved.id);
+test("admin edits accept only declared, valid fields and refresh the public pages", async () => {
+  const saved = [];
+  const revalidated = [];
+  const db = {
+    addOffer: async d => (saved.push(d), { ...d, id: "o1" }),
+    updateOffer: async (id, d) => (saved.push(d), id === "o1" ? { id, ...d } : null),
+  };
+  const offers = adminRoute("offers", db, true, revalidated);
+  assert.equal(
+    (await offers.POST(jsonRequest("POST", { title: "Monsoon", id: "forged" }))).status,
+    400,
+    "unknown field rejected",
+  );
+  assert.equal((await offers.POST(jsonRequest("POST", { title: "  " }))).status, 400, "blank title rejected");
+  assert.equal(
+    (await offers.POST(jsonRequest("POST", { title: "Monsoon", validTo: "31/12/2099" }))).status,
+    400,
+    "bad date rejected",
+  );
+  assert.equal(
+    (await offers.POST(jsonRequest("POST", { title: "Monsoon", active: "yes" }))).status,
+    400,
+    "non-boolean rejected",
+  );
+  const created = await offers.POST(jsonRequest("POST", { title: " Monsoon ", discount: "20% off" }));
+  assert.equal(created.status, 201);
+  assert.deepEqual(saved.at(-1), {
+    title: "Monsoon",
+    description: "",
+    discount: "20% off",
+    code: "",
+    validFrom: "",
+    validTo: "",
+    active: true,
+  });
+  assert.equal((await created.json()).item.id, "o1");
+  assert.equal((await offers.PATCH(jsonRequest("PATCH", { id: "o1", active: false }))).status, 200);
+  assert.deepEqual(saved.at(-1), { active: false }, "partial update touches only the given field");
+  assert.equal((await offers.PATCH(jsonRequest("PATCH", { id: "missing", active: false }))).status, 404);
+  assert.equal((await offers.PATCH(jsonRequest("PATCH", { id: "o1", createdAt: "x" }))).status, 400);
+  assert.ok(revalidated.length >= 2 && revalidated.every(a => a[0] === "/" && a[1] === "layout"));
 });
 
-test('notifications stay queued when disabled and never call an external endpoint',async()=>{
- const notifications=load('src/lib/notifications.ts',{'node:crypto':{createHmac},'@/lib/db':{}},{process:{env:{}},fetch:()=>{throw Error('Must not send')}});
- assert.equal(notifications.notificationConfigured(),false);assert.equal((await notifications.deliverNotifications()).configured,false);
+test("booking and enquiry updates only change a valid status", async () => {
+  const changes = [];
+  const bookings = adminRoute("bookings", { updateBooking: async (id, d) => (changes.push(d), { id, ...d }) }, true);
+  assert.equal((await bookings.PATCH(jsonRequest("PATCH", { id: "b1", paymentStatus: "paid" }))).status, 400);
+  assert.equal((await bookings.PATCH(jsonRequest("PATCH", { id: "b1", bookingStatus: "teleported" }))).status, 400);
+  assert.equal((await bookings.PATCH(jsonRequest("PATCH", { id: "b1", bookingStatus: "confirmed" }))).status, 200);
+  assert.deepEqual(changes, [{ bookingStatus: "confirmed" }]);
+  const enquiries = adminRoute("enquiries", { updateEnquiryStatus: async (id, status) => ({ id, status }) }, true);
+  assert.equal((await enquiries.PATCH(jsonRequest("PATCH", { id: "e1", status: "contacted" }))).status, 200);
+  assert.equal((await enquiries.PATCH(jsonRequest("PATCH", { id: "e1", status: "deleted" }))).status, 400);
 });
 
-test('notification failures are retryable, signed and use a stable idempotency key',async()=>{
- const secret='test-secret-that-is-at-least-32-characters';const calls=[],statuses=[];
- const mocks={getNotificationJobs:async()=>[{id:'event-1',bookingId:'booking-1',status:'pending'}],getBookings:async()=>[{...payload,id:'booking-1',roomType:payload.roomType}],markNotification:async(id,ok)=>statuses.push(ok)};
- const notifications=load('src/lib/notifications.ts',{'node:crypto':{createHmac},'@/lib/db':mocks},{process:{env:{NOTIFICATION_WEBHOOK_URL:'https://notifications.example.test/hotel',NOTIFICATION_WEBHOOK_SECRET:secret}},fetch:async(url,options)=>{calls.push(options);return {ok:calls.length>1}}});
- assert.equal((await notifications.deliverNotifications()).delivered,0);
- assert.equal((await notifications.deliverNotifications()).delivered,1);assert.deepEqual(statuses,[false,true]);
- assert.equal(calls[0].headers['Idempotency-Key'],calls[1].headers['Idempotency-Key']);
- assert.equal(calls[0].headers['X-Hotel-Signature'],createHmac('sha256',secret).update(calls[0].headers['X-Hotel-Timestamp']+'.'+calls[0].body).digest('hex'));
- assert.equal(JSON.parse(calls[0].body).request.status,'pending');
+test("read-only storage gives staff a clear 503 instead of a crash", async () => {
+  const rooms = adminRoute(
+    "rooms",
+    {
+      StorageUnavailableError,
+      addRoom: async () => {
+        throw new StorageUnavailableError("Storage is read-only.");
+      },
+    },
+    true,
+  );
+  const res = await rooms.POST(jsonRequest("POST", { name: "Suite" }));
+  assert.equal(res.status, 503);
+  assert.match((await res.json()).error, /read-only/);
 });
 
-test('only unambiguous nightly rates produce an estimate',()=>{
- assert.equal(dates.nightlyRate('₹3,000/night'),3000);
- assert.equal(dates.nightlyRate('INR 4500 per night'),4500);
- assert.equal(dates.nightlyRate('₹3000–4500/night'),null);
- assert.equal(dates.nightlyRate('Rate on request'),null);
- assert.equal(dates.nightlyRate('₹3000/night for 2 adults'),null);
+test("rate limiter blocks excessive attempts per key", () => {
+  const limiter = load("src/lib/request-limit.ts");
+  assert.equal(limiter.allowRequest("test", 2), true);
+  assert.equal(limiter.allowRequest("test", 2), true);
+  assert.equal(limiter.allowRequest("test", 2), false);
+});
+test("rate limiter never locks everyone out when an attacker floods it with new keys", () => {
+  const limiter = load("src/lib/request-limit.ts");
+  for (let i = 0; i < 20000; i++) limiter.allowRequest("flood:" + i, 5);
+  assert.equal(limiter.allowRequest("real-guest", 5), true);
+});
+test("client key comes from the proxy-provided address, not from form fields", () => {
+  const limiter = load("src/lib/request-limit.ts");
+  assert.equal(limiter.clientKey(new Headers({ "x-forwarded-for": "203.0.113.7, 10.0.0.1" })), "203.0.113.7");
+  assert.equal(limiter.clientKey(new Headers({ "x-real-ip": "198.51.100.2" })), "198.51.100.2");
+  assert.equal(limiter.clientKey(new Headers()), "unknown");
+});
+test("failed logins are limited per address and per account, and success clears the address", () => {
+  const limiter = load("src/lib/request-limit.ts");
+  for (let i = 0; i < 10; i++) {
+    assert.equal(limiter.loginAllowed("1.1.1.1", "admin@x"), true);
+    limiter.recordLoginFailure("1.1.1.1", "admin@x");
+  }
+  assert.equal(limiter.loginAllowed("1.1.1.1", "admin@x"), false);
+  assert.equal(limiter.loginAllowed("2.2.2.2", "admin@x"), true, "another address is not locked out by one attacker");
+  limiter.recordLoginSuccess("1.1.1.1");
+  assert.equal(limiter.loginAllowed("1.1.1.1", "admin@x"), true);
+});
+
+test("validates and persists requested room counts", async () => {
+  assert.equal((await booking.POST(request({ ...payload, roomsRequested: 0 }))).status, 400);
+  assert.equal((await booking.POST(request({ ...payload, roomsRequested: 11 }))).status, 400);
+  assert.equal((await booking.POST(request({ ...payload, roomsRequested: 2.5 }))).status, 400);
+  assert.equal((await booking.POST(request({ ...payload, roomsRequested: 3 }))).status, 201);
+  assert.equal(records.at(-1).roomsRequested, 3);
+});
+
+test("local booking and its notification event are persisted in one atomic file replacement", async () => {
+  const files = new Map([["/virtual/data/db.json", JSON.stringify({ bookings: [], config: { rooms: [] } })]]);
+  let renames = 0;
+  const fakeFs = {
+    readFileSync: p => files.get(p),
+    writeFileSync: (p, v) => files.set(p, v),
+    existsSync: p => files.has(p) || p === "/virtual/data",
+    mkdirSync: () => {},
+    renameSync: (a, b) => {
+      renames++;
+      files.set(b, files.get(a));
+      files.delete(a);
+    },
+    unlinkSync: p => files.delete(p),
+  };
+  const dbModule = load(
+    "src/lib/db.ts",
+    { fs: { default: fakeFs }, path: { default: path.posix }, "./config": { SITE_CONFIG: { rooms: [] } } },
+    { process: { env: {}, cwd: () => "/virtual" } },
+  );
+  const saved = await dbModule.addBooking({
+    ...payload,
+    roomsRequested: 2,
+    gender: "other",
+    country: "",
+    city: "",
+    amount: 0,
+  });
+  const result = JSON.parse(files.get("/virtual/data/db.json"));
+  assert.equal(renames, 1);
+  assert.equal(result.bookings[0].id, saved.id);
+  assert.equal(result.notificationJobs[0].bookingId, saved.id);
+  assert.equal(result.notificationJobs[0].status, "pending");
+  files.set("/virtual/data/db.json", "broken JSON");
+  await assert.rejects(() => dbModule.getBookings());
+  assert.equal(files.get("/virtual/data/db.json"), "broken JSON");
+});
+
+test("Postgres saves the booking and event in the same transaction", async () => {
+  let transaction = [];
+  const sql = (strings, ...values) => ({ query: strings.join("?"), values });
+  sql.transaction = async queries => {
+    transaction = queries;
+    return [[], []];
+  };
+  const dbModule = load(
+    "src/lib/db.ts",
+    {
+      fs: { default: {} },
+      path: { default: path.posix },
+      "./config": { SITE_CONFIG: { rooms: [] } },
+      "@neondatabase/serverless": { neon: () => sql },
+    },
+    { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
+  );
+  const saved = await dbModule.addBooking({
+    ...payload,
+    roomsRequested: 2,
+    gender: "other",
+    country: "",
+    city: "",
+    amount: 0,
+  });
+  assert.equal(transaction.length, 2);
+  assert.match(transaction[0].query, /INSERT INTO bookings/);
+  assert.match(transaction[1].query, /INSERT INTO notification_outbox/);
+  assert.equal(transaction[1].values[0], saved.id);
+});
+
+test("notifications stay queued when disabled and never call an external endpoint", async () => {
+  const notifications = load(
+    "src/lib/notifications.ts",
+    { "node:crypto": { createHmac }, "@/lib/db": {} },
+    {
+      process: { env: {} },
+      fetch: () => {
+        throw Error("Must not send");
+      },
+    },
+  );
+  assert.equal(notifications.notificationConfigured(), false);
+  assert.equal((await notifications.deliverNotifications()).configured, false);
+});
+
+test("notification failures are retryable, signed and use a stable idempotency key", async () => {
+  const secret = "test-secret-that-is-at-least-32-characters";
+  const calls = [],
+    statuses = [];
+  const mocks = {
+    getNotificationJobs: async () => [{ id: "event-1", bookingId: "booking-1", status: "pending" }],
+    getBookings: async () => [{ ...payload, id: "booking-1", roomType: payload.roomType }],
+    markNotification: async (id, ok) => statuses.push(ok),
+  };
+  const notifications = load(
+    "src/lib/notifications.ts",
+    { "node:crypto": { createHmac }, "@/lib/db": mocks },
+    {
+      process: {
+        env: {
+          NOTIFICATION_WEBHOOK_URL: "https://notifications.example.test/hotel",
+          NOTIFICATION_WEBHOOK_SECRET: secret,
+        },
+      },
+      fetch: async (url, options) => {
+        calls.push(options);
+        return { ok: calls.length > 1 };
+      },
+    },
+  );
+  assert.equal((await notifications.deliverNotifications()).delivered, 0);
+  assert.equal((await notifications.deliverNotifications()).delivered, 1);
+  assert.deepEqual(statuses, [false, true]);
+  assert.equal(calls[0].headers["Idempotency-Key"], calls[1].headers["Idempotency-Key"]);
+  assert.equal(
+    calls[0].headers["X-Hotel-Signature"],
+    createHmac("sha256", secret)
+      .update(calls[0].headers["X-Hotel-Timestamp"] + "." + calls[0].body)
+      .digest("hex"),
+  );
+  assert.equal(JSON.parse(calls[0].body).request.status, "pending");
+});
+
+test("only unambiguous nightly rates produce an estimate", () => {
+  assert.equal(dates.nightlyRate("₹3,000/night"), 3000);
+  assert.equal(dates.nightlyRate("INR 4500 per night"), 4500);
+  assert.equal(dates.nightlyRate("₹3000–4500/night"), null);
+  assert.equal(dates.nightlyRate("Rate on request"), null);
+  assert.equal(dates.nightlyRate("₹3000/night for 2 adults"), null);
+});
+
+test("special requests are optional, trimmed, capped and persisted with the request", async () => {
+  assert.equal((await booking.POST(request(payload))).status, 201);
+  assert.equal(records.at(-1).specialRequests, "");
+  assert.equal(
+    (await booking.POST(request({ ...payload, specialRequests: "  Ground floor, early check-in  " }))).status,
+    201,
+  );
+  assert.equal(records.at(-1).specialRequests, "Ground floor, early check-in");
+  assert.equal((await booking.POST(request({ ...payload, specialRequests: "x".repeat(900) }))).status, 201);
+  assert.equal(records.at(-1).specialRequests.length, 500);
+  assert.equal((await booking.POST(request({ ...payload, specialRequests: { note: "not text" } }))).status, 201);
+  assert.equal(records.at(-1).specialRequests, "");
+});
+
+test("Postgres stores special requests and staff notifications include them", async () => {
+  let transaction = [];
+  const sql = (strings, ...values) => ({ query: strings.join("?"), values });
+  sql.transaction = async queries => {
+    transaction = queries;
+    return [[], []];
+  };
+  const dbModule = load(
+    "src/lib/db.ts",
+    {
+      fs: { default: {} },
+      path: { default: path.posix },
+      "./config": { SITE_CONFIG: { rooms: [] } },
+      "@neondatabase/serverless": { neon: () => sql },
+    },
+    { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
+  );
+  await dbModule.addBooking({
+    ...payload,
+    specialRequests: "Cot for an infant",
+    roomsRequested: 1,
+    gender: "other",
+    country: "",
+    city: "",
+    amount: 0,
+  });
+  assert.match(transaction[0].query, /special_requests/);
+  assert.ok(transaction[0].values.includes("Cot for an infant"));
+  const secret = "test-secret-that-is-at-least-32-characters";
+  let body;
+  const mocks = {
+    getNotificationJobs: async () => [{ id: "event-2", bookingId: "booking-2", status: "pending" }],
+    getBookings: async () => [{ ...payload, id: "booking-2", specialRequests: "Cot for an infant" }],
+    markNotification: async () => {},
+  };
+  const notifications = load(
+    "src/lib/notifications.ts",
+    { "node:crypto": { createHmac }, "@/lib/db": mocks },
+    {
+      process: {
+        env: {
+          NOTIFICATION_WEBHOOK_URL: "https://notifications.example.test/hotel",
+          NOTIFICATION_WEBHOOK_SECRET: secret,
+        },
+      },
+      fetch: async (url, options) => {
+        body = JSON.parse(options.body);
+        return { ok: true };
+      },
+    },
+  );
+  await notifications.deliverNotifications();
+  assert.equal(body.request.specialRequests, "Cot for an infant");
+});
+
+test("hotel contact links are only built from usable numbers", () => {
+  const contact = load("src/lib/contact.ts");
+  assert.equal(contact.telHref("+91 98765 43210"), "tel:+919876543210");
+  assert.equal(contact.telHref(""), "");
+  assert.equal(contact.telHref("to be updated"), "");
+  assert.equal(contact.whatsappHref("+91 98765-43210"), "https://wa.me/919876543210");
+  assert.equal(
+    contact.whatsappHref("+91 98765 43210", "Hello & welcome"),
+    "https://wa.me/919876543210?text=Hello%20%26%20welcome",
+  );
+  assert.equal(contact.whatsappHref("12"), "");
+});
+
+test("guests only see known room facts; unknown ones are hidden rather than shown as placeholders", () => {
+  const content = load("src/lib/hotel-content.ts");
+  assert.deepEqual(content.roomFacts({ size: "", bed: "King bed", occupancy: "", bathroom: "" }), [
+    ["Bed configuration", "King bed"],
+  ]);
+  assert.deepEqual(content.roomFacts(undefined), []);
+  for (const spec of Object.values(content.ROOM_SPECIFICATIONS))
+    for (const value of Object.values(spec)) assert.doesNotMatch(value, /to be (updated|confirmed)/i);
+  for (const value of Object.values(content.HOTEL_INFORMATION))
+    assert.doesNotMatch(value, /to be (updated|confirmed)|not yet/i);
+});
+
+test("admin launch checklist lists every missing guest-facing detail", () => {
+  const content = load("src/lib/hotel-content.ts");
+  const empty = { phone: "", whatsapp: "", email: "", address: "", mapEmbedUrl: "" };
+  const missing = content.missingLaunchDetails({ contact: empty, rooms: [{ name: "Suite", sample: true }] });
+  for (const item of ["phone", "WhatsApp", "email", "address", "directions", "check-in", "Suite"])
+    assert.ok(
+      missing.some(m => m.toLowerCase().includes(item.toLowerCase())),
+      "missing " + item,
+    );
+  const ready = content.missingLaunchDetails({
+    contact: {
+      phone: "+91 1",
+      whatsapp: "+91 1",
+      email: "a@b.in",
+      address: "Patna",
+      mapEmbedUrl: "https://maps.example",
+    },
+    rooms: [],
+  });
+  assert.ok(!ready.some(m => /phone|whatsapp|email|address|directions/i.test(m)));
+});
+
+test("Hotel JSON-LD uses only known facts and is safe to embed in a script tag", () => {
+  const info = { HOTEL_INFORMATION: { checkIn: "", checkOut: "" } };
+  const seo = load("src/lib/seo.ts", { "@/lib/reservation": dates, "@/lib/hotel-content": info });
+  const rooms = [
+    { name: "Deluxe Room", rate: "₹3,000/night", hidden: false },
+    { name: "Suite", rate: "₹7,500/night", hidden: false },
+    { name: "Hidden", rate: "₹99/night", hidden: true },
+    { name: "Family", rate: "On request", hidden: false },
+  ];
+  const bare = seo.hotelJsonLd({
+    rooms,
+    contact: { phone: "", whatsapp: "", email: "", address: "", mapEmbedUrl: "" },
+    siteUrl: "",
+  });
+  assert.equal(bare["@type"], "Hotel");
+  assert.equal(bare.name, "Hotel Ganga Imperial");
+  assert.equal(bare.telephone, undefined);
+  assert.equal(bare.email, undefined);
+  assert.equal(bare.address, undefined);
+  assert.equal(bare.url, undefined);
+  assert.equal(bare.priceRange, "₹3,000–₹7,500 per night");
+  assert.equal(bare.checkinTime, undefined);
+  assert.equal(bare.checkoutTime, undefined);
+  assert.ok(bare.amenityFeature.some(a => a.name === "Rooftop swimming pool"));
+  const full = seo.hotelJsonLd({
+    rooms: [],
+    contact: {
+      phone: "+91 98765 43210",
+      whatsapp: "",
+      email: "stay@hotel.in",
+      address: "Main Road, Patna",
+      mapEmbedUrl: "https://maps.example/x",
+    },
+    siteUrl: "https://hotel.in",
+  });
+  assert.equal(full.telephone, "+91 98765 43210");
+  assert.equal(full.url, "https://hotel.in");
+  assert.equal(full.image, "https://hotel.in/images/image-43.jpeg");
+  assert.equal(full.address, "Main Road, Patna");
+  assert.equal(full.hasMap, "https://maps.example/x");
+  assert.equal(full.priceRange, undefined);
+  const timed = load("src/lib/seo.ts", {
+    "@/lib/reservation": dates,
+    "@/lib/hotel-content": { HOTEL_INFORMATION: { checkIn: "12:00", checkOut: "11:00" } },
+  }).hotelJsonLd({
+    rooms: [],
+    contact: { phone: "", whatsapp: "", email: "", address: "", mapEmbedUrl: "" },
+    siteUrl: "",
+  });
+  assert.equal(timed.checkinTime, "12:00");
+  assert.equal(timed.checkoutTime, "11:00");
+  assert.doesNotMatch(seo.jsonLdScript({ name: "</script><script>alert(1)</script>" }), /<\/script/i);
+});
+
+test("login rejects bad credentials, limits repeated failures and sets a secure session cookie", async () => {
+  const limiter = load("src/lib/request-limit.ts");
+  const env = {
+    ADMIN_EMAIL: "staff@hotel.in",
+    ADMIN_PASSWORD: "correct horse battery",
+    JWT_SECRET: "x".repeat(32),
+    NODE_ENV: "production",
+  };
+  const nextServer = {
+    NextResponse: {
+      json: (v, o = {}) => {
+        const r = Response.json(v, o);
+        r.cookies = { set: (...a) => (r.cookie = a) };
+        return r;
+      },
+    },
+  };
+  const login = load(
+    "src/app/api/auth/login/route.ts",
+    {
+      "node:crypto": await import("node:crypto"),
+      "next/server": nextServer,
+      "@/lib/request-limit": limiter,
+      "@/lib/auth": {
+        createSession: async e => "token-for-" + e,
+        getAdminCredentials: () => ({ email: env.ADMIN_EMAIL, password: env.ADMIN_PASSWORD }),
+        COOKIE_NAME: "admin_session",
+      },
+    },
+    { process: { env } },
+  );
+  const attempt = (body, ip = "9.9.9.9") =>
+    login.POST(
+      new Request("http://localhost/api/auth/login", {
+        method: "POST",
+        headers: { "x-forwarded-for": ip },
+        body: JSON.stringify(body),
+      }),
+    );
+  assert.equal((await attempt({ email: "staff@hotel.in" })).status, 400);
+  assert.equal((await attempt({ email: "staff@hotel.in", password: "wrong" })).status, 401);
+  const ok = await attempt({ email: "STAFF@hotel.in", password: "correct horse battery" });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.cookie[0], "admin_session");
+  assert.equal(ok.cookie[1], "token-for-staff@hotel.in");
+  assert.deepEqual(
+    { httpOnly: ok.cookie[2].httpOnly, secure: ok.cookie[2].secure, sameSite: ok.cookie[2].sameSite },
+    { httpOnly: true, secure: true, sameSite: "lax" },
+  );
+  for (let i = 0; i < 10; i++) await attempt({ email: "staff@hotel.in", password: "guess" + i }, "6.6.6.6");
+  assert.equal(
+    (await attempt({ email: "staff@hotel.in", password: "correct horse battery" }, "6.6.6.6")).status,
+    429,
+    "attacking address is blocked",
+  );
+  assert.equal(
+    (await attempt({ email: "staff@hotel.in", password: "correct horse battery" }, "7.7.7.7")).status,
+    200,
+    "staff elsewhere can still sign in",
+  );
+  env.JWT_SECRET = "short";
+  assert.equal(
+    (await attempt({ email: "staff@hotel.in", password: "correct horse battery" }, "8.8.8.8")).status,
+    503,
+    "fails closed without a strong secret",
+  );
+});
+
+function jsonStore(initial) {
+  const files = new Map(initial === undefined ? [] : [["/virtual/data/db.json", JSON.stringify(initial)]]);
+  let readOnly = false;
+  const fakeFs = {
+    readFileSync: p => {
+      if (!files.has(p)) throw Object.assign(Error("missing"), { code: "ENOENT" });
+      return files.get(p);
+    },
+    writeFileSync: (p, v) => {
+      if (readOnly) throw Object.assign(Error("ro"), { code: "EROFS" });
+      files.set(p, v);
+    },
+    existsSync: p => files.has(p) || p === "/virtual/data",
+    mkdirSync: () => {},
+    renameSync: (a, b) => {
+      files.set(b, files.get(a));
+      files.delete(a);
+    },
+    unlinkSync: p => files.delete(p),
+  };
+  const db = load(
+    "src/lib/db.ts",
+    {
+      fs: { default: fakeFs },
+      path: { default: path.posix },
+      "./config": { SITE_CONFIG: { rooms: [{ name: "Deluxe Room", text: "", image: "", rate: "", sample: true }] } },
+    },
+    { process: { env: {}, cwd: () => "/virtual" } },
+  );
+  return { db, setReadOnly: v => (readOnly = v), saved: () => JSON.parse(files.get("/virtual/data/db.json")) };
+}
+
+test("rooms are addressed by stable id, not list position", async () => {
+  const store = jsonStore({
+    bookings: [],
+    config: {
+      rooms: [
+        { name: "Deluxe Room", text: "", image: "", rate: "", sample: true },
+        { name: "Suite", text: "", image: "", rate: "", sample: true },
+      ],
+    },
+  });
+  assert.deepEqual(
+    (await store.db.getRooms()).map(r => r.id),
+    ["deluxe-room", "suite"],
+  );
+  const added = await store.db.addRoom({
+    name: "Suite",
+    text: "",
+    image: "/images/a.jpeg",
+    rate: "",
+    sample: false,
+    hidden: false,
+  });
+  assert.equal(added.id, "suite-2", "duplicate names still get unique ids");
+  assert.equal(await store.db.deleteRoom("deluxe-room"), true);
+  const updated = await store.db.updateRoom("suite-2", { rate: "9000", id: "hijack", bogus: 1 });
+  assert.equal(updated.rate, "9000");
+  assert.equal(updated.id, "suite-2");
+  assert.equal(updated.bogus, undefined);
+  assert.equal(
+    (await store.db.getRooms()).find(r => r.id === "suite").rate,
+    "",
+    "the other Suite is untouched although a delete shifted positions",
+  );
+  assert.equal(await store.db.updateRoom("nope", { rate: "x" }), null);
+});
+
+test("JSON collections store only declared fields and order like Postgres", async () => {
+  const store = jsonStore({ bookings: [], config: { rooms: [] } });
+  const first = await store.db.addOffer({
+    title: "A",
+    description: "",
+    discount: "",
+    validFrom: "",
+    validTo: "",
+    active: true,
+    stray: "x",
+  });
+  await new Promise(r => setTimeout(r, 5));
+  await store.db.addOffer({ title: "B", description: "", discount: "", validFrom: "", validTo: "", active: true });
+  assert.deepEqual(
+    (await store.db.getOffers()).map(o => o.title),
+    ["B", "A"],
+    "offers newest first, as in Postgres",
+  );
+  assert.equal(store.saved().offers[0].stray, undefined);
+  await store.db.updateOffer(first.id, { createdAt: "forged", active: false });
+  const saved = store.saved().offers.find(o => o.id === first.id);
+  assert.equal(saved.active, false);
+  assert.notEqual(saved.createdAt, "forged");
+});
+
+test("read-only storage (e.g. Vercel without DATABASE_URL) serves defaults and refuses writes cleanly", async () => {
+  const store = jsonStore(undefined);
+  store.setReadOnly(true);
+  assert.deepEqual(
+    (await store.db.getRooms()).map(r => r.name),
+    ["Deluxe Room"],
+    "reads fall back to built-in content",
+  );
+  await assert.rejects(
+    () =>
+      store.db.addBooking({
+        name: "Guest",
+        mobile: "+919999999999",
+        email: "",
+        city: "",
+        country: "",
+        gender: "other",
+        roomType: "Deluxe Room",
+        checkin: future,
+        checkout: "2099-01-12",
+        guests: 2,
+        amount: 0,
+      }),
+    e => e.name === "StorageUnavailableError",
+  );
+});
+
+test("Postgres collections use parameterised statements for only the changed columns", async () => {
+  const queries = [];
+  const sql = (strings, ...values) => ({ query: strings.join("?"), values });
+  sql.transaction = async () => [[], []];
+  sql.query = async (text, params = []) => {
+    queries.push({ text, params });
+    return [{ id: "o1", title: "T", valid_from: "", valid_to: "", active: false, created_at: "2099-01-01" }];
+  };
+  const db = load(
+    "src/lib/db.ts",
+    {
+      fs: { default: {} },
+      path: { default: path.posix },
+      "./config": { SITE_CONFIG: { rooms: [] } },
+      "@neondatabase/serverless": { neon: () => sql },
+    },
+    { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
+  );
+  const item = await db.updateOffer("o1", { active: false, title: undefined, injected: "x" });
+  assert.equal(queries.at(-1).text, "UPDATE offers SET active = $1 WHERE id = $2 RETURNING *");
+  assert.deepEqual(queries.at(-1).params, [false, "o1"]);
+  assert.equal(item.validFrom, "");
+  assert.equal(item.active, false);
+  await db.addBanquetPackage({
+    name: "Gold",
+    description: "",
+    capacity: "",
+    price: "",
+    includes: ["DJ"],
+    active: true,
+  });
+  assert.match(
+    queries.at(-1).text,
+    /^INSERT INTO banquet_packages \(id, name, description, capacity, price, includes, active, created_at\) VALUES \(\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8\)$/,
+  );
+  assert.equal(queries.at(-1).params[5], '["DJ"]');
+  assert.equal(await db.deleteRoom("not-a-number"), false, "non-numeric room ids never reach SQL");
+});
+
+test("coupon codes match active, in-date offers case-insensitively and read a percentage from the badge", () => {
+  const offers = [
+    { title: "A", discount: "Save 15% off", code: "Weekend15", validFrom: "2026-01-01", validTo: "2026-12-31", active: true },
+    { title: "B", discount: "Free breakfast", code: "BFAST", validFrom: "", validTo: "", active: true },
+    { title: "C", discount: "20%", code: "OFF", validFrom: "", validTo: "", active: false },
+  ];
+  assert.equal(dates.findCoupon(offers, " weekend15 ", "2026-06-01")?.title, "A");
+  assert.equal(dates.findCoupon(offers, "WEEKEND15", "2027-01-01"), null, "expired");
+  assert.equal(dates.findCoupon(offers, "OFF", "2026-06-01"), null, "inactive");
+  assert.equal(dates.findCoupon(offers, "", "2026-06-01"), null, "empty code never matches an offer without one");
+  assert.equal(dates.couponPercent(offers[0]), 15);
+  assert.equal(dates.couponPercent(offers[1]), 0);
+});
+
+test("a valid coupon is recorded on the request; an invalid one is rejected before saving", async () => {
+  const before = records.length;
+  const bad = await booking.POST(request({ ...payload, couponCode: "OLD10" }));
+  assert.equal(bad.status, 400);
+  assert.equal(records.length, before);
+  const ok = await booking.POST(request({ ...payload, couponCode: "early20", specialRequests: "Quiet room" }));
+  assert.equal(ok.status, 201);
+  assert.deepEqual((await ok.json()).coupon, { code: "EARLY20", title: "Early Bird", percent: 20 });
+  assert.equal(records.at(-1).specialRequests, "Coupon EARLY20 (Early Bird) · Quiet room");
+});
+
+test("request tracking needs reference and email, and never returns contact details", async () => {
+  const lookups = [];
+  const track = load("src/app/api/track/route.ts", {
+    "next/server": response,
+    "@/lib/db": {
+      StorageUnavailableError: class extends Error {},
+      getBookingByIdAndEmail: async (ref, email) => {
+        lookups.push([ref, email]);
+        return ref === "3f9a12bc" && email === "a@b.in"
+          ? { id: "3f9a12bc-0000", name: "G", mobile: "+91999", email: "a@b.in", roomType: "Deluxe Room", roomsRequested: 1, checkin: future, checkout: "", guests: 2, bookingStatus: "pending", createdAt: "x" }
+          : null;
+      },
+    },
+    "@/lib/request-limit": { allowRequest: () => true, clientKey: () => "test" },
+    "@/lib/reservation": dates,
+  });
+  const post = b => track.POST(new Request("http://localhost/api/track", { method: "POST", body: JSON.stringify(b) }));
+  assert.equal((await post({ reference: "3f9a", email: "a@b.in" })).status, 400);
+  assert.equal((await post({ reference: "3f9a12bc", email: "x@b.in" })).status, 404);
+  const found = await (await post({ reference: "3f9a12bc", email: "a@b.in" })).json();
+  assert.equal(found.reference, "3F9A12BC");
+  for (const key of ["name", "mobile", "email", "id"]) assert.ok(!(key in found), key + " must not be returned");
 });

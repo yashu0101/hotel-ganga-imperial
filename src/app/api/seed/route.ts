@@ -18,26 +18,16 @@ export async function POST() {
   // Create tables
   await initDB();
 
-  // Seed reviews (always check independently)
-  const existingReviews2 = await sql`SELECT COUNT(*) as cnt FROM reviews`;
-  if (Number(existingReviews2[0].cnt) === 0) {
-    await sql`INSERT INTO reviews (id, name, rating, text, city, active, created_at) VALUES
-      ('rev-001', 'Rajesh Sharma', 5, 'Excellent hospitality and beautiful rooms. The rooftop pool is stunning. Will definitely come back!', 'Delhi', true, NOW()),
-      ('rev-002', 'Priya Patel', 5, 'We hosted our wedding reception here. The banquet hall was beautifully decorated and the staff was incredibly helpful.', 'Mumbai', true, NOW()),
-      ('rev-003', 'Amit Kumar', 4, 'Very comfortable stay. The breakfast buffet was delicious and the staff was friendly. Great value for money.', 'Lucknow', true, NOW()),
-      ('rev-004', 'Sneha Gupta', 5, 'The suite was amazing! Marble floors, great city views, and the spa treatment was so relaxing. Highly recommended.', 'Jaipur', true, NOW()),
-      ('rev-005', 'Vikram Singh', 4, 'Clean rooms, excellent room service, and the location is perfect. The gym facilities are top-notch.', 'Chandigarh', true, NOW())`;
-  }
+  // Reviews are never seeded: only real, verified guest reviews may be added (through the admin).
 
-  // Migrate: add coupon codes to existing offers that don't have them
+  // Migrate: add coupon codes to existing seeded offers that don't have them.
   await sql`UPDATE offers SET code = 'EARLY20' WHERE id = 'offer-001' AND (code IS NULL OR code = '')`;
   await sql`UPDATE offers SET code = 'WEEKEND15' WHERE id = 'offer-002' AND (code IS NULL OR code = '')`;
   await sql`UPDATE offers SET code = 'HONEYMOON' WHERE id = 'offer-003' AND (code IS NULL OR code = '')`;
 
-  // Check if already seeded
   const existing = await sql`SELECT COUNT(*) as cnt FROM rooms`;
   if (Number(existing[0].cnt) > 0) {
-    return NextResponse.json({ message: "Database seeded (reviews added if missing)." });
+    return NextResponse.json({ message: "Database already seeded." });
   }
 
   // Seed rooms

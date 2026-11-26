@@ -1,81 +1,45 @@
-"use client";
-
-import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { useApp } from "@/lib/context";
+import type { DiningOption } from "@/lib/types";
 
-const FAN_ITEMS = [
-  { i: -1, a: 1, src: "/images/image-51.jpeg", alt: "Dining and lounge", caption: "Dining and lounge", sample: false },
-  { i: 1, a: 1, src: "/images/image-51.jpeg", alt: "Club lounge", caption: "Club lounge", sample: false },
-  { i: 0, a: 0, src: "/images/image-51.jpeg", alt: "Restaurant", caption: "Restaurant", sample: false },
-];
-
-interface DiningOption {
-  id: string; name: string; description: string; price: string;
-  category: string; active: boolean;
-}
-
-export default function Dining({preview=false}:{preview?:boolean}) {
-  const { t } = useApp();
-  const fanRef = useRef<HTMLDivElement>(null);
-  const [options, setOptions] = useState<DiningOption[]>([]);
-
-  useEffect(() => {
-    if(preview)return;
-    fetch("/api/dining").then(r => r.json())
-      .then((data: DiningOption[]) => setOptions(data.filter(d => d.active)))
-      .catch(() => {});
-  }, [preview]);
-
-  useEffect(() => {
-    const fan = fanRef.current;
-    if (!fan) return;
-    const reduce = window.matchMedia("(prefers-reduced-motion:reduce)").matches;
-    const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
-
-    let ticking = false;
-    const upd = () => {
-      ticking = false;
-      const vh = window.innerHeight;
-      const fr = fan.getBoundingClientRect();
-      const s = reduce ? 1 : clamp((vh - fr.top) / (vh * .7), 0, 1);
-      fan.querySelectorAll("figure").forEach(f => (f as HTMLElement).style.setProperty("--s", s.toFixed(3)));
-    };
-    const req = () => { if (!ticking) { ticking = true; requestAnimationFrame(upd); } };
-    window.addEventListener("scroll", req, { passive: true });
-    upd();
-    return () => window.removeEventListener("scroll", req);
-  }, []);
-
+// In preview mode (homepage) only the introduction is shown; /dining passes the menu options.
+export default function Dining({ options = [], preview = false }: { options?: DiningOption[]; preview?: boolean }) {
+  const active = options.filter(d => d.active);
   return (
     <section className="dining" id="dining">
       <div className="wrap fan-wrap">
         <div>
-          <h2>{t("dining.title")}</h2>
-          <p style={{ marginTop: 24 }}>{t("dining.subtitle")}</p>
-          <a className="btn btn-solid" href="/book?type=dining">Ask about dining</a>
+          <h2>Dining</h2>
+          <p style={{ marginTop: 24 }}>
+            From a hearty breakfast to a candlelit dinner, every meal is prepared fresh by our in-house chefs.
+          </p>
+          <a className="btn btn-solid" href="/book?type=dining">
+            Ask about dining
+          </a>
         </div>
-        <div className="fan" id="fan" ref={fanRef}>
-          {FAN_ITEMS.map((item, idx) => (
-            <figure key={idx} style={{ "--i": item.i, "--a": item.a } as React.CSSProperties}>
-              {item.sample && <span className="chip">Sample photo</span>}
-              <Image src={item.src} alt={item.alt} width={380} height={475} loading="lazy" />
-              <figcaption>{item.caption}</figcaption>
-            </figure>
-          ))}
+        <div className="fan">
+          <figure>
+            <Image src="/images/image-51.jpeg" alt="Restaurant" width={380} height={475} loading="lazy" />
+            <figcaption>Restaurant</figcaption>
+          </figure>
         </div>
       </div>
 
-      {preview&&<div className="wrap section-action"><a className="text-action" href="/dining">Explore dining & menu ↗</a></div>}
-      {!preview && options.length > 0 && (
+      {preview && (
+        <div className="wrap section-action">
+          <a className="text-action" href="/dining">
+            Explore dining & menu ↗
+          </a>
+        </div>
+      )}
+      {!preview && active.length > 0 && (
         <div className="wrap">
           <div className="head" style={{ marginTop: 48 }}>
-            <h2>{t("dining.menu")}</h2>
-            <p>{t("dining.menuSubtitle")}</p>
+            <h2>Menu & Pricing</h2>
+            <p>Fresh, seasonal meals prepared by our in-house chefs.</p>
           </div>
           <div className="dining-grid">
-            {options.map(opt => (
-              <div key={opt.id} className="dining-card card-lift reveal-luxury" data-reveal>
+            {active.map(opt => (
+              <div key={opt.id} className="dining-card card-lift">
                 <div className="dining-cat">{opt.category.replace("-", " ")}</div>
                 <h3>{opt.name}</h3>
                 <p>{opt.description}</p>

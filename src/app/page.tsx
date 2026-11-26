@@ -13,28 +13,49 @@ import BackToTop from "@/components/BackToTop";
 import DoorIntro from "@/components/DoorIntro";
 import Experience from "@/components/Experience";
 import MotionEffects from "@/components/MotionEffects";
+import { getOffers, getRooms } from "@/lib/db";
+import { SITE_CONFIG } from "@/lib/config";
+import { canonical, hotelJsonLd, jsonLdScript } from "@/lib/seo";
 
-export default function Home() {
+// Static, refreshed every 5 minutes and immediately after admin edits (revalidatePath).
+export const revalidate = 300;
+export const metadata = { ...canonical("/") };
+
+export default async function Home() {
+  const [rooms, offers] = await Promise.all([getRooms(), getOffers()]);
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: jsonLdScript(
+            hotelJsonLd({ rooms, contact: SITE_CONFIG.contact, siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "" }),
+          ),
+        }}
+      />
       <DoorIntro />
       <MotionEffects />
-      <a className="skip" href="#main">Skip to content</a>
+      <a className="skip" href="#main">
+        Skip to content
+      </a>
       <Header />
       <main id="main">
+        {/* What guests decide on (rooms, rates, amenities) comes first; the scroll-driven tour follows. */}
         <Hero />
-        <Experience />
         <About />
-        <Rooms preview />
-        <Offers />
+        <Rooms rooms={rooms.filter(r => !r.hidden)} preview />
+        <Offers offers={offers} />
         <Amenities />
+        <Experience />
         <Events preview />
         <Dining preview />
         <Gallery />
         <GuestClarity />
       </main>
       <Footer />
-      <a className="mobile-reserve" href="/book">Request a reservation <span>↗</span></a>
+      <a className="mobile-reserve" href="/book">
+        Request a reservation <span>↗</span>
+      </a>
       <BackToTop />
     </>
   );

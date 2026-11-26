@@ -1,26 +1,39 @@
+import { canonical } from "@/lib/seo";
 import Link from "next/link";
 import InteriorShell from "@/components/InteriorShell";
 import { SITE_CONFIG } from "@/lib/config";
-
-export const metadata = { title: "Contact & location | Hotel Ganga Imperial" };
-
+import { telHref, whatsappHref } from "@/lib/contact";
+export const metadata = {
+  ...canonical("/contact"),
+  title: "Contact & location | Hotel Ganga Imperial",
+  description:
+    "Get in touch with Hotel Ganga Imperial to plan a stay, a meal or a celebration, and find directions to the hotel.",
+};
 const landmarks = [
+  { name: "Banaras Hindu University", distance: "~6 km" },
   { name: "Kashi Vishwanath Temple", distance: "~8 km" },
   { name: "Dashashwamedh Ghat", distance: "~9 km" },
-  { name: "Sarnath (Buddhist site)", distance: "~15 km" },
-  { name: "Banaras Hindu University", distance: "~6 km" },
-  { name: "Varanasi Junction (Railway)", distance: "~10 km" },
+  { name: "Varanasi Junction (railway station)", distance: "~10 km" },
+  { name: "Sarnath", distance: "~15 km" },
   { name: "Lal Bahadur Shastri Airport", distance: "~28 km" },
 ];
 
 const management = [
   { name: "Dinesh Ji", role: "General Manager", phone: "+91 6388360881" },
-  { name: "Ashfaque Ahmed", role: "Founder, Atlas Tour & Travels (Est. 1983)", phone: "+91 9616074995" },
   { name: "Bushra Ashfaque", role: "Managing Director", phone: "+91 6388360881" },
+  { name: "Ashfaque Ahmed", role: "Founder, Atlas Tour & Travels (Est. 1983)", phone: "+91 9616074995" },
 ];
 
+// Only configured details are shown. Missing ones are listed in the admin launch checklist.
 export default function Contact() {
   const c = SITE_CONFIG.contact;
+  const tel = telHref(c.phone),
+    whatsapp = whatsappHref(c.whatsapp);
+  const details = [
+    ["Phone", c.phone],
+    ["Email", c.email],
+    ["Address", c.address],
+  ].filter(([, value]) => value);
   return (
     <InteriorShell>
       <div className="wrap guide-page">
@@ -29,100 +42,79 @@ export default function Contact() {
         <p className="page-lead">
           For room requests, dining or celebrations, share your plans through the reservation form.
         </p>
-
         <div className="contact-grid">
           <div className="contact-card">
             <h2>Get in touch</h2>
-            <dl className="policy-list">
-              {[
-                ["Phone", c.phone],
-                ["Email", c.email],
-                ["Address", c.address],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <dt>{label}</dt>
-                  <dd>{value}</dd>
-                </div>
-              ))}
-            </dl>
-            <div className="guide-actions">
-              {c.phone && (
-                <a href={"tel:" + c.phone.replace(/[^+\d]/g, "")}>Call the hotel</a>
-              )}
-              {c.email && <a href={"mailto:" + c.email}>Email the hotel</a>}
-              {c.whatsapp && (
-                <a
-                  href={"https://wa.me/" + c.whatsapp.replace(/\D/g, "")}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  WhatsApp ↗
-                </a>
-              )}
-            </div>
+            {details.length > 0 ? (
+              <dl className="policy-list">
+                {details.map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="page-lead">
+                Send a reservation request with your dates. The hotel will reply by phone or email to confirm the
+                details.
+              </p>
+            )}
+            {(tel || c.email || whatsapp) && (
+              <div className="guide-actions">
+                {tel && <a href={tel}>Call the hotel</a>}
+                {c.email && <a href={"mailto:" + c.email}>Email the hotel</a>}
+                {whatsapp && (
+                  <a href={whatsapp} target="_blank" rel="noreferrer">
+                    WhatsApp ↗
+                  </a>
+                )}
+              </div>
+            )}
             <Link className="btn btn-solid" href="/book">
               Send a reservation request ↗
             </Link>
           </div>
-
           <div className="location-card">
             <span aria-hidden="true">⌖</span>
             <h2>Find your way here</h2>
-            {c.mapEmbedUrl && (
-              <a
-                className="btn btn-solid"
-                href={c.mapEmbedUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
+            {c.mapEmbedUrl ? (
+              <a className="btn btn-solid" href={c.mapEmbedUrl} target="_blank" rel="noreferrer">
                 Open hotel directions ↗
               </a>
+            ) : (
+              <p>Ask for directions in your request and the hotel will include them in its reply.</p>
             )}
-            <h3 style={{ marginTop: 24 }}>Nearby Landmarks</h3>
-            <ul style={{ listStyle: "none", padding: 0, margin: "12px 0" }}>
-              {landmarks.map((l) => (
-                <li
-                  key={l.name}
-                  style={{
-                    padding: "6px 0",
-                    borderBottom: "1px solid rgba(128,128,128,0.2)",
-                  }}
-                >
-                  <strong>{l.name}</strong> — {l.distance}
-                </li>
+            <h3>Nearby landmarks</h3>
+            <dl className="policy-list">
+              {landmarks.map(l => (
+                <div key={l.name}>
+                  <dt>{l.name}</dt>
+                  <dd>{l.distance}</dd>
+                </div>
               ))}
-            </ul>
+            </dl>
             <p className="small-note">
-              Varanasi Junction Railway Station ~10 km | Lal Bahadur Shastri Airport ~28 km
+              Need an airport or railway transfer, or parking? Mention it in your request’s special requests.
             </p>
           </div>
         </div>
-
         <div className="decision-note">
           <h3>Management</h3>
-          <div style={{ display: "grid", gap: 16, marginTop: 12 }}>
-            {management.map((m) => (
-              <div
-                key={m.name}
-                style={{
-                  padding: 16,
-                  background: "rgba(128,128,128,0.08)",
-                  borderRadius: 8,
-                }}
-              >
-                <strong>{m.name}</strong>
-                <br />
-                <span style={{ opacity: 0.7, fontSize: 14 }}>{m.role}</span>
-                <br />
-                <a
-                  href={"tel:" + m.phone.replace(/[^+\d]/g, "")}
-                  style={{ fontSize: 14 }}
-                >
-                  {m.phone}
-                </a>
+          <dl className="policy-list">
+            {management.map(m => (
+              <div key={m.name}>
+                <dt>
+                  {m.name}
+                  <br />
+                  <small>{m.role}</small>
+                </dt>
+                <dd>
+                  <a href={telHref(m.phone)}>{m.phone}</a>
+                </dd>
               </div>
             ))}
-          </div>
+          </dl>
         </div>
       </div>
     </InteriorShell>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, use } from "react";
+import Link from "next/link";
 
 interface BookingData {
   id: string; name: string; email: string; mobile: string; city: string; country: string;
@@ -70,7 +71,7 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
 
       <div className="invoice-wrap">
         <div className="print-bar no-print">
-          <a href="/" className="back-btn">Back to website</a>
+          <Link href="/admin" className="back-btn">Back to admin</Link>
           <button className="print-btn" onClick={() => window.print()}>Print / Save PDF</button>
         </div>
 

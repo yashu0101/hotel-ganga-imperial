@@ -3,11 +3,16 @@ import { SiteConfig } from "./types";
 export const SITE_CONFIG: SiteConfig = {
   hotelName: "Hotel Ganga Imperial",
   contact: {
-    phone: "+91 6388360881",
-    whatsapp: "916388360881",
-    email: "info@hotelgangaimperial.com",
-    address: "Hotel Ganga Imperial, Tilamapur, Varanasi, Rustampur, Uttar Pradesh 221112",
-    mapEmbedUrl: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3606.5!2d83.0!3d25.3!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2sHotel+Ganga+Imperial!5e0!3m2!1sen!2sin!4v1",
+    // Verified hotel details; deployment env vars can override them.
+    phone: process.env.NEXT_PUBLIC_HOTEL_PHONE || "+91 6388360881",
+    whatsapp: process.env.NEXT_PUBLIC_HOTEL_WHATSAPP || "916388360881",
+    email: process.env.NEXT_PUBLIC_HOTEL_EMAIL || "info@hotelgangaimperial.com",
+    address:
+      process.env.NEXT_PUBLIC_HOTEL_ADDRESS ||
+      "Hotel Ganga Imperial, Tilamapur, Varanasi, Rustampur, Uttar Pradesh 221112",
+    mapEmbedUrl:
+      process.env.NEXT_PUBLIC_HOTEL_MAP_URL ||
+      "https://www.google.com/maps/search/?api=1&query=Hotel+Ganga+Imperial+Tilamapur+Varanasi",
   },
   rooms: [
     {
@@ -63,15 +68,31 @@ export const GALLERY_IMAGES = [
   { src: "/images/image-43.jpeg", caption: "Hotel exterior at night" },
   { src: "/images/image-49.jpeg", caption: "Guest room with seating area" },
   { src: "/images/image-52.jpeg", caption: "Guest room interior detail" },
-  { src: "/images/image-45.jpeg", caption: "Rooftop swimming pool" },
+  { src: "/images/image-23.jpeg", caption: "Rooftop swimming pool" },
   { src: "/images/image-48.jpeg", caption: "Banquet hall" },
   { src: "/images/image-51.jpeg", caption: "Dining and lounge area" },
   { src: "/images/image-50.jpeg", caption: "Spa treatment room" },
   { src: "/images/image-53.jpeg", caption: "Fitness room" },
 ];
 export const EXPERIENCE_STEPS = [
-  { title: "A welcome that glows", description: "Step inside warm interiors, marble details and spaces made for slowing down.", image: "/images/image-44.jpeg" },
-  { title: "Your own quiet retreat", description: "Discover welcoming guest rooms, soft lighting and a little space to make yourself at home.", image: "/images/image-49.jpeg" },
-  { title: "Above the everyday", description: "Take a moment by the rooftop swimming pool, with the city stretching out beyond.", image: "/images/image-45.jpeg" },
-  { title: "Room for celebration", description: "Bring your people together in a chandelier-lit banquet hall for life's special occasions.", image: "/images/image-48.jpeg" },
+  {
+    title: "A welcome that glows",
+    description: "Step inside warm interiors, marble details and spaces made for slowing down.",
+    image: "/images/image-14.jpeg",
+  },
+  {
+    title: "Your own quiet retreat",
+    description: "Discover welcoming guest rooms, soft lighting and a little space to make yourself at home.",
+    image: "/images/image-49.jpeg",
+  },
+  {
+    title: "Above the everyday",
+    description: "Take a moment by the rooftop swimming pool, with the city stretching out beyond.",
+    image: "/images/image-23.jpeg",
+  },
+  {
+    title: "Room for celebration",
+    description: "Bring your people together in a chandelier-lit banquet hall for life's special occasions.",
+    image: "/images/image-48.jpeg",
+  },
 ];

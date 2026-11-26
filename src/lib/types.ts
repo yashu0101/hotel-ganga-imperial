@@ -1,4 +1,6 @@
 export interface Room {
+  /** Stable identifier used by the admin API. Absent only on the built-in defaults in config.ts. */
+  id?: string;
   name: string;
   text: string;
   image: string;
@@ -12,7 +14,7 @@ export interface Offer {
   title: string;
   description: string;
   discount: string;
-  code: string;
+  code?: string;
   validFrom: string;
   validTo: string;
   active: boolean;
@@ -33,10 +35,17 @@ export interface Enquiry {
   status: "new" | "contacted" | "confirmed" | "cancelled";
 }
 
-export interface NotificationJob { id: string; bookingId: string; status: "pending" | "delivered"; attempts: number; createdAt: string; }
+export interface NotificationJob {
+  id: string;
+  bookingId: string;
+  status: "pending" | "delivered";
+  attempts: number;
+  createdAt: string;
+}
 
 export interface Booking {
   roomsRequested?: number;
+  specialRequests?: string;
   id: string;
   name: string;
   mobile: string;

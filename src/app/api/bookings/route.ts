@@ -1,43 +1,40 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getBookings, updateBooking, deleteBooking } from "@/lib/db";
-import { verifySession } from "@/lib/auth";
+import { isAdmin, json, readBody, serverError, unauthorized } from "@/lib/admin-route";
+import { parseInput, BOOKING_UPDATE_SCHEMA } from "@/lib/validation";
+import type { Booking } from "@/lib/types";
 
 export async function GET() {
-  const session = await verifySession();
-  if (!session.authenticated) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return unauthorized();
+  try {
+    return json(await getBookings());
+  } catch (error) {
+    return serverError(error);
   }
-  return NextResponse.json(await getBookings());
 }
 
+// Staff can only change the status of a request.
 export async function PATCH(req: NextRequest) {
-  const session = await verifySession();
-  if (!session.authenticated) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!(await isAdmin())) return unauthorized();
   try {
-    const { id, ...updates } = await req.json();
-    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-    const updated = await updateBooking(id, updates);
-    if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json(updated);
-  } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    const { id, ...updates } = ((await readBody(req)) || {}) as Record<string, unknown>;
+    if (typeof id !== "string" || !id) return json({ error: "id required" }, 400);
+    const parsed = parseInput(BOOKING_UPDATE_SCHEMA, updates);
+    if (!parsed.ok) return json({ error: parsed.error }, 400);
+    const item = await updateBooking(id, parsed.data as Pick<Booking, "bookingStatus">);
+    return item ? json({ item }) : json({ error: "Not found" }, 404);
+  } catch (error) {
+    return serverError(error);
   }
 }
 
 export async function DELETE(req: NextRequest) {
-  const session = await verifySession();
-  if (!session.authenticated) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!(await isAdmin())) return unauthorized();
   try {
-    const { id } = await req.json();
-    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-    const ok = await deleteBooking(id);
-    if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    const id = new URL(req.url).searchParams.get("id");
+    if (!id) return json({ error: "id required" }, 400);
+    return (await deleteBooking(id)) ? json({ success: true }) : json({ error: "Not found" }, 404);
+  } catch (error) {
+    return serverError(error);
   }
 }

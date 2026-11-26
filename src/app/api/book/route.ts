@@ -1,110 +1,93 @@
+import { deliverNotifications } from "@/lib/notifications";
 import { NextRequest, NextResponse } from "next/server";
-import { addBooking, getBookings, getRooms, getOffers, parseRate } from "@/lib/db";
+import { addBooking, getRooms, getBanquetPackages, getOffers, StorageUnavailableError } from "@/lib/db";
+import { allowRequest, clientKey } from "@/lib/request-limit";
+import { cleanText, couponPercent, dateError, findCoupon, normalizeCoupon } from "@/lib/reservation";
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { name, mobile, email, city, country, gender, roomType, checkin, checkout, guests, couponCode } = body;
-
-    if (!name?.trim()) {
-      return NextResponse.json({ error: "Name is required." }, { status: 400 });
-    }
-    if (!mobile?.trim() || mobile.replace(/[^\d]/g, "").length < 10) {
-      return NextResponse.json({ error: "Valid mobile number is required." }, { status: 400 });
-    }
-    if (!email?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ error: "Valid email is required." }, { status: 400 });
-    }
-    if (!city?.trim()) {
-      return NextResponse.json({ error: "City is required." }, { status: 400 });
-    }
-    if (!country?.trim()) {
-      return NextResponse.json({ error: "Country is required." }, { status: 400 });
-    }
-    if (!roomType || !checkin) {
-      return NextResponse.json({ error: "Room type and check-in date are required." }, { status: 400 });
-    }
-
-    // Date validation
-    const today = new Date().toISOString().split("T")[0];
-    if (checkin < today) {
-      return NextResponse.json({ error: "Check-in date cannot be in the past." }, { status: 400 });
-    }
-    if (checkout && checkout <= checkin) {
-      return NextResponse.json({ error: "Check-out must be after check-in." }, { status: 400 });
-    }
-
-    // Room availability check (skip for banquet bookings)
-    if (!roomType.startsWith("Banquet")) {
-      const allBookings = await getBookings();
-      const checkoutDate = checkout || checkin;
-      const conflict = allBookings.find(b =>
-        b.roomType === roomType &&
-        b.bookingStatus !== "cancelled" &&
-        b.bookingStatus !== "checked-out" &&
-        b.checkin <= checkoutDate &&
-        (b.checkout || b.checkin) >= checkin
+    if (Number(req.headers.get("content-length")) > 12000)
+      return NextResponse.json({ error: "Request too large." }, { status: 413 });
+    const b = await req.json();
+    const name = cleanText(b.name, 100),
+      mobile = cleanText(b.mobile, 30),
+      email = cleanText(b.email, 150),
+      roomType = cleanText(b.roomType, 150),
+      specialRequests = cleanText(b.specialRequests, 500),
+      couponCode = normalizeCoupon(b.couponCode);
+    const digits = mobile.replace(/\D/g, "").length;
+    if (!name || digits < 10 || digits > 15 || (email && !EMAIL.test(email))) {
+      return NextResponse.json(
+        { error: "Enter your name, a valid phone number and a valid email if provided." },
+        { status: 400 },
       );
-      if (conflict) {
-        return NextResponse.json({ error: `${roomType} is not available for the selected dates. Please choose different dates or another room type.` }, { status: 409 });
-      }
+    }
+    // Limited per client address: changing the phone number does not bypass it, and nobody can
+    // block a guest by submitting with the guest's number.
+    if (!allowRequest("reservation:" + clientKey(req.headers), 8))
+      return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
+
+    const [rooms, packages] = await Promise.all([getRooms(), getBanquetPackages()]);
+    const room = rooms.find(r => !r.hidden && r.name === roomType);
+    const pkg = packages.find(p => p.active && "Banquet - " + p.name === roomType);
+    const event = roomType === "Banquet hall" || !!pkg;
+    const dining = roomType === "Dining enquiry";
+    if (!room && !event && !dining)
+      return NextResponse.json({ error: "Please choose an available room or enquiry type." }, { status: 400 });
+
+    const roomsRequested = room ? Number(b.roomsRequested ?? 1) : 0;
+    if (room && (!Number.isInteger(roomsRequested) || roomsRequested < 1 || roomsRequested > 10))
+      return NextResponse.json({ error: "Request between 1 and 10 rooms." }, { status: 400 });
+    const error = dateError(b.checkin, b.checkout, !!room);
+    if (error) return NextResponse.json({ error }, { status: 400 });
+    const guests = Number(b.guests),
+      maximum = event ? 300 : 20;
+    if (!Number.isInteger(guests) || guests < 1 || guests > maximum)
+      return NextResponse.json({ error: "Enter a guest count between 1 and " + maximum + "." }, { status: 400 });
+
+    // Coupons are optional. The hotel applies the offer when it confirms the final rate.
+    let coupon: { code: string; title: string; percent: number } | null = null;
+    if (couponCode) {
+      const offer = findCoupon(await getOffers(), couponCode);
+      if (!offer) return NextResponse.json({ error: "That coupon code is not valid or has expired." }, { status: 400 });
+      coupon = { code: couponCode, title: offer.title, percent: couponPercent(offer) };
     }
 
-    // Calculate amount based on room rate x nights
-    let amount = 0;
-    let discountApplied = "";
-    if (!roomType.startsWith("Banquet")) {
-      const rooms = await getRooms();
-      const room = rooms.find(r => r.name === roomType);
-      if (room) {
-        const ratePerNight = parseRate(room.rate);
-        const nights = checkout
-          ? Math.max(1, Math.ceil((new Date(checkout).getTime() - new Date(checkin).getTime()) / (1000 * 60 * 60 * 24)))
-          : 1;
-        amount = ratePerNight * nights;
-      }
-    }
-
-    // Apply coupon code if provided
-    if (couponCode?.trim()) {
-      const offers = await getOffers();
-      const todayStr = new Date().toISOString().split("T")[0];
-      const offer = offers.find(o =>
-        o.code && o.code.toUpperCase() === couponCode.trim().toUpperCase() &&
-        o.active &&
-        o.validFrom <= todayStr &&
-        o.validTo >= todayStr
-      );
-      if (offer) {
-        const pctMatch = offer.discount.match(/(\d+)%/);
-        if (pctMatch && amount > 0) {
-          const pct = parseInt(pctMatch[1], 10);
-          amount = Math.round(amount * (1 - pct / 100));
-          discountApplied = `${offer.title} (-${pct}%)`;
-        } else {
-          discountApplied = offer.title;
-        }
-      } else {
-        return NextResponse.json({ error: "Invalid or expired coupon code." }, { status: 400 });
-      }
-    }
-
+    // A request does not reserve inventory. Availability is confirmed by the hotel.
     const booking = await addBooking({
-      name: name.trim(),
-      mobile: mobile.trim(),
-      email: email.trim(),
-      city: city.trim(),
-      country: country.trim(),
-      gender: gender || "other",
+      name,
+      mobile,
+      email,
+      city: "",
+      country: "",
+      gender: "other",
       roomType,
-      checkin,
-      checkout: checkout || "",
-      guests: Number(guests) || 1,
-      amount,
+      checkin: b.checkin,
+      checkout: b.checkout || "",
+      guests,
+      roomsRequested,
+      specialRequests: coupon
+        ? [`Coupon ${coupon.code} (${coupon.title})`, specialRequests].filter(Boolean).join(" · ")
+        : specialRequests,
+      amount: 0,
     });
-
-    return NextResponse.json({ success: true, booking, discountApplied }, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Something went wrong." }, { status: 500 });
+    try {
+      await deliverNotifications(booking.id);
+    } catch {
+      /* Saved requests remain available for notification retry in admin. */
+    }
+    return NextResponse.json(
+      coupon ? { success: true, reference: booking.id, coupon } : { success: true, reference: booking.id },
+      { status: 201 },
+    );
+  } catch (error) {
+    if (error instanceof StorageUnavailableError)
+      return NextResponse.json(
+        { error: "Online requests are temporarily unavailable. Please call or message the hotel." },
+        { status: 503 },
+      );
+    return NextResponse.json({ error: "We could not save your request. Please try again." }, { status: 500 });
   }
 }

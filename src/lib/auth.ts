@@ -27,7 +27,10 @@ export async function verifySession(): Promise<{
     if (!token) return { authenticated: false };
 
     const { payload } = await jwtVerify(token, signingKey(), { algorithms: ["HS256"] });
-    return { authenticated: payload.role === "admin" && typeof payload.email === "string", email: payload.email as string };
+    return {
+      authenticated: payload.role === "admin" && typeof payload.email === "string",
+      email: payload.email as string,
+    };
   } catch {
     return { authenticated: false };
   }
