@@ -13,14 +13,13 @@
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
-    "bcryptjs": "^3.0.3",
     "jose": "^6.2.13",
     "next": "16.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^24.19.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

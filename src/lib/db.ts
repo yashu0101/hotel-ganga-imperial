@@ -204,7 +204,9 @@ function collection<T extends Item>(def: CollectionDef) {
           ),
           item.createdAt,
         ];
-        await (await sql()).query(
+        await (
+          await sql()
+        ).query(
           `INSERT INTO ${def.table} (${columns.join(", ")}) VALUES (${columns.map((_, i) => "$" + (i + 1)).join(", ")})`,
           values,
         );
@@ -224,10 +226,12 @@ function collection<T extends Item>(def: CollectionDef) {
           return rows[0] ? fromRow<T>(def, rows[0]) : null;
         }
         const sets = fields.map((x, i) => `${x.column} = $${i + 1}`).join(", ");
-        const rows = await (await sql()).query(
-          `UPDATE ${def.table} SET ${sets} WHERE id = $${fields.length + 1} RETURNING *`,
-          [...fields.map(x => (x.encode ? x.encode(changes[x.key]) : changes[x.key])), id],
-        );
+        const rows = await (
+          await sql()
+        ).query(`UPDATE ${def.table} SET ${sets} WHERE id = $${fields.length + 1} RETURNING *`, [
+          ...fields.map(x => (x.encode ? x.encode(changes[x.key]) : changes[x.key])),
+          id,
+        ]);
         return rows[0] ? fromRow<T>(def, rows[0]) : null;
       }
       const db = readDB();

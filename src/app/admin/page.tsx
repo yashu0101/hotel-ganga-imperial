@@ -14,7 +14,17 @@ import { COLLECTIONS } from "@/components/admin/collections";
 import { BOOKING_STATUSES, ENQUIRY_STATUSES } from "@/lib/validation";
 import type { Booking, Enquiry, Room, Offer, BanquetPackage, DiningOption, Review } from "@/lib/types";
 
-type Tab = "dashboard" | "bookings" | "enquiries" | "rooms" | "banquet" | "dining" | "offers" | "reviews" | "analytics" | "calendar";
+type Tab =
+  | "dashboard"
+  | "bookings"
+  | "enquiries"
+  | "rooms"
+  | "banquet"
+  | "dining"
+  | "offers"
+  | "reviews"
+  | "analytics"
+  | "calendar";
 const TABS: Tab[] = [
   "dashboard",
   "bookings",

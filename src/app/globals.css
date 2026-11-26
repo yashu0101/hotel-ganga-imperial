@@ -170,6 +170,13 @@ footer a:not(.btn):hover {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+.form-trap {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
 .eyebrow {
   display: block;
   font: 600 11px/1.5 var(--body);
