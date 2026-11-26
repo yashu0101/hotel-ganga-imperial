@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useEffect, useRef, useState, FormEvent } from "react";
 
 interface Result {
   reference: string;
@@ -23,6 +23,18 @@ export default function TrackRequest() {
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const referenceInput = useRef<HTMLInputElement>(null);
+  const emailInput = useRef<HTMLInputElement>(null);
+
+  // The receipt links here as /track?ref=XXXXXXXX. Fill the reference in so the guest only types their email.
+  // (Read on the client so the page itself stays static.)
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref")?.trim().slice(0, 64);
+    if (ref && referenceInput.current && !referenceInput.current.value) {
+      referenceInput.current.value = ref;
+      emailInput.current?.focus();
+    }
+  }, []);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -52,6 +64,7 @@ export default function TrackRequest() {
         <div className="field">
           <label htmlFor="reference">Request reference *</label>
           <input
+            ref={referenceInput}
             id="reference"
             name="reference"
             required
@@ -64,7 +77,15 @@ export default function TrackRequest() {
         </div>
         <div className="field">
           <label htmlFor="track-email">Email used for the request *</label>
-          <input id="track-email" name="email" type="email" autoComplete="email" maxLength={150} required />
+          <input
+            ref={emailInput}
+            id="track-email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            maxLength={150}
+            required
+          />
         </div>
         {error && (
           <div className="reservation-error" role="alert">

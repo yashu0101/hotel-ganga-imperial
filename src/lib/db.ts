@@ -408,11 +408,36 @@ async function prepareBookingExtensions() {
     await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rooms_requested INT DEFAULT 1`;
     await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS special_requests TEXT DEFAULT ''`;
     await sql`CREATE TABLE IF NOT EXISTS notification_outbox (id TEXT PRIMARY KEY, booking_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW())`;
+    await sql`ALTER TABLE notification_outbox ADD COLUMN IF NOT EXISTS last_attempt_at TIMESTAMPTZ`;
   })().catch(error => {
     bookingSetup = undefined;
     throw error;
   });
   await bookingSetup;
+}
+// Kept separate from the bookings DDL: sign-in needs this table before /api/seed has created any other table.
+let adminStateSetup: Promise<void> | undefined;
+async function prepareAdminState() {
+  if (!IS_POSTGRES) return;
+  adminStateSetup ??= (async () => {
+    const sql = getSQL();
+    await sql`CREATE TABLE IF NOT EXISTS admin_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)`;
+  })().catch(error => {
+    adminStateSetup = undefined;
+    throw error;
+  });
+  await adminStateSetup;
+}
+/**
+ * Apply every additive schema change now instead of on first use. Run once before launch (via /api/seed), so a
+ * production role that cannot ALTER tables fails during setup rather than on a guest's request.
+ */
+export async function prepareStorage() {
+  if (!IS_POSTGRES) return;
+  await prepareBookingExtensions();
+  await prepareAdminState();
+  for (const def of [ENQUIRIES, OFFERS, BANQUET, DINING, REVIEWS])
+    for (const statement of def.migrations ?? []) await getSQL().query(statement);
 }
 
 /**
@@ -422,12 +447,57 @@ async function prepareBookingExtensions() {
 export async function getBookingByIdAndEmail(reference: string, email: string): Promise<Booking | null> {
   const ref = reference.trim().toLowerCase(),
     wanted = email.trim().toLowerCase();
-  if (ref.length < 8 || !wanted) return null;
+  // References are UUIDs. Anything else cannot match, which also keeps LIKE wildcards out of the query.
+  if (!/^[0-9a-f-]{8,36}$/.test(ref) || !wanted) return null;
+  if (IS_POSTGRES) {
+    const sql = getSQL();
+    const rows =
+      await sql`SELECT * FROM bookings WHERE id LIKE ${ref + "%"} AND LOWER(TRIM(email)) = ${wanted} ORDER BY created_at DESC LIMIT 1`;
+    return rows[0] ? mapBookingRow(rows[0]) : null;
+  }
   return (
     (await getBookings()).find(
       b => b.id.toLowerCase().startsWith(ref) && !!b.email && b.email.trim().toLowerCase() === wanted,
     ) ?? null
   );
+}
+export async function getBooking(id: string): Promise<Booking | null> {
+  if (IS_POSTGRES) {
+    const sql = getSQL();
+    const rows = await sql`SELECT * FROM bookings WHERE id = ${id}`;
+    return rows[0] ? mapBookingRow(rows[0]) : null;
+  }
+  return readDB().bookings.find(b => b.id === id) ?? null;
+}
+
+/**
+ * Delete requests (bookings with their notification events, and enquiries) sent before `before` whose requested
+ * dates are also before it. Used by the retention job so the privacy notice's deletion promise holds.
+ */
+export async function purgeRequestsBefore(before: Date): Promise<number> {
+  const sentBefore = before.toISOString(),
+    datesBefore = sentBefore.slice(0, 10);
+  const expired = (r: { createdAt: string; checkin?: string; checkout?: string }) =>
+    r.createdAt < sentBefore && (r.checkin || "") < datesBefore && (r.checkout || "") < datesBefore;
+  if (IS_POSTGRES) {
+    await prepareBookingExtensions();
+    const sql = getSQL();
+    const [bookings, enquiries] = await sql.transaction([
+      sql`WITH gone AS (DELETE FROM bookings WHERE created_at < ${sentBefore} AND COALESCE(checkin, '') < ${datesBefore} AND COALESCE(checkout, '') < ${datesBefore} RETURNING id), events AS (DELETE FROM notification_outbox WHERE booking_id IN (SELECT id FROM gone)) SELECT COUNT(*)::int AS n FROM gone`,
+      sql`WITH gone AS (DELETE FROM enquiries WHERE created_at < ${sentBefore} AND COALESCE(checkin, '') < ${datesBefore} AND COALESCE(checkout, '') < ${datesBefore} RETURNING id) SELECT COUNT(*)::int AS n FROM gone`,
+    ]);
+    return Number(bookings[0]?.n ?? 0) + Number(enquiries[0]?.n ?? 0);
+  }
+  const db = readDB();
+  const gone = new Set(db.bookings.filter(expired).map(b => b.id));
+  const enquiryCount = db.enquiries.length;
+  db.enquiries = db.enquiries.filter(e => !expired(e));
+  const removed = gone.size + enquiryCount - db.enquiries.length;
+  if (!removed) return 0;
+  db.bookings = db.bookings.filter(b => !gone.has(b.id));
+  db.notificationJobs = db.notificationJobs!.filter(j => !gone.has(j.bookingId));
+  writeDB(db);
+  return removed;
 }
 export async function getBookings(): Promise<Booking[]> {
   if (IS_POSTGRES) {
@@ -507,13 +577,102 @@ export async function getNotificationJobs(): Promise<NotificationJob[]> {
       bookingId: String(r.booking_id),
       status: r.status as NotificationJob["status"],
       attempts: Number(r.attempts),
-      createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+      createdAt: isoString(r.created_at),
+      lastAttemptAt: r.last_attempt_at ? isoString(r.last_attempt_at) : undefined,
     }));
   }
   return readDB().notificationJobs!;
 }
+const isoString = (value: unknown) => (value instanceof Date ? value.toISOString() : String(value));
 /** After this many failed deliveries an event is marked "failed", so it stops taking retry slots from newer ones. */
 export const MAX_NOTIFICATION_ATTEMPTS = 8;
+/**
+ * An event picked up in the last 5 minutes is never picked up again, even by a forced retry. A delivery run sends at
+ * most 10 events with a 4-second timeout each, so this comfortably covers a run still in progress, which makes it
+ * unlikely that overlapping runs send an event twice. Delivery is still at least once: receivers deduplicate.
+ */
+export const NOTIFICATION_CLAIM_GUARD_MINUTES = 5;
+/**
+ * Minutes to wait after an attempt before trying an event again: 5, 10, 20 … capped at 6 hours, so an outage at the
+ * receiver uses up the 8 attempts over about 10 hours instead of in a few clicks. Never less than the claim guard.
+ */
+export const notificationRetryDelayMinutes = (attempts: number) =>
+  Math.max(NOTIFICATION_CLAIM_GUARD_MINUTES, Math.min(5 * 2 ** (attempts - 1), 360));
+
+/**
+ * Pick up to `limit` pending events that are due (least-attempted first, then oldest) and stamp them as being
+ * attempted now, in one step, so an overlapping retry run skips them. `force` (staff pressing Retry, e.g. after
+ * fixing the receiver) skips the back-off but still respects the claim guard.
+ */
+export async function claimNotificationJobs({
+  limit = 10,
+  bookingId,
+  force = false,
+}: { limit?: number; bookingId?: string; force?: boolean } = {}): Promise<NotificationJob[]> {
+  if (IS_POSTGRES) {
+    await prepareBookingExtensions();
+    const sql = getSQL();
+    const rows = await sql`UPDATE notification_outbox SET last_attempt_at = NOW() WHERE id IN (
+      SELECT id FROM notification_outbox
+      WHERE status = 'pending' AND (${bookingId ?? null}::text IS NULL OR booking_id = ${bookingId ?? null})
+        AND (last_attempt_at IS NULL OR last_attempt_at <= NOW() - (CASE WHEN ${force} THEN ${NOTIFICATION_CLAIM_GUARD_MINUTES} ELSE GREATEST(${NOTIFICATION_CLAIM_GUARD_MINUTES}, LEAST(5 * POWER(2, attempts - 1), 360)) END) * INTERVAL '1 minute')
+      ORDER BY attempts ASC, created_at ASC LIMIT ${limit} FOR UPDATE SKIP LOCKED
+    ) RETURNING *`;
+    return rows
+      .map((r: Record<string, unknown>) => ({
+        id: String(r.id),
+        bookingId: String(r.booking_id),
+        status: r.status as NotificationJob["status"],
+        attempts: Number(r.attempts),
+        createdAt: isoString(r.created_at),
+        lastAttemptAt: isoString(r.last_attempt_at),
+      }))
+      .sort(
+        (a: NotificationJob, b: NotificationJob) => a.attempts - b.attempts || a.createdAt.localeCompare(b.createdAt),
+      );
+  }
+  const db = readDB();
+  const now = Date.now();
+  const due = db
+    .notificationJobs!.filter(
+      j =>
+        j.status === "pending" &&
+        (!bookingId || j.bookingId === bookingId) &&
+        (!j.lastAttemptAt ||
+          Date.parse(j.lastAttemptAt) <=
+            now - (force ? NOTIFICATION_CLAIM_GUARD_MINUTES : notificationRetryDelayMinutes(j.attempts ?? 0)) * 60_000),
+    )
+    .sort((a, b) => (a.attempts ?? 0) - (b.attempts ?? 0) || a.createdAt.localeCompare(b.createdAt))
+    .slice(0, limit);
+  if (!due.length) return [];
+  for (const job of due) job.lastAttemptAt = new Date(now).toISOString();
+  writeDB(db);
+  return due.map(j => ({ ...j }));
+}
+export async function countNotifications(): Promise<Record<NotificationJob["status"], number>> {
+  const counts = { pending: 0, delivered: 0, failed: 0 };
+  if (IS_POSTGRES) {
+    await prepareBookingExtensions();
+    const sql = getSQL();
+    for (const r of await sql`SELECT status, COUNT(*)::int AS n FROM notification_outbox GROUP BY status`)
+      if (r.status in counts) counts[r.status as keyof typeof counts] = Number(r.n);
+    return counts;
+  }
+  for (const j of readDB().notificationJobs!) if (j.status in counts) counts[j.status]++;
+  return counts;
+}
+/** Remove an event whose request no longer exists, so it cannot hold a retry slot. */
+export async function discardNotification(id: string) {
+  if (IS_POSTGRES) {
+    const sql = getSQL();
+    await sql`DELETE FROM notification_outbox WHERE id = ${id}`;
+    return;
+  }
+  const db = readDB();
+  const count = db.notificationJobs!.length;
+  db.notificationJobs = db.notificationJobs!.filter(j => j.id !== id);
+  if (db.notificationJobs.length !== count) writeDB(db);
+}
 export async function markNotification(id: string, delivered: boolean) {
   if (IS_POSTGRES) {
     const sql = getSQL();
@@ -539,7 +698,7 @@ export async function requeueFailedNotifications(): Promise<number> {
     await prepareBookingExtensions();
     const sql = getSQL();
     const rows =
-      await sql`UPDATE notification_outbox SET status = 'pending', attempts = 0 WHERE status = 'failed' RETURNING id`;
+      await sql`UPDATE notification_outbox SET status = 'pending', attempts = 0, last_attempt_at = NULL WHERE status = 'failed' RETURNING id`;
     return rows.length;
   }
   const db = readDB();
@@ -547,7 +706,35 @@ export async function requeueFailedNotifications(): Promise<number> {
   for (const job of failed) {
     job.status = "pending";
     job.attempts = 0;
+    delete job.lastAttemptAt;
   }
   if (failed.length) writeDB(db);
   return failed.length;
+}
+
+// ============================================================
+// Admin sessions: signing out bumps a version number that every session token carries,
+// which ends all sessions of the shared admin account at once.
+// ============================================================
+export async function getSessionVersion(): Promise<number> {
+  if (IS_POSTGRES) {
+    await prepareAdminState();
+    const sql = getSQL();
+    const rows = await sql`SELECT value FROM admin_state WHERE key = 'session_version'`;
+    return Number(rows[0]?.value ?? 0);
+  }
+  return readDB().adminState?.sessionVersion ?? 0;
+}
+export async function bumpSessionVersion(): Promise<number> {
+  if (IS_POSTGRES) {
+    await prepareAdminState();
+    const sql = getSQL();
+    const rows =
+      await sql`INSERT INTO admin_state (key, value) VALUES ('session_version', '1') ON CONFLICT (key) DO UPDATE SET value = (admin_state.value::int + 1)::text RETURNING value`;
+    return Number(rows[0].value);
+  }
+  const db = readDB();
+  db.adminState = { ...db.adminState, sessionVersion: (db.adminState?.sessionVersion ?? 0) + 1 };
+  writeDB(db);
+  return db.adminState.sessionVersion!;
 }

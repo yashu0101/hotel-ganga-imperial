@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { initDB } from "@/lib/db-schema";
+import { prepareStorage } from "@/lib/db";
 import { neon } from "@neondatabase/serverless";
 import { verifySession } from "@/lib/auth";
 
@@ -15,8 +16,9 @@ export async function POST() {
 
   const sql = neon(process.env.DATABASE_URL);
 
-  // Create tables
+  // Create tables, then apply the additive changes (newer columns, outbox, admin state) up front.
   await initDB();
+  await prepareStorage();
 
   // Reviews are never seeded: only real, verified guest reviews may be added (through the admin).
 

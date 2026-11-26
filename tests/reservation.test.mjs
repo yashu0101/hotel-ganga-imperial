@@ -5,7 +5,11 @@ import ts from "typescript";
 import path from "node:path";
 import * as nodeCrypto from "node:crypto";
 import { createHmac } from "node:crypto";
+import * as jose from "jose";
+// Silent logger used unless a test passes its own "@/lib/log" mock.
+const silentLog = { logError: () => {}, logWarning: () => {} };
 function load(file, mocks = {}, runtime = {}) {
+  mocks = { "@/lib/log": silentLog, ...mocks };
   const source = ts.transpileModule(fs.readFileSync(file, "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
@@ -369,23 +373,136 @@ test("a notification that keeps failing is marked failed and can be requeued", a
   assert.equal(await dbModule.requeueFailedNotifications(), 0);
 });
 
-test("notification retries try the least-attempted events first", async () => {
-  const jobs = Array.from({ length: 12 }, (_, i) => ({
-    id: "event-" + i,
-    bookingId: "booking-" + i,
-    status: "pending",
-    attempts: i < 10 ? 5 : 0,
-    createdAt: "2026-01-" + String(10 + i).padStart(2, "0"),
-  }));
-  const sent = [];
+// db.ts on the JSON backend over an in-memory file.
+function jsonDb(initial) {
+  const files = new Map([
+    ["/virtual/data/db.json", JSON.stringify({ bookings: [], config: { rooms: [] }, ...initial })],
+  ]);
+  const fakeFs = {
+    readFileSync: p => files.get(p),
+    writeFileSync: (p, v) => files.set(p, v),
+    existsSync: p => files.has(p) || p === "/virtual/data",
+    mkdirSync: () => {},
+    renameSync: (a, b) => {
+      files.set(b, files.get(a));
+      files.delete(a);
+    },
+    unlinkSync: p => files.delete(p),
+  };
+  const dbModule = load(
+    "src/lib/db.ts",
+    { fs: { default: fakeFs }, path: { default: path.posix }, "./config": { SITE_CONFIG: { rooms: [] } } },
+    { process: { env: {}, cwd: () => "/virtual" } },
+  );
+  return { dbModule, stored: () => JSON.parse(files.get("/virtual/data/db.json")) };
+}
+
+test("retries take due events least-attempted first, back off after failures and skip claimed ones", async () => {
+  const ago = minutes => new Date(Date.now() - minutes * 60_000).toISOString();
+  const job = (id, extra) => ({ id, bookingId: "b-" + id, status: "pending", attempts: 0, ...extra });
+  const { dbModule } = jsonDb({
+    notificationJobs: [
+      // 5 failures → 80 minutes' wait, long passed.
+      ...Array.from({ length: 10 }, (_, i) =>
+        job("busy-" + i, { attempts: 5, createdAt: "2026-01-0" + i, lastAttemptAt: ago(200) }),
+      ),
+      job("new-1", { createdAt: "2026-02-01" }),
+      job("new-2", { createdAt: "2026-02-02" }),
+      job("waiting", { attempts: 3, createdAt: "2026-01-01", lastAttemptAt: ago(10) }), // needs 20 minutes
+      job("failed", { status: "failed", attempts: 8, createdAt: "2026-01-01" }),
+      job("done", { status: "delivered", attempts: 1, createdAt: "2026-01-01" }),
+    ],
+  });
+  assert.deepEqual([0, 1, 2, 3, 7, 8, 20].map(dbModule.notificationRetryDelayMinutes), [5, 5, 10, 20, 320, 360, 360]);
+  const first = await dbModule.claimNotificationJobs({ limit: 10 });
+  assert.equal(first.length, 10);
+  assert.deepEqual(
+    first.map(j => j.id),
+    ["new-1", "new-2", ...Array.from({ length: 8 }, (_, i) => "busy-" + i)],
+  );
+  // Claimed events are stamped, so an overlapping run only gets the rest, and nothing is sent twice.
+  assert.deepEqual(
+    (await dbModule.claimNotificationJobs({ limit: 10 })).map(j => j.id),
+    ["busy-8", "busy-9"],
+  );
+  assert.deepEqual(await dbModule.claimNotificationJobs(), []);
+  assert.deepEqual(await dbModule.countNotifications(), { pending: 13, delivered: 1, failed: 1 });
+  // A staff retry skips the 20-minute back-off of "waiting", but nothing picked up in the last 5 minutes.
+  assert.deepEqual(
+    (await dbModule.claimNotificationJobs({ force: true })).map(j => j.id),
+    ["waiting"],
+  );
+  assert.deepEqual(await dbModule.claimNotificationJobs({ force: true }), []);
+});
+
+test("staff retries are forced; automatic and post-request deliveries respect the back-off", async () => {
+  const claims = [];
+  const notifications = load(
+    "src/lib/notifications.ts",
+    {
+      "node:crypto": { createHmac },
+      "@/lib/db": { claimNotificationJobs: async options => (claims.push(options), []) },
+    },
+    {
+      process: {
+        env: {
+          NOTIFICATION_WEBHOOK_URL: "https://notifications.example.test/hotel",
+          NOTIFICATION_WEBHOOK_SECRET: "test-secret-that-is-at-least-32-characters",
+        },
+      },
+    },
+  );
+  await notifications.deliverNotifications();
+  await notifications.deliverNotifications("booking-1");
+  await notifications.deliverNotifications(undefined, { force: true });
+  assert.deepEqual(
+    claims.map(c => [c.bookingId, c.force]),
+    [
+      [undefined, false],
+      ["booking-1", false],
+      [undefined, true],
+    ],
+  );
+  const route = load("src/app/api/notifications/route.ts", {
+    "next/server": response,
+    "@/lib/db": { requeueFailedNotifications: async () => 2 },
+    "@/lib/notifications": {
+      notificationConfigured: () => true,
+      scheduledJobsConfigured: () => false,
+      deliverNotifications: async (bookingId, options) => (claims.push({ bookingId, ...options }), { delivered: 0 }),
+    },
+    "@/lib/hotel-content": { PRIVACY_INFORMATION: { retentionMonths: 24 } },
+    "@/lib/admin-route": {
+      isAdmin: async () => true,
+      json: (body, status = 200) => Response.json(body, { status }),
+      readBody: async req => req.json().catch(() => undefined),
+      serverError: () => Response.json({}, { status: 500 }),
+      unauthorized: () => Response.json({}, { status: 401 }),
+    },
+  });
+  const posted = await route.POST(
+    new Request("http://x", { method: "POST", body: JSON.stringify({ action: "requeue" }) }),
+  );
+  assert.deepEqual(await posted.json(), { delivered: 0, requeued: 2 });
+  assert.deepEqual(claims.at(-1), { bookingId: undefined, force: true });
+});
+
+test("delivery looks up each request and discards events whose request was deleted", async () => {
+  const discarded = [],
+    marked = [],
+    sent = [];
   const notifications = load(
     "src/lib/notifications.ts",
     {
       "node:crypto": { createHmac },
       "@/lib/db": {
-        getNotificationJobs: async () => jobs,
-        getBookings: async () => jobs.map(j => ({ ...payload, id: j.bookingId })),
-        markNotification: async () => {},
+        claimNotificationJobs: async () => [
+          { id: "orphan", bookingId: "gone", attempts: 0 },
+          { id: "event-1", bookingId: "booking-1", attempts: 0 },
+        ],
+        getBooking: async id => (id === "booking-1" ? { ...payload, id } : null),
+        discardNotification: async id => discarded.push(id),
+        markNotification: async (id, ok) => marked.push([id, ok]),
       },
     },
     {
@@ -395,12 +512,157 @@ test("notification retries try the least-attempted events first", async () => {
           NOTIFICATION_WEBHOOK_SECRET: "test-secret-that-is-at-least-32-characters",
         },
       },
-      fetch: async (url, options) => (sent.push(options.headers["Idempotency-Key"]), { ok: false }),
+      fetch: async (url, options) => (sent.push(options.headers["Idempotency-Key"]), { ok: true }),
     },
   );
-  await notifications.deliverNotifications();
-  assert.equal(sent.length, 10);
-  assert.deepEqual(sent.slice(0, 2), ["event-10", "event-11"]);
+  assert.equal((await notifications.deliverNotifications()).delivered, 1);
+  assert.deepEqual(discarded, ["orphan"]);
+  assert.deepEqual(sent, ["event-1"]);
+  assert.deepEqual(marked, [["event-1", true]]);
+});
+
+test("retention deletes only requests whose sent date and requested dates are past the cutoff", async () => {
+  const booking = (id, createdAt, checkin, checkout) => ({ ...payload, id, createdAt, checkin, checkout });
+  const { dbModule, stored } = jsonDb({
+    bookings: [
+      booking("old", "2024-01-05T10:00:00.000Z", "2024-02-01", "2024-02-03"),
+      booking("old-request-future-stay", "2024-01-05T10:00:00.000Z", "2027-01-01", "2027-01-03"),
+      booking("recent", "2026-10-01T10:00:00.000Z", "2026-12-01", "2026-12-02"),
+    ],
+    enquiries: [
+      { id: "e-old", createdAt: "2023-05-01T00:00:00.000Z", checkin: "", checkout: "" },
+      { id: "e-new", createdAt: "2026-11-01T00:00:00.000Z", checkin: "", checkout: "" },
+    ],
+    notificationJobs: [
+      { id: "old", bookingId: "old", status: "delivered", attempts: 1, createdAt: "2024-01-05T10:00:00.000Z" },
+      { id: "recent", bookingId: "recent", status: "pending", attempts: 0, createdAt: "2026-10-01T10:00:00.000Z" },
+    ],
+  });
+  assert.equal(await dbModule.purgeRequestsBefore(new Date("2024-11-26T00:00:00.000Z")), 2);
+  const after = stored();
+  assert.deepEqual(
+    after.bookings.map(b => b.id),
+    ["old-request-future-stay", "recent"],
+  );
+  assert.deepEqual(
+    after.enquiries.map(e => e.id),
+    ["e-new"],
+  );
+  assert.deepEqual(
+    after.notificationJobs.map(j => j.id),
+    ["recent"],
+  );
+  assert.equal(await dbModule.purgeRequestsBefore(new Date("2024-11-26T00:00:00.000Z")), 0);
+
+  const deleted = [];
+  const retentionModule = months =>
+    load("src/lib/retention.ts", {
+      "@/lib/db": { purgeRequestsBefore: async date => (deleted.push(date.toISOString()), 3) },
+      "@/lib/hotel-content": { PRIVACY_INFORMATION: { retentionMonths: months } },
+    });
+  const now = new Date("2026-11-26T12:00:00.000Z");
+  assert.deepEqual(await retentionModule(0).purgeExpiredRequests(now), { configured: false, deleted: 0 });
+  assert.equal(deleted.length, 0);
+  assert.deepEqual(await retentionModule(24).purgeExpiredRequests(now), { configured: true, deleted: 3 });
+  assert.deepEqual(deleted, ["2024-11-26T12:00:00.000Z"]);
+  const { retentionCutoff } = retentionModule(1);
+  const cutoff = (now, months) => retentionCutoff(months, new Date(now)).toISOString();
+  assert.equal(cutoff("2027-03-31T08:00:00.000Z", 1), "2027-02-28T08:00:00.000Z");
+  assert.equal(cutoff("2028-02-29T08:00:00.000Z", 24), "2026-02-28T08:00:00.000Z");
+  assert.equal(cutoff("2028-03-31T08:00:00.000Z", 1), "2028-02-29T08:00:00.000Z");
+  assert.equal(cutoff("2026-01-15T08:00:00.000Z", 2), "2025-11-15T08:00:00.000Z");
+});
+
+test("signing out ends every admin session, including copied tokens", async () => {
+  let version = 0,
+    cookie;
+  const auth = load(
+    "src/lib/auth.ts",
+    {
+      jose,
+      "next/headers": { cookies: async () => ({ get: () => (cookie ? { value: cookie } : undefined) }) },
+      "@/lib/db": {
+        getSessionVersion: async () => version,
+        bumpSessionVersion: async () => ++version,
+      },
+    },
+    { process: { env: { JWT_SECRET: "j".repeat(32) } } },
+  );
+  cookie = await auth.createSession("staff@hotel.in");
+  const copied = cookie;
+  assert.equal((await auth.verifySession()).authenticated, true);
+  const { payload: claims } = await jose.jwtVerify(cookie, new TextEncoder().encode("j".repeat(32)));
+  assert.equal(claims.exp - claims.iat, auth.SESSION_SECONDS);
+  assert.equal(auth.SESSION_SECONDS, 8 * 60 * 60);
+  await auth.endAllSessions();
+  cookie = copied;
+  assert.equal((await auth.verifySession()).authenticated, false);
+  cookie = await auth.createSession("staff@hotel.in");
+  assert.equal((await auth.verifySession()).authenticated, true);
+});
+
+test("logout only ends sessions for a signed-in admin and reports when it could not", async () => {
+  const ended = [];
+  let failRevoke = false;
+  const logout = authenticated =>
+    load("src/app/api/auth/logout/route.ts", {
+      "next/server": {
+        NextResponse: {
+          json: value => {
+            const r = Response.json(value);
+            r.cookies = { set: (...a) => (r.cookie = a) };
+            return r;
+          },
+        },
+      },
+      "@/lib/auth": {
+        COOKIE_NAME: "admin_session",
+        verifySession: async () => ({ authenticated }),
+        endAllSessions: async () => {
+          if (failRevoke) throw Error("read-only storage");
+          ended.push(1);
+        },
+      },
+    });
+  const anonymous = await logout(false).POST();
+  assert.equal(ended.length, 0);
+  assert.equal(anonymous.cookie[2].maxAge, 0);
+  assert.deepEqual(await anonymous.json(), { success: true });
+  assert.deepEqual(await (await logout(true).POST()).json(), { success: true, revoked: true });
+  assert.equal(ended.length, 1);
+  failRevoke = true;
+  const partial = await logout(true).POST();
+  assert.deepEqual(await partial.json(), { success: true, revoked: false });
+  assert.equal(partial.cookie[2].maxAge, 0, "this browser is still signed out");
+});
+
+test("sign-in works on a new Postgres database before /api/seed has created any tables", async () => {
+  const queries = [];
+  const sql = strings => {
+    const query = strings.join("?");
+    queries.push(query);
+    if (/\bbookings\b|notification_outbox/.test(query)) throw Error('relation "bookings" does not exist');
+    if (/^SELECT value FROM admin_state/.test(query)) return [];
+    if (/^INSERT INTO admin_state/.test(query)) return [{ value: "1" }];
+    return [];
+  };
+  const dbModule = load(
+    "src/lib/db.ts",
+    {
+      fs: { default: {} },
+      path: { default: path.posix },
+      "./config": { SITE_CONFIG: { rooms: [] } },
+      "@neondatabase/serverless": { neon: () => sql },
+    },
+    { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
+  );
+  assert.equal(await dbModule.getSessionVersion(), 0);
+  assert.equal(await dbModule.bumpSessionVersion(), 1);
+  assert.ok(
+    queries.every(q => !/bookings|notification_outbox/.test(q)),
+    "session storage touches only admin_state",
+  );
+  assert.match(queries[0], /CREATE TABLE IF NOT EXISTS admin_state/);
 });
 
 test("Postgres saves the booking and event in the same transaction", async () => {
@@ -461,7 +723,26 @@ test("Postgres marks repeatedly failing notifications failed, requeues them and 
   assert.match(mark.query, /UPDATE notification_outbox SET status = CASE .*'failed'/);
   assert.deepEqual(mark.values, [false, dbModule.MAX_NOTIFICATION_ATTEMPTS, "e1"]);
   assert.equal(await dbModule.requeueFailedNotifications(), 1);
-  assert.match(queries.at(-1).query, /SET status = 'pending', attempts = 0 WHERE status = 'failed'/);
+  assert.match(
+    queries.at(-1).query,
+    /SET status = 'pending', attempts = 0, last_attempt_at = NULL WHERE status = 'failed'/,
+  );
+  // Claiming is one statement that skips rows another run holds and only takes due events.
+  await dbModule.claimNotificationJobs({ limit: 10, bookingId: "b1" });
+  const claim = queries.at(-1);
+  assert.match(claim.query, /UPDATE notification_outbox SET last_attempt_at = NOW\(\)/);
+  assert.match(claim.query, /FOR UPDATE SKIP LOCKED/);
+  assert.match(claim.query, /ORDER BY attempts ASC, created_at ASC/);
+  assert.deepEqual(claim.values, ["b1", "b1", false, 5, 5, 10]);
+  // Lookups use WHERE clauses instead of reading every request.
+  await dbModule.getBookingByIdAndEmail("3F9A12BC", "Guest@Example.com ");
+  assert.match(queries.at(-1).query, /WHERE id LIKE \? AND LOWER\(TRIM\(email\)\) = \?/);
+  assert.deepEqual(queries.at(-1).values, ["3f9a12bc%", "guest@example.com"]);
+  const count = queries.length;
+  assert.equal(await dbModule.getBookingByIdAndEmail("3f9a%_bc", "guest@example.com"), null);
+  assert.equal(queries.length, count, "wildcards never reach the database");
+  await dbModule.getBooking("b1");
+  assert.match(queries.at(-1).query, /SELECT \* FROM bookings WHERE id = \?/);
 });
 
 test("notifications stay queued when disabled and never call an external endpoint", async () => {
@@ -484,8 +765,8 @@ test("notification failures are retryable, signed and use a stable idempotency k
   const calls = [],
     statuses = [];
   const mocks = {
-    getNotificationJobs: async () => [{ id: "event-1", bookingId: "booking-1", status: "pending" }],
-    getBookings: async () => [{ ...payload, id: "booking-1", roomType: payload.roomType }],
+    claimNotificationJobs: async () => [{ id: "event-1", bookingId: "booking-1", status: "pending" }],
+    getBooking: async id => ({ ...payload, id, roomType: payload.roomType }),
     markNotification: async (id, ok) => statuses.push(ok),
   };
   const notifications = load(
@@ -570,8 +851,8 @@ test("Postgres stores special requests and staff notifications include them", as
   const secret = "test-secret-that-is-at-least-32-characters";
   let body;
   const mocks = {
-    getNotificationJobs: async () => [{ id: "event-2", bookingId: "booking-2", status: "pending" }],
-    getBookings: async () => [{ ...payload, id: "booking-2", specialRequests: "Cot for an infant" }],
+    claimNotificationJobs: async () => [{ id: "event-2", bookingId: "booking-2", status: "pending" }],
+    getBooking: async id => ({ ...payload, id, specialRequests: "Cot for an infant" }),
     markNotification: async () => {},
   };
   const notifications = load(
@@ -747,6 +1028,7 @@ test("login rejects bad credentials, limits repeated failures and sets a secure 
         createSession: async e => "token-for-" + e,
         getAdminCredentials: () => ({ email: env.ADMIN_EMAIL, password: env.ADMIN_PASSWORD }),
         COOKIE_NAME: "admin_session",
+        SESSION_SECONDS: 8 * 60 * 60,
       },
     },
     { process: { env } },
@@ -766,8 +1048,13 @@ test("login rejects bad credentials, limits repeated failures and sets a secure 
   assert.equal(ok.cookie[0], "admin_session");
   assert.equal(ok.cookie[1], "token-for-staff@hotel.in");
   assert.deepEqual(
-    { httpOnly: ok.cookie[2].httpOnly, secure: ok.cookie[2].secure, sameSite: ok.cookie[2].sameSite },
-    { httpOnly: true, secure: true, sameSite: "lax" },
+    {
+      httpOnly: ok.cookie[2].httpOnly,
+      secure: ok.cookie[2].secure,
+      sameSite: ok.cookie[2].sameSite,
+      maxAge: ok.cookie[2].maxAge,
+    },
+    { httpOnly: true, secure: true, sameSite: "lax", maxAge: 8 * 60 * 60 },
   );
   for (let i = 0; i < 10; i++) await attempt({ email: "staff@hotel.in", password: "guess" + i }, "6.6.6.6");
   assert.equal(
@@ -961,16 +1248,27 @@ test("honeypot submissions look successful to the bot but save and notify nothin
 
 test("scheduled notification retry requires a strong cron secret", async () => {
   const runs = [];
-  const cronRoute = secret =>
-    load(
+  const cronRoute = secret => {
+    const env = secret === undefined ? {} : { CRON_SECRET: secret };
+    const { scheduledJobsConfigured } = load(
+      "src/lib/notifications.ts",
+      { "node:crypto": { createHmac }, "@/lib/db": {} },
+      { process: { env } },
+    );
+    return load(
       "src/app/api/cron/notifications/route.ts",
       {
         "node:crypto": nodeCrypto,
         "next/server": response,
-        "@/lib/notifications": { deliverNotifications: async () => (runs.push(1), { configured: true, delivered: 1 }) },
+        "@/lib/notifications": {
+          scheduledJobsConfigured,
+          deliverNotifications: async () => (runs.push(1), { configured: true, delivered: 1 }),
+        },
+        "@/lib/retention": { purgeExpiredRequests: async () => ({ configured: false, deleted: 0 }) },
       },
-      { process: { env: secret === undefined ? {} : { CRON_SECRET: secret } } },
+      { process: { env } },
     );
+  };
   const call = (route, authorization) =>
     route.GET(
       new Request("http://localhost/api/cron/notifications", { headers: authorization ? { authorization } : {} }),
@@ -983,7 +1281,10 @@ test("scheduled notification retry requires a strong cron secret", async () => {
   assert.equal(runs.length, 0);
   const ok = await call(cronRoute(strong), "Bearer " + strong);
   assert.equal(ok.status, 200);
-  assert.deepEqual(await ok.json(), { configured: true, delivered: 1 });
+  assert.deepEqual(await ok.json(), {
+    notifications: { configured: true, delivered: 1 },
+    retention: { configured: false, deleted: 0 },
+  });
   assert.equal(runs.length, 1);
 });
 

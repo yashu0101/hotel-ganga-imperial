@@ -48,6 +48,8 @@ export const translations: Record<Lang, Record<string, string>> = {
     "admin.retry": "Try again",
     "admin.unavailable": "This list could not be loaded, so it may not be empty. Refresh the page to try again.",
     "admin.logout": "Logout",
+    "admin.logoutPartial":
+      "You are signed out on this device, but other sessions could not be ended. If you think the admin login was shared or copied, change ADMIN_PASSWORD and JWT_SECRET.",
     "admin.dismiss": "Dismiss",
     "admin.message": "Message",
     "admin.name": "Name",
@@ -135,6 +137,8 @@ export const translations: Record<Lang, Record<string, string>> = {
     "admin.unavailable":
       "यह सूची लोड नहीं हो सकी, इसलिए हो सकता है कि यह खाली न हो। फिर से कोशिश करने के लिए पेज रीफ़्रेश करें।",
     "admin.logout": "लॉगआउट",
+    "admin.logoutPartial":
+      "आप इस डिवाइस पर लॉगआउट हो गए हैं, लेकिन अन्य सत्र समाप्त नहीं किए जा सके। यदि आपको लगता है कि एडमिन लॉगिन साझा या कॉपी हुआ है, तो ADMIN_PASSWORD और JWT_SECRET बदलें।",
     "admin.dismiss": "बंद करें",
     "admin.message": "संदेश",
     "admin.name": "नाम",

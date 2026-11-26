@@ -186,7 +186,11 @@ export default function AdminPage() {
   }, [ready]);
 
   const logout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    const result = await fetch("/api/auth/logout", { method: "POST" })
+      .then(r => r.json())
+      .catch(() => ({ revoked: false }));
+    // This browser is signed out either way; warn when other sessions could not be ended.
+    if (result.revoked === false) window.alert(t("admin.logoutPartial"));
     router.push("/login");
   };
   if (!ready)

@@ -13,7 +13,7 @@ export const metadata = {
 
 // Facts left "" in PRIVACY_INFORMATION are not shown; they appear in the admin launch checklist instead.
 export default function Privacy() {
-  const { legalEntity, contactName, retention, providers, lastUpdated } = PRIVACY_INFORMATION;
+  const { legalEntity, contactName, retentionMonths, providers, lastUpdated } = PRIVACY_INFORMATION;
   const contactEmail = PRIVACY_INFORMATION.contactEmail || SITE_CONFIG.contact.email;
   const business = legalEntity || SITE_CONFIG.hotelName;
   return (
@@ -60,9 +60,10 @@ export default function Privacy() {
 
         <h2>How long we keep it</h2>
         <p>
-          {retention
-            ? `We keep reservation requests for ${retention}, after which they are deleted.`
-            : "We keep reservation requests only as long as needed to respond to them and to meet our legal obligations, after which they are deleted."}
+          {retentionMonths > 0
+            ? `We keep reservation requests for ${retentionMonths} months from when they were sent or from the requested dates, whichever is later. They are then deleted automatically.`
+            : "We keep reservation requests only as long as we need them to respond, manage your stay or event, and meet our legal obligations."}{" "}
+          You can ask us to delete your request sooner using the contact details below.
         </p>
 
         <h2>Your rights</h2>
