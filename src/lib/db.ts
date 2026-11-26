@@ -98,6 +98,8 @@ interface CollectionDef {
   jsonKey: "enquiries" | "offers" | "banquetPackages" | "diningOptions" | "reviews";
   newestFirst: boolean;
   fields: Field[];
+  /** Idempotent Postgres migrations run once per process before first use (columns added after launch). */
+  migrations?: string[];
 }
 const f = (key: string, column = key, codec: Partial<Pick<Field, "encode" | "decode">> = {}): Field => ({
   key,
@@ -123,10 +125,12 @@ const OFFERS: CollectionDef = {
     f("title"),
     f("description"),
     f("discount"),
+    f("code", "code", { decode: v => (v as string | null) ?? "" }),
     f("validFrom", "valid_from"),
     f("validTo", "valid_to"),
     f("active"),
   ],
+  migrations: ["ALTER TABLE offers ADD COLUMN IF NOT EXISTS code TEXT DEFAULT ''"],
 };
 const BANQUET: CollectionDef = {
   table: "banquet_packages",
@@ -165,10 +169,21 @@ const byCreated = (newestFirst: boolean) => (a: Item, b: Item) =>
 
 function collection<T extends Item>(def: CollectionDef) {
   const order = `ORDER BY created_at ${def.newestFirst ? "DESC" : "ASC"}`;
+  let migrated: Promise<void> | undefined;
+  const sql = () => {
+    if (def.migrations?.length)
+      migrated ??= (async () => {
+        for (const statement of def.migrations!) await getSQL().query(statement);
+      })().catch(error => {
+        migrated = undefined;
+        throw error;
+      });
+    return (migrated ?? Promise.resolve()).then(getSQL);
+  };
   return {
     async list(): Promise<T[]> {
       if (IS_POSTGRES)
-        return (await getSQL().query(`SELECT * FROM ${def.table} ${order}`)).map((r: Record<string, unknown>) =>
+        return (await (await sql()).query(`SELECT * FROM ${def.table} ${order}`)).map((r: Record<string, unknown>) =>
           fromRow<T>(def, r),
         );
       return ([...readDB()[def.jsonKey]] as unknown as T[]).sort(byCreated(def.newestFirst));
@@ -189,7 +204,7 @@ function collection<T extends Item>(def: CollectionDef) {
           ),
           item.createdAt,
         ];
-        await getSQL().query(
+        await (await sql()).query(
           `INSERT INTO ${def.table} (${columns.join(", ")}) VALUES (${columns.map((_, i) => "$" + (i + 1)).join(", ")})`,
           values,
         );
@@ -205,11 +220,11 @@ function collection<T extends Item>(def: CollectionDef) {
       if (IS_POSTGRES) {
         const fields = def.fields.filter(x => x.key in changes);
         if (!fields.length) {
-          const rows = await getSQL().query(`SELECT * FROM ${def.table} WHERE id = $1`, [id]);
+          const rows = await (await sql()).query(`SELECT * FROM ${def.table} WHERE id = $1`, [id]);
           return rows[0] ? fromRow<T>(def, rows[0]) : null;
         }
         const sets = fields.map((x, i) => `${x.column} = $${i + 1}`).join(", ");
-        const rows = await getSQL().query(
+        const rows = await (await sql()).query(
           `UPDATE ${def.table} SET ${sets} WHERE id = $${fields.length + 1} RETURNING *`,
           [...fields.map(x => (x.encode ? x.encode(changes[x.key]) : changes[x.key])), id],
         );
@@ -225,7 +240,7 @@ function collection<T extends Item>(def: CollectionDef) {
     },
     async remove(id: string): Promise<boolean> {
       if (IS_POSTGRES)
-        return (await getSQL().query(`DELETE FROM ${def.table} WHERE id = $1 RETURNING id`, [id])).length > 0;
+        return (await (await sql()).query(`DELETE FROM ${def.table} WHERE id = $1 RETURNING id`, [id])).length > 0;
       const db = readDB();
       const list = db[def.jsonKey] as unknown as T[];
       const index = list.findIndex(i => i.id === id);
@@ -396,6 +411,20 @@ async function prepareBookingExtensions() {
   await bookingSetup;
 }
 
+/**
+ * Guest self-service lookup. Needs the email given with the request plus either the full reference or
+ * the 8+ character short reference shown on the receipt.
+ */
+export async function getBookingByIdAndEmail(reference: string, email: string): Promise<Booking | null> {
+  const ref = reference.trim().toLowerCase(),
+    wanted = email.trim().toLowerCase();
+  if (ref.length < 8 || !wanted) return null;
+  return (
+    (await getBookings()).find(
+      b => b.id.toLowerCase().startsWith(ref) && !!b.email && b.email.trim().toLowerCase() === wanted,
+    ) ?? null
+  );
+}
 export async function getBookings(): Promise<Booking[]> {
   if (IS_POSTGRES) {
     const sql = getSQL();

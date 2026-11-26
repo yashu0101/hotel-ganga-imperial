@@ -29,6 +29,10 @@ const db = {
   StorageUnavailableError: class extends Error {},
   getRooms: async () => [{ name: "Deluxe Room", hidden: false }],
   getBanquetPackages: async () => [{ name: "Gold", active: true }],
+  getOffers: async () => [
+    { title: "Early Bird", discount: "20%", code: "EARLY20", validFrom: "2000-01-01", validTo: "2999-12-31", active: true },
+    { title: "Old", discount: "10%", code: "OLD10", validFrom: "2000-01-01", validTo: "2000-12-31", active: true },
+  ],
   addBooking: async b => {
     records.push(b);
     return { ...b, id: "request-reference" };
@@ -210,6 +214,7 @@ test("admin edits accept only declared, valid fields and refresh the public page
     title: "Monsoon",
     description: "",
     discount: "20% off",
+    code: "",
     validFrom: "",
     validTo: "",
     active: true,
@@ -826,4 +831,53 @@ test("Postgres collections use parameterised statements for only the changed col
   );
   assert.equal(queries.at(-1).params[5], '["DJ"]');
   assert.equal(await db.deleteRoom("not-a-number"), false, "non-numeric room ids never reach SQL");
+});
+
+test("coupon codes match active, in-date offers case-insensitively and read a percentage from the badge", () => {
+  const offers = [
+    { title: "A", discount: "Save 15% off", code: "Weekend15", validFrom: "2026-01-01", validTo: "2026-12-31", active: true },
+    { title: "B", discount: "Free breakfast", code: "BFAST", validFrom: "", validTo: "", active: true },
+    { title: "C", discount: "20%", code: "OFF", validFrom: "", validTo: "", active: false },
+  ];
+  assert.equal(dates.findCoupon(offers, " weekend15 ", "2026-06-01")?.title, "A");
+  assert.equal(dates.findCoupon(offers, "WEEKEND15", "2027-01-01"), null, "expired");
+  assert.equal(dates.findCoupon(offers, "OFF", "2026-06-01"), null, "inactive");
+  assert.equal(dates.findCoupon(offers, "", "2026-06-01"), null, "empty code never matches an offer without one");
+  assert.equal(dates.couponPercent(offers[0]), 15);
+  assert.equal(dates.couponPercent(offers[1]), 0);
+});
+
+test("a valid coupon is recorded on the request; an invalid one is rejected before saving", async () => {
+  const before = records.length;
+  const bad = await booking.POST(request({ ...payload, couponCode: "OLD10" }));
+  assert.equal(bad.status, 400);
+  assert.equal(records.length, before);
+  const ok = await booking.POST(request({ ...payload, couponCode: "early20", specialRequests: "Quiet room" }));
+  assert.equal(ok.status, 201);
+  assert.deepEqual((await ok.json()).coupon, { code: "EARLY20", title: "Early Bird", percent: 20 });
+  assert.equal(records.at(-1).specialRequests, "Coupon EARLY20 (Early Bird) · Quiet room");
+});
+
+test("request tracking needs reference and email, and never returns contact details", async () => {
+  const lookups = [];
+  const track = load("src/app/api/track/route.ts", {
+    "next/server": response,
+    "@/lib/db": {
+      StorageUnavailableError: class extends Error {},
+      getBookingByIdAndEmail: async (ref, email) => {
+        lookups.push([ref, email]);
+        return ref === "3f9a12bc" && email === "a@b.in"
+          ? { id: "3f9a12bc-0000", name: "G", mobile: "+91999", email: "a@b.in", roomType: "Deluxe Room", roomsRequested: 1, checkin: future, checkout: "", guests: 2, bookingStatus: "pending", createdAt: "x" }
+          : null;
+      },
+    },
+    "@/lib/request-limit": { allowRequest: () => true, clientKey: () => "test" },
+    "@/lib/reservation": dates,
+  });
+  const post = b => track.POST(new Request("http://localhost/api/track", { method: "POST", body: JSON.stringify(b) }));
+  assert.equal((await post({ reference: "3f9a", email: "a@b.in" })).status, 400);
+  assert.equal((await post({ reference: "3f9a12bc", email: "x@b.in" })).status, 404);
+  const found = await (await post({ reference: "3f9a12bc", email: "a@b.in" })).json();
+  assert.equal(found.reference, "3F9A12BC");
+  for (const key of ["name", "mobile", "email", "id"]) assert.ok(!(key in found), key + " must not be returned");
 });

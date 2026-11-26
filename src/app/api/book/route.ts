@@ -1,8 +1,8 @@
 import { deliverNotifications } from "@/lib/notifications";
 import { NextRequest, NextResponse } from "next/server";
-import { addBooking, getRooms, getBanquetPackages, StorageUnavailableError } from "@/lib/db";
+import { addBooking, getRooms, getBanquetPackages, getOffers, StorageUnavailableError } from "@/lib/db";
 import { allowRequest, clientKey } from "@/lib/request-limit";
-import { cleanText, dateError, phoneError } from "@/lib/reservation";
+import { cleanText, couponPercent, dateError, findCoupon, normalizeCoupon, phoneError } from "@/lib/reservation";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -15,7 +15,8 @@ export async function POST(req: NextRequest) {
       mobile = cleanText(b.mobile, 30),
       email = cleanText(b.email, 150),
       roomType = cleanText(b.roomType, 150),
-      specialRequests = cleanText(b.specialRequests, 500);
+      specialRequests = cleanText(b.specialRequests, 500),
+      couponCode = normalizeCoupon(b.couponCode);
     if (!name) return NextResponse.json({ error: "Enter your full name." }, { status: 400 });
     const phoneProblem = phoneError(mobile);
     if (phoneProblem) return NextResponse.json({ error: phoneProblem }, { status: 400 });
@@ -44,6 +45,14 @@ export async function POST(req: NextRequest) {
     if (!Number.isInteger(guests) || guests < 1 || guests > maximum)
       return NextResponse.json({ error: "Enter a guest count between 1 and " + maximum + "." }, { status: 400 });
 
+    // Coupons are optional. The hotel applies the offer when it confirms the final rate.
+    let coupon: { code: string; title: string; percent: number } | null = null;
+    if (couponCode) {
+      const offer = findCoupon(await getOffers(), couponCode);
+      if (!offer) return NextResponse.json({ error: "That coupon code is not valid or has expired." }, { status: 400 });
+      coupon = { code: couponCode, title: offer.title, percent: couponPercent(offer) };
+    }
+
     // A request does not reserve inventory. Availability is confirmed by the hotel.
     const booking = await addBooking({
       name,
@@ -57,7 +66,9 @@ export async function POST(req: NextRequest) {
       checkout: b.checkout || "",
       guests,
       roomsRequested,
-      specialRequests,
+      specialRequests: coupon
+        ? [`Coupon ${coupon.code} (${coupon.title})`, specialRequests].filter(Boolean).join(" · ")
+        : specialRequests,
       amount: 0,
     });
     try {
@@ -65,7 +76,10 @@ export async function POST(req: NextRequest) {
     } catch {
       /* Saved requests remain available for notification retry in admin. */
     }
-    return NextResponse.json({ success: true, reference: booking.id }, { status: 201 });
+    return NextResponse.json(
+      coupon ? { success: true, reference: booking.id, coupon } : { success: true, reference: booking.id },
+      { status: 201 },
+    );
   } catch (error) {
     if (error instanceof StorageUnavailableError)
       return NextResponse.json(
