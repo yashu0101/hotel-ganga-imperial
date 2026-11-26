@@ -4,9 +4,20 @@ import { useState, useEffect, use } from "react";
 import Link from "next/link";
 
 interface BookingData {
-  id: string; name: string; email: string; mobile: string; city: string; country: string;
-  roomType: string; checkin: string; checkout: string; guests: number; amount: number;
-  bookingStatus: string; paymentStatus: string; createdAt: string;
+  id: string;
+  name: string;
+  email: string;
+  mobile: string;
+  city: string;
+  country: string;
+  roomType: string;
+  checkin: string;
+  checkout: string;
+  guests: number;
+  amount: number;
+  bookingStatus: string;
+  paymentStatus: string;
+  createdAt: string;
 }
 
 export default function InvoicePage({ params }: { params: Promise<{ id: string }> }) {
@@ -25,11 +36,24 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
       .catch(() => setError("Failed to load booking."));
   }, [id]);
 
-  if (error) return <div style={{ padding: 48, textAlign: "center", fontFamily: "Mulish, sans-serif", color: "#665C50" }}>{error}</div>;
-  if (!booking) return <div style={{ padding: 48, textAlign: "center", fontFamily: "Mulish, sans-serif", color: "#C9A15B" }}>Loading...</div>;
+  if (error)
+    return (
+      <div style={{ padding: 48, textAlign: "center", fontFamily: "Mulish, sans-serif", color: "#665C50" }}>
+        {error}
+      </div>
+    );
+  if (!booking)
+    return (
+      <div style={{ padding: 48, textAlign: "center", fontFamily: "Mulish, sans-serif", color: "#C9A15B" }}>
+        Loading...
+      </div>
+    );
 
   const nights = booking.checkout
-    ? Math.max(1, Math.ceil((new Date(booking.checkout).getTime() - new Date(booking.checkin).getTime()) / (1000 * 60 * 60 * 24)))
+    ? Math.max(
+        1,
+        Math.ceil((new Date(booking.checkout).getTime() - new Date(booking.checkin).getTime()) / (1000 * 60 * 60 * 24)),
+      )
     : 1;
 
   return (
@@ -71,8 +95,12 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
 
       <div className="invoice-wrap">
         <div className="print-bar no-print">
-          <Link href="/admin" className="back-btn">Back to admin</Link>
-          <button className="print-btn" onClick={() => window.print()}>Print / Save PDF</button>
+          <Link href="/admin" className="back-btn">
+            Back to admin
+          </Link>
+          <button className="print-btn" onClick={() => window.print()}>
+            Print / Save PDF
+          </button>
         </div>
 
         <div className="invoice-page">
@@ -85,13 +113,33 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
             <div className="inv-meta">
               <strong>BOOKING CONFIRMATION</strong>
               <p>ID: {booking.id.slice(0, 8).toUpperCase()}</p>
-              <p>Date: {new Date(booking.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
+              <p>
+                Date:{" "}
+                {new Date(booking.createdAt).toLocaleDateString("en-IN", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })}
+              </p>
               <p style={{ marginTop: 8 }}>
-                <span className="inv-status" style={{
-                  background: booking.bookingStatus === "confirmed" ? "rgba(91,201,107,.15)" : booking.bookingStatus === "cancelled" ? "rgba(140,140,140,.15)" : "rgba(201,161,91,.15)",
-                  color: booking.bookingStatus === "confirmed" ? "#3a8a45" : booking.bookingStatus === "cancelled" ? "#888" : "#8A6526",
-                  border: `1px solid ${booking.bookingStatus === "confirmed" ? "rgba(91,201,107,.3)" : booking.bookingStatus === "cancelled" ? "rgba(140,140,140,.3)" : "rgba(201,161,91,.3)"}`,
-                }}>
+                <span
+                  className="inv-status"
+                  style={{
+                    background:
+                      booking.bookingStatus === "confirmed"
+                        ? "rgba(91,201,107,.15)"
+                        : booking.bookingStatus === "cancelled"
+                          ? "rgba(140,140,140,.15)"
+                          : "rgba(201,161,91,.15)",
+                    color:
+                      booking.bookingStatus === "confirmed"
+                        ? "#3a8a45"
+                        : booking.bookingStatus === "cancelled"
+                          ? "#888"
+                          : "#8A6526",
+                    border: `1px solid ${booking.bookingStatus === "confirmed" ? "rgba(91,201,107,.3)" : booking.bookingStatus === "cancelled" ? "rgba(140,140,140,.3)" : "rgba(201,161,91,.3)"}`,
+                  }}
+                >
                   {booking.bookingStatus}
                 </span>
               </p>
@@ -101,10 +149,16 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
           <div className="inv-section">
             <h3>Guest Details</h3>
             <div className="inv-grid">
-              <span className="inv-label">Name</span><span className="inv-value">{booking.name}</span>
-              <span className="inv-label">Email</span><span className="inv-value">{booking.email}</span>
-              <span className="inv-label">Mobile</span><span className="inv-value">{booking.mobile}</span>
-              <span className="inv-label">City / Country</span><span className="inv-value">{booking.city}, {booking.country}</span>
+              <span className="inv-label">Name</span>
+              <span className="inv-value">{booking.name}</span>
+              <span className="inv-label">Email</span>
+              <span className="inv-value">{booking.email}</span>
+              <span className="inv-label">Mobile</span>
+              <span className="inv-value">{booking.mobile}</span>
+              <span className="inv-label">City / Country</span>
+              <span className="inv-value">
+                {booking.city}, {booking.country}
+              </span>
             </div>
           </div>
 
@@ -135,8 +189,12 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
           <div className="inv-total">
             <div className="inv-total-box">
               <div className="label">Estimated Total</div>
-              <div className="amount">{booking.amount > 0 ? `\u20B9${booking.amount.toLocaleString("en-IN")}` : "To be confirmed"}</div>
-              <div className="label" style={{ marginTop: 4 }}>Payment: <strong style={{ textTransform: "capitalize" }}>{booking.paymentStatus}</strong></div>
+              <div className="amount">
+                {booking.amount > 0 ? `\u20B9${booking.amount.toLocaleString("en-IN")}` : "To be confirmed"}
+              </div>
+              <div className="label" style={{ marginTop: 4 }}>
+                Payment: <strong style={{ textTransform: "capitalize" }}>{booking.paymentStatus}</strong>
+              </div>
             </div>
           </div>
 

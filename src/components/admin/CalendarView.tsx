@@ -75,7 +75,9 @@ export default function CalendarView({ bookings, rooms }: { bookings: Booking[];
                     <td
                       key={d}
                       className={c.rooms ? (c.held ? "held" : "requested") : undefined}
-                      title={c.hits.map(b => `${b.name} · ${b.bookingStatus} (${b.checkin} → ${b.checkout || b.checkin})`).join("\n")}
+                      title={c.hits
+                        .map(b => `${b.name} · ${b.bookingStatus} (${b.checkin} → ${b.checkout || b.checkin})`)
+                        .join("\n")}
                     >
                       {c.rooms || ""}
                     </td>

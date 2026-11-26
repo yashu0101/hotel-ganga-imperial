@@ -31,7 +31,14 @@ const db = {
   getRooms: async () => [{ name: "Deluxe Room", hidden: false }],
   getBanquetPackages: async () => [{ name: "Gold", active: true }],
   getOffers: async () => [
-    { title: "Early Bird", discount: "20%", code: "EARLY20", validFrom: "2000-01-01", validTo: "2999-12-31", active: true },
+    {
+      title: "Early Bird",
+      discount: "20%",
+      code: "EARLY20",
+      validFrom: "2000-01-01",
+      validTo: "2999-12-31",
+      active: true,
+    },
     { title: "Old", discount: "10%", code: "OLD10", validFrom: "2000-01-01", validTo: "2000-12-31", active: true },
   ],
   addBooking: async b => {
@@ -876,7 +883,14 @@ test("scheduled notification retry requires a strong cron secret", async () => {
 
 test("coupon codes match active, in-date offers case-insensitively and read a percentage from the badge", () => {
   const offers = [
-    { title: "A", discount: "Save 15% off", code: "Weekend15", validFrom: "2026-01-01", validTo: "2026-12-31", active: true },
+    {
+      title: "A",
+      discount: "Save 15% off",
+      code: "Weekend15",
+      validFrom: "2026-01-01",
+      validTo: "2026-12-31",
+      active: true,
+    },
     { title: "B", discount: "Free breakfast", code: "BFAST", validFrom: "", validTo: "", active: true },
     { title: "C", discount: "20%", code: "OFF", validFrom: "", validTo: "", active: false },
   ];
@@ -908,7 +922,19 @@ test("request tracking needs reference and email, and never returns contact deta
       getBookingByIdAndEmail: async (ref, email) => {
         lookups.push([ref, email]);
         return ref === "3f9a12bc" && email === "a@b.in"
-          ? { id: "3f9a12bc-0000", name: "G", mobile: "+91999", email: "a@b.in", roomType: "Deluxe Room", roomsRequested: 1, checkin: future, checkout: "", guests: 2, bookingStatus: "pending", createdAt: "x" }
+          ? {
+              id: "3f9a12bc-0000",
+              name: "G",
+              mobile: "+91999",
+              email: "a@b.in",
+              roomType: "Deluxe Room",
+              roomsRequested: 1,
+              checkin: future,
+              checkout: "",
+              guests: 2,
+              bookingStatus: "pending",
+              createdAt: "x",
+            }
           : null;
       },
     },

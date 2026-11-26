@@ -52,7 +52,14 @@ export function nightlyRate(value: string): number | null {
   return Number.isFinite(rate) && rate > 0 ? rate : null;
 }
 
-type CouponOffer = { title: string; discount: string; code?: string; validFrom: string; validTo: string; active: boolean };
+type CouponOffer = {
+  title: string;
+  discount: string;
+  code?: string;
+  validFrom: string;
+  validTo: string;
+  active: boolean;
+};
 export const normalizeCoupon = (value: unknown) => cleanText(value, 30).toUpperCase();
 /** An active offer whose code matches (case-insensitive) and whose validity window includes `today`. */
 export function findCoupon<T extends CouponOffer>(offers: T[], code: string, today = hotelToday()): T | null {
