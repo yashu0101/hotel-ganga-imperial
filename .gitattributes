@@ -1,0 +1,12 @@
+# Keep LF line endings on every OS so Prettier (endOfLine: lf) passes on Windows checkouts too.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.avif binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary

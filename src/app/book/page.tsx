@@ -257,6 +257,7 @@ export default function BookPage() {
         guests,
         rooms: type === "room" ? roomsRequested : 0,
         specialRequests: note,
+        hasEmail: !!String(values.get("email") || "").trim(),
         coupon: data.coupon
           ? `${data.coupon.code} — ${data.coupon.title}${data.coupon.percent ? ` (${data.coupon.percent}% off)` : ""}, applied when the hotel confirms your rate`
           : "",

@@ -35,7 +35,7 @@ Before calling work done, run all of these: lint, `tsc --noEmit`, `format:check`
 - Enquiries, offers, banquet packages, dining options and reviews share one generic `collection()` implementation driven by a `CollectionDef` (field ↔ column map, encode/decode, sort order). To add a collection or field, extend its definition; both backends then store only declared fields. Bookings + outbox and rooms have their own code.
 - Rooms are addressed by a stable `id` (Postgres: serial `idx`; JSON: derived from the name on first read). Never by list position.
 
-**Notification outbox.** `addBooking` writes the booking and an outbox row in the same step (a Postgres transaction, or one JSON write). `src/lib/notifications.ts` delivers pending events to `NOTIFICATION_WEBHOOK_URL`. It needs an HTTPS URL plus a secret of at least 32 characters. Each event carries an HMAC-SHA256 `X-Hotel-Signature` over `timestamp + '.' + body`, and delivery is at least once. When delivery isn't configured, events stay queued. Retries run from the admin dashboard (`/api/notifications`) and from Vercel Cron once a day, the most Hobby plans allow (`vercel.json` → `/api/cron/notifications`, which needs `CRON_SECRET` of at least 32 characters and refuses everything without it).
+**Notification outbox.** `addBooking` writes the booking and an outbox row in the same step (a Postgres transaction, or one JSON write). `src/lib/notifications.ts` delivers pending events to `NOTIFICATION_WEBHOOK_URL`. It needs an HTTPS URL plus a secret of at least 32 characters. Each event carries an HMAC-SHA256 `X-Hotel-Signature` over `timestamp + '.' + body`, and delivery is at least once. When delivery isn't configured, events stay queued. Retries try the least-attempted events first; after `MAX_NOTIFICATION_ATTEMPTS` (8) failures an event becomes `failed` and admin can requeue it. Retries run from the admin dashboard (`/api/notifications`) and from Vercel Cron once a day, the most Hobby plans allow (`vercel.json` → `/api/cron/notifications`, which needs `CRON_SECRET` of at least 32 characters and refuses everything without it).
 
 **API routes (`src/app/api/*/route.ts`).**
 
@@ -48,7 +48,7 @@ Before calling work done, run all of these: lint, `tsc --noEmit`, `format:check`
 
 **Content.**
 
-- `src/lib/hotel-content.ts`: room details and policies. Unapproved facts stay `""`: guests never see them, and `missingLaunchDetails()` lists them in the admin launch checklist.
+- `src/lib/hotel-content.ts`: room details, policies and privacy-notice facts (`PRIVACY_INFORMATION`, rendered by `/privacy`). Unapproved facts stay `""`: guests never see them, and `missingLaunchDetails()` lists them in the admin launch checklist.
 - `src/lib/config.ts`: site config, contact details and images. Representative images are flagged as samples.
 - `src/lib/context.tsx`: the client `AppProvider` (theme, plus the admin's language).
 - `src/lib/seo.ts`: Hotel JSON-LD built only from known facts.

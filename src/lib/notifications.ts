@@ -11,8 +11,11 @@ export function notificationConfigured() {
 }
 export async function deliverNotifications(bookingId?: string) {
   if (!notificationConfigured()) return { configured: false, delivered: 0, pending: true };
+  // Fewest attempts first, then oldest: a few events the receiver keeps rejecting can't hold every slot,
+  // and after MAX_NOTIFICATION_ATTEMPTS they are marked "failed" and leave the queue (admin can requeue them).
   const jobs = (await getNotificationJobs())
     .filter(j => j.status === "pending" && (!bookingId || j.bookingId === bookingId))
+    .sort((a, b) => (a.attempts ?? 0) - (b.attempts ?? 0) || String(a.createdAt).localeCompare(String(b.createdAt)))
     .slice(0, 10);
   const bookings = await getBookings();
   let delivered = 0;

@@ -338,6 +338,71 @@ test("local booking and its notification event are persisted in one atomic file 
   assert.equal(files.get("/virtual/data/db.json"), "broken JSON");
 });
 
+test("a notification that keeps failing is marked failed and can be requeued", async () => {
+  const files = new Map([["/virtual/data/db.json", JSON.stringify({ bookings: [], config: { rooms: [] } })]]);
+  const fakeFs = {
+    readFileSync: p => files.get(p),
+    writeFileSync: (p, v) => files.set(p, v),
+    existsSync: p => files.has(p) || p === "/virtual/data",
+    mkdirSync: () => {},
+    renameSync: (a, b) => {
+      files.set(b, files.get(a));
+      files.delete(a);
+    },
+    unlinkSync: p => files.delete(p),
+  };
+  const dbModule = load(
+    "src/lib/db.ts",
+    { fs: { default: fakeFs }, path: { default: path.posix }, "./config": { SITE_CONFIG: { rooms: [] } } },
+    { process: { env: {}, cwd: () => "/virtual" } },
+  );
+  const saved = await dbModule.addBooking({ ...payload, gender: "other", country: "", city: "", amount: 0 });
+  const job = () => JSON.parse(files.get("/virtual/data/db.json")).notificationJobs[0];
+  for (let i = 1; i < dbModule.MAX_NOTIFICATION_ATTEMPTS; i++) await dbModule.markNotification(saved.id, false);
+  assert.equal(job().status, "pending");
+  await dbModule.markNotification(saved.id, false);
+  assert.equal(job().status, "failed");
+  assert.equal(await dbModule.requeueFailedNotifications(), 1);
+  assert.deepEqual([job().status, job().attempts], ["pending", 0]);
+  await dbModule.markNotification(saved.id, true);
+  assert.equal(job().status, "delivered");
+  assert.equal(await dbModule.requeueFailedNotifications(), 0);
+});
+
+test("notification retries try the least-attempted events first", async () => {
+  const jobs = Array.from({ length: 12 }, (_, i) => ({
+    id: "event-" + i,
+    bookingId: "booking-" + i,
+    status: "pending",
+    attempts: i < 10 ? 5 : 0,
+    createdAt: "2026-01-" + String(10 + i).padStart(2, "0"),
+  }));
+  const sent = [];
+  const notifications = load(
+    "src/lib/notifications.ts",
+    {
+      "node:crypto": { createHmac },
+      "@/lib/db": {
+        getNotificationJobs: async () => jobs,
+        getBookings: async () => jobs.map(j => ({ ...payload, id: j.bookingId })),
+        markNotification: async () => {},
+      },
+    },
+    {
+      process: {
+        env: {
+          NOTIFICATION_WEBHOOK_URL: "https://notifications.example.test/hotel",
+          NOTIFICATION_WEBHOOK_SECRET: "test-secret-that-is-at-least-32-characters",
+        },
+      },
+      fetch: async (url, options) => (sent.push(options.headers["Idempotency-Key"]), { ok: false }),
+    },
+  );
+  await notifications.deliverNotifications();
+  assert.equal(sent.length, 10);
+  assert.deepEqual(sent.slice(0, 2), ["event-10", "event-11"]);
+});
+
 test("Postgres saves the booking and event in the same transaction", async () => {
   let transaction = [];
   const sql = (strings, ...values) => ({ query: strings.join("?"), values });
@@ -367,6 +432,36 @@ test("Postgres saves the booking and event in the same transaction", async () =>
   assert.match(transaction[0].query, /INSERT INTO bookings/);
   assert.match(transaction[1].query, /INSERT INTO notification_outbox/);
   assert.equal(transaction[1].values[0], saved.id);
+});
+
+test("Postgres marks repeatedly failing notifications failed, requeues them and returns ISO dates", async () => {
+  const queries = [];
+  const created = new Date("2026-11-20T10:00:00Z");
+  const sql = (strings, ...values) => {
+    const query = strings.join("?");
+    queries.push({ query, values });
+    if (/^SELECT \* FROM notification_outbox/.test(query))
+      return [{ id: "e1", booking_id: "b1", status: "pending", attempts: 2, created_at: created }];
+    if (/RETURNING id/.test(query)) return [{ id: "e1" }];
+    return [];
+  };
+  const dbModule = load(
+    "src/lib/db.ts",
+    {
+      fs: { default: {} },
+      path: { default: path.posix },
+      "./config": { SITE_CONFIG: { rooms: [] } },
+      "@neondatabase/serverless": { neon: () => sql },
+    },
+    { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
+  );
+  assert.equal((await dbModule.getNotificationJobs())[0].createdAt, "2026-11-20T10:00:00.000Z");
+  await dbModule.markNotification("e1", false);
+  const mark = queries.at(-1);
+  assert.match(mark.query, /UPDATE notification_outbox SET status = CASE .*'failed'/);
+  assert.deepEqual(mark.values, [false, dbModule.MAX_NOTIFICATION_ATTEMPTS, "e1"]);
+  assert.equal(await dbModule.requeueFailedNotifications(), 1);
+  assert.match(queries.at(-1).query, /SET status = 'pending', attempts = 0 WHERE status = 'failed'/);
 });
 
 test("notifications stay queued when disabled and never call an external endpoint", async () => {
@@ -542,7 +637,18 @@ test("admin launch checklist lists every missing guest-facing detail", () => {
   const content = load("src/lib/hotel-content.ts");
   const empty = { phone: "", whatsapp: "", email: "", address: "", mapEmbedUrl: "" };
   const missing = content.missingLaunchDetails({ contact: empty, rooms: [{ name: "Suite", sample: true }] });
-  for (const item of ["phone", "WhatsApp", "email", "address", "directions", "check-in", "Suite"])
+  for (const item of [
+    "phone",
+    "WhatsApp",
+    "email",
+    "address",
+    "directions",
+    "check-in",
+    "Suite",
+    "legal business name",
+    "grievance officer",
+    "how long requests are kept",
+  ])
     assert.ok(
       missing.some(m => m.toLowerCase().includes(item.toLowerCase())),
       "missing " + item,

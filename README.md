@@ -1,77 +1,92 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hotel Ganga Imperial
 
-## Getting Started
+Marketing website and reservation-request system for Hotel Ganga Imperial, Varanasi. Built with Next.js 16, React 19
+and Postgres (Neon), deployed on Vercel.
 
-First, run the development server:
+The site accepts **reservation requests, not bookings**. There is no payment, live inventory or automatic
+confirmation: requests arrive in the admin dashboard as pending, and staff confirm availability, rates and policies
+with the guest. Pending requests never hold a room.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Pages
+
+- Public: `/`, `/rooms`, `/rooms/[slug]`, `/dining`, `/celebrations`, `/guest-information`, `/contact`, `/book`,
+  `/track` (guests check a request's status with its reference and email), `/privacy`.
+- Staff: `/login` and `/admin` (requests, enquiries, rooms, offers, banquet packages, dining, reviews, analytics,
+  notification status and a launch checklist of missing details).
+
+## Local development
+
+```sh
+npm ci
+cp .env.example .env.local   # fill in at least ADMIN_EMAIL, ADMIN_PASSWORD and JWT_SECRET
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Without `DATABASE_URL`, data is stored in `data/db.json`. That file is for local development only; production needs
+Postgres.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Checks
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Run all of these before merging. CI (`.github/workflows/ci.yml`) runs the same on every pull request.
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-## Reservation and launch setup
-
-The website accepts **reservation requests**, not instant confirmed bookings. Requests appear in the admin dashboard with pending status. There is no payment collection, automatic email/SMS delivery, live room inventory or inventory hold. Staff must confirm availability, final rates and policies with the guest. Pending requests do not block a room category.
-
-Copy `.env.example` to your local environment file and configure:
-- `ADMIN_EMAIL`, `ADMIN_PASSWORD` and a random `JWT_SECRET` of at least 32 characters. Admin authentication fails closed until configured; there are no default credentials.
-- The `NEXT_PUBLIC_HOTEL_*` contact values. The footer currently shows explicit placeholders; no placeholder phone/WhatsApp links send guests to a third party.
-- `DATABASE_URL` for durable hosted storage. Without it, local development uses `data/db.json` (unsuitable for concurrent production workers).
-
-The database seed endpoint requires an authenticated admin and `ALLOW_DATABASE_SEED=true`. Disable this after setup. Request throttling is per process; configure a shared limiter at your hosting edge for public production traffic.
-
-Before public launch, replace representative photos and the family-room illustration with verified property photography. Verify all room inclusions, rates, facility claims, package capacities, contact details, hotel policies and the privacy notice. Guest counts are enquiry party sizes; room allocation and per-room occupancy are confirmed manually.
-
-Validation:
 ```sh
 npm run lint
 npx tsc --noEmit
-node --test tests/reservation.test.mjs
+npm run format:check
+npm test
 npm run build
 ```
 
-## Extended guest experience and notifications
+## Configuration
 
-New public pages: `/rooms`, `/rooms/[slug]`, `/celebrations`, `/dining`, `/guest-information`, `/contact`. The homepage previews the full collections while retaining the gate and architectural illustration.
+All variables are listed in `.env.example`.
 
-Edit `src/lib/hotel-content.ts` to replace room size, bed, occupancy, bathroom, accessibility and hotel-policy placeholders with approved information. Set verified contacts in `.env.local` using `.env.example`. Replace representative images in `src/lib/config.ts` / the room management screen; mark images as non-sample when verified. No sample reviews are presented as genuine guest feedback.
+| Variable                                                                                                                                     | Purpose                                                                                   |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                                                                                                               | Neon Postgres. Required for Vercel production: the build fails without it.                |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD`                                                                                                              | Staff login. There are no default credentials; admin is disabled until set.               |
+| `JWT_SECRET`                                                                                                                                 | Session signing key, at least 32 random characters.                                       |
+| `NEXT_PUBLIC_HOTEL_PHONE`, `NEXT_PUBLIC_HOTEL_WHATSAPP`, `NEXT_PUBLIC_HOTEL_EMAIL`, `NEXT_PUBLIC_HOTEL_ADDRESS`, `NEXT_PUBLIC_HOTEL_MAP_URL` | Contact details shown to guests. Baked in at build time, so redeploy after changing them. |
+| `NEXT_PUBLIC_SITE_URL`                                                                                                                       | Production origin, used for canonical URLs, social images and the sitemap.                |
+| `SITE_READY_FOR_INDEXING`                                                                                                                    | Keep `false` until content is approved; `true` lets search engines index the site.        |
+| `NOTIFICATION_WEBHOOK_URL`, `NOTIFICATION_WEBHOOK_SECRET`                                                                                    | Where new-request events are sent (HTTPS, secret of at least 32 characters). Optional.    |
+| `CRON_SECRET`                                                                                                                                | Authorises the daily notification retry (at least 32 characters).                         |
+| `ALLOW_DATABASE_SEED`                                                                                                                        | Set `true` only while running the one-time database setup, then back to `false`.          |
 
-Requests support 1–10 rooms and include a local download/print summary. The amount shown remains indicative and excludes taxes. There is no live inventory, payment processing or automatic confirmation.
+## Deploying to production
 
-Every new reservation is saved together with a durable notification-outbox event. Local JSON uses a single atomic file replacement; Postgres uses a transaction. Existing Postgres databases receive an additive `rooms_requested` column and `notification_outbox` table on first booking/outbox access. The database role needs permission for these additive schema changes; apply them ahead of launch if runtime DDL is restricted. Corrupt local JSON now raises an error instead of overwriting saved reservations. Use Postgres for production with multiple workers.
+1. Create a Neon database and set all variables above in Vercel (Production environment).
+2. Deploy, set `ALLOW_DATABASE_SEED=true`, sign in at `/login`, then `POST /api/seed` once to create the tables.
+   Set `ALLOW_DATABASE_SEED` back to `false` and redeploy. Newer columns and the notification table are added
+   automatically on first use; if the database role cannot alter tables, apply them ahead of launch.
+3. Turn on Neon point-in-time restore for backups.
+4. Add Vercel Firewall rate-limit rules for `/api/book`, `/api/track` and `/api/auth/login`. The app's own limiter
+   is per server instance only.
+5. Work through the admin dashboard's launch checklist (contact details, check-in/out times, room facts, privacy
+   notice facts, real photography). Only then set `SITE_READY_FOR_INDEXING=true` and submit the sitemap.
 
-To activate notification delivery, configure an HTTPS `NOTIFICATION_WEBHOOK_URL` and a `NOTIFICATION_WEBHOOK_SECRET` of at least 32 characters. The receiver must:
-1. Verify `X-Hotel-Signature` as HMAC-SHA256 of `X-Hotel-Timestamp + '.' + rawBody`, reject old timestamps, and compare signatures in constant time.
-2. Deduplicate `eventId` / `Idempotency-Key` durably before sending any messages. Delivery is at least once: retries and concurrent workers can repeat the same event.
-3. Send a staff alert, and an acknowledgement to the guest only if their email is present. Describe the request as pending; never promise availability or confirmation.
-4. Return 2xx only after durably accepting responsibility for delivery. The admin status tracks webhook acceptance, not actual email/SMS delivery.
+## Content
 
-With no valid configuration, no external transmission occurs and events remain queued. New requests attempt delivery with a four-second timeout. Admin → Dashboard → Reservation notifications shows pending events and a retry action (up to ten per action). Failed delivery does not discard a saved request. There is no scheduled retry worker bundled; schedule a worker or use the admin action operationally. Keep the retry endpoint authenticated. Review provider data-handling and retention information before enabling the connection.
+- `src/lib/hotel-content.ts`: room facts, hotel policies and privacy-notice facts. Leave a value `""` until the
+  hotel approves it: blank values are hidden from guests and listed in the launch checklist.
+- `src/lib/config.ts`: hotel name, contact fallbacks, default rooms and images.
+- Rooms, offers, banquet packages, dining options and reviews are edited in the admin dashboard.
+- Photos marked "representative" show a disclosure label. Replace them with real photography before launch.
 
-Set `NEXT_PUBLIC_SITE_URL` to the verified production origin for social images and the sitemap. `SITE_READY_FOR_INDEXING` defaults to false so placeholders are not indexed; set true only when content and policies are approved. Robots rules are not access controls; admin/API routes still require authentication.
+## Notifications
+
+Each new request is saved together with a notification event in one transaction. When the webhook is configured,
+the event is sent straight away; failed events are retried daily by Vercel Cron (`vercel.json`) and on demand from
+the admin dashboard. After 8 failed attempts an event is marked failed so it stops blocking newer ones; admin can
+put failed events back in the queue. The saved request is never lost.
+
+The receiving service must:
+
+1. Verify `X-Hotel-Signature`: HMAC-SHA256 of `X-Hotel-Timestamp + "." + rawBody`, compared in constant time, and
+   reject old timestamps.
+2. Deduplicate on `eventId` / `Idempotency-Key`. Delivery is at least once.
+3. Alert staff, and acknowledge the guest only if they gave an email. Describe the request as pending, never as
+   confirmed.
+4. Return 2xx only after it has accepted responsibility for delivery.
+
+Without a webhook, events stay queued and requests are only visible in the admin dashboard.

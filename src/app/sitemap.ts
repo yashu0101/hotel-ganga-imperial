@@ -12,6 +12,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/celebrations",
     "/guest-information",
     "/contact",
+    "/track",
     "/privacy",
     ...(await getRooms()).filter(r => !r.hidden).map(r => "/rooms/" + roomSlug(r.name)),
   ].map(route => ({ url: new URL(route, site).href }));

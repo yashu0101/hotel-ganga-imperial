@@ -13,6 +13,26 @@ export const HOTEL_INFORMATION = {
   responseTime: "",
 };
 
+// Privacy notice facts (shown on /privacy). Same rule: leave "" until the hotel approves a value.
+export const PRIVACY_INFORMATION = {
+  /** Legal name of the business responsible for guest data, e.g. "Ganga Imperial Hospitality Pvt. Ltd.". */
+  legalEntity: "",
+  /** Person or role guests can contact about their data (the grievance officer under India's DPDP Act). */
+  contactName: "",
+  /** Email for privacy questions and requests; the reservations email is used when this is empty. */
+  contactEmail: "",
+  /** How long reservation requests are kept, e.g. "24 months after the requested stay dates". */
+  retention: "",
+  /** Services that receive guest details. Add the notification provider once one is chosen. */
+  providers: [
+    "Vercel (website hosting)",
+    "Neon (database that stores reservation requests)",
+    // e.g. "Resend (email notifications)" or "Make.com (staff alerts)"
+  ],
+  /** Date the notice was last reviewed, e.g. "1 December 2026". */
+  lastUpdated: "",
+};
+
 export interface RoomSpecification {
   size: string;
   bed: string;
@@ -90,6 +110,14 @@ export function missingLaunchDetails({
   if (!HOTEL_INFORMATION.checkIn || !HOTEL_INFORMATION.checkOut)
     missing.push("Check-in and check-out times (src/lib/hotel-content.ts)");
   if (!HOTEL_INFORMATION.responseTime) missing.push("Typical response time to requests (src/lib/hotel-content.ts)");
+  const privacy: [keyof typeof PRIVACY_INFORMATION, string][] = [
+    ["legalEntity", "Privacy notice: legal business name"],
+    ["contactName", "Privacy notice: grievance officer / privacy contact"],
+    ["retention", "Privacy notice: how long requests are kept"],
+    ["lastUpdated", "Privacy notice: last-reviewed date"],
+  ];
+  for (const [key, label] of privacy)
+    if (!String(PRIVACY_INFORMATION[key]).trim()) missing.push(`${label} (src/lib/hotel-content.ts)`);
   for (const [name, spec] of Object.entries(ROOM_SPECIFICATIONS)) {
     const unknown = ROOM_FACT_LABELS.filter(([key]) => !spec[key].trim()).map(([, label]) => label.toLowerCase());
     if (unknown.length) missing.push(`${name}: ${unknown.join(", ")} (src/lib/hotel-content.ts)`);

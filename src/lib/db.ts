@@ -507,22 +507,47 @@ export async function getNotificationJobs(): Promise<NotificationJob[]> {
       bookingId: String(r.booking_id),
       status: r.status as NotificationJob["status"],
       attempts: Number(r.attempts),
-      createdAt: String(r.created_at),
+      createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
     }));
   }
   return readDB().notificationJobs!;
 }
+/** After this many failed deliveries an event is marked "failed", so it stops taking retry slots from newer ones. */
+export const MAX_NOTIFICATION_ATTEMPTS = 8;
 export async function markNotification(id: string, delivered: boolean) {
   if (IS_POSTGRES) {
     const sql = getSQL();
-    await sql`UPDATE notification_outbox SET status = CASE WHEN status = 'delivered' THEN status ELSE ${delivered ? "delivered" : "pending"} END, attempts = attempts + 1 WHERE id = ${id}`;
+    await sql`UPDATE notification_outbox SET status = CASE WHEN status = 'delivered' OR ${delivered} THEN 'delivered' WHEN attempts + 1 >= ${MAX_NOTIFICATION_ATTEMPTS} THEN 'failed' ELSE 'pending' END, attempts = attempts + 1 WHERE id = ${id}`;
     return;
   }
   const db = readDB();
   const job = db.notificationJobs!.find(j => j.id === id);
   if (job) {
     job.attempts++;
-    job.status = job.status === "delivered" || delivered ? "delivered" : "pending";
+    job.status =
+      job.status === "delivered" || delivered
+        ? "delivered"
+        : job.attempts >= MAX_NOTIFICATION_ATTEMPTS
+          ? "failed"
+          : "pending";
     writeDB(db);
   }
+}
+/** Put failed events back in the queue with a fresh attempt count. Returns how many were requeued. */
+export async function requeueFailedNotifications(): Promise<number> {
+  if (IS_POSTGRES) {
+    await prepareBookingExtensions();
+    const sql = getSQL();
+    const rows =
+      await sql`UPDATE notification_outbox SET status = 'pending', attempts = 0 WHERE status = 'failed' RETURNING id`;
+    return rows.length;
+  }
+  const db = readDB();
+  const failed = db.notificationJobs!.filter(j => j.status === "failed");
+  for (const job of failed) {
+    job.status = "pending";
+    job.attempts = 0;
+  }
+  if (failed.length) writeDB(db);
+  return failed.length;
 }
