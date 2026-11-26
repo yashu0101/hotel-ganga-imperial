@@ -94,6 +94,13 @@ export default function Footer() {
             </li>
           </ul>
           {!anyContact && <p>Send a reservation request and the hotel will reply by phone or email.</p>}
+          <p className="small-note">
+            GM: Dinesh Ji · Powered by{" "}
+            <a href="https://atlas-tours-yashu0101s-projects.vercel.app" target="_blank" rel="noopener">
+              Atlas Tour &amp; Travels
+            </a>{" "}
+            (Est. 1983)
+          </p>
         </div>
       </div>
 

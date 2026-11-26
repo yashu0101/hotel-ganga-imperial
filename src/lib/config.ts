@@ -3,11 +3,16 @@ import { SiteConfig } from "./types";
 export const SITE_CONFIG: SiteConfig = {
   hotelName: "Hotel Ganga Imperial",
   contact: {
-    phone: process.env.NEXT_PUBLIC_HOTEL_PHONE || "",
-    whatsapp: process.env.NEXT_PUBLIC_HOTEL_WHATSAPP || "",
-    email: process.env.NEXT_PUBLIC_HOTEL_EMAIL || "",
-    address: process.env.NEXT_PUBLIC_HOTEL_ADDRESS || "",
-    mapEmbedUrl: process.env.NEXT_PUBLIC_HOTEL_MAP_URL || "",
+    // Verified hotel details; deployment env vars can override them.
+    phone: process.env.NEXT_PUBLIC_HOTEL_PHONE || "+91 6388360881",
+    whatsapp: process.env.NEXT_PUBLIC_HOTEL_WHATSAPP || "916388360881",
+    email: process.env.NEXT_PUBLIC_HOTEL_EMAIL || "info@hotelgangaimperial.com",
+    address:
+      process.env.NEXT_PUBLIC_HOTEL_ADDRESS ||
+      "Hotel Ganga Imperial, Tilamapur, Varanasi, Rustampur, Uttar Pradesh 221112",
+    mapEmbedUrl:
+      process.env.NEXT_PUBLIC_HOTEL_MAP_URL ||
+      "https://www.google.com/maps/search/?api=1&query=Hotel+Ganga+Imperial+Tilamapur+Varanasi",
   },
   rooms: [
     {

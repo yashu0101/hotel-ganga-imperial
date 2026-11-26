@@ -235,6 +235,7 @@ export default function BookPage() {
           roomsRequested: type === "room" ? roomsRequested : 0,
           specialRequests: note,
           website: values.get("website"),
+          couponCode: String(values.get("couponCode") || "").trim(),
         }),
       }).catch(() => null);
       if (!res) {
@@ -256,6 +257,9 @@ export default function BookPage() {
         guests,
         rooms: type === "room" ? roomsRequested : 0,
         specialRequests: note,
+        coupon: data.coupon
+          ? `${data.coupon.code} — ${data.coupon.title}${data.coupon.percent ? ` (${data.coupon.percent}% off)` : ""}, applied when the hotel confirms your rate`
+          : "",
       });
       setReference(data.reference);
       window.scrollTo({ top: 0 });
@@ -505,6 +509,26 @@ export default function BookPage() {
                   <p className="sr-only" aria-live="polite">
                     {specialLeft <= 50 ? `${specialLeft} characters left.` : ""}
                   </p>
+                </div>
+                <div className="field">
+                  <label htmlFor="coupon-code">
+                    Offer code <span className="optional">optional</span>
+                  </label>
+                  <input
+                    id="coupon-code"
+                    name="couponCode"
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    maxLength={30}
+                    aria-describedby="coupon-code-help"
+                    style={{ textTransform: "uppercase" }}
+                  />
+                  <div className="field-meta">
+                    <small id="coupon-code-help">
+                      Checked when you send your request. The discount applies to the rate the hotel confirms.
+                    </small>
+                  </div>
                 </div>
               </fieldset>
             </form>

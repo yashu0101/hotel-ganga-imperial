@@ -6,6 +6,7 @@ import { useApp } from "@/lib/context";
 import NotificationPanel from "@/components/NotificationPanel";
 import LaunchChecklist from "@/components/LaunchChecklist";
 import Analytics from "@/components/admin/Analytics";
+import CalendarView from "@/components/admin/CalendarView";
 import CollectionEditor from "@/components/admin/CollectionEditor";
 import RequestTable, { type RequestRow } from "@/components/admin/RequestTable";
 import { adminRequest, SESSION_EXPIRED } from "@/components/admin/api";
@@ -13,7 +14,7 @@ import { COLLECTIONS } from "@/components/admin/collections";
 import { BOOKING_STATUSES, ENQUIRY_STATUSES } from "@/lib/validation";
 import type { Booking, Enquiry, Room, Offer, BanquetPackage, DiningOption, Review } from "@/lib/types";
 
-type Tab = "dashboard" | "bookings" | "enquiries" | "rooms" | "banquet" | "dining" | "offers" | "reviews" | "analytics";
+type Tab = "dashboard" | "bookings" | "enquiries" | "rooms" | "banquet" | "dining" | "offers" | "reviews" | "analytics" | "calendar";
 const TABS: Tab[] = [
   "dashboard",
   "bookings",
@@ -24,6 +25,7 @@ const TABS: Tab[] = [
   "offers",
   "reviews",
   "analytics",
+  "calendar",
 ];
 interface Data {
   bookings: Booking[];
@@ -401,6 +403,10 @@ export default function AdminPage() {
             />
           ))}
         {view === "analytics" && (unavailable("bookings") || <Analytics bookings={data.bookings} t={t} />)}
+        {view === "calendar" &&
+          (unavailable("bookings") || unavailable("rooms") || (
+            <CalendarView bookings={data.bookings} rooms={data.rooms} />
+          ))}
       </main>
       {toast && (
         <div className={"adm-toast " + toast.kind} role={toast.kind === "error" ? "alert" : "status"}>

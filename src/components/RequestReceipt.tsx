@@ -30,6 +30,7 @@ export interface ReceiptDetails {
   guests: number;
   rooms: number;
   specialRequests?: string;
+  coupon?: string;
 }
 export default function RequestReceipt({ reference, details }: { reference: string; details: ReceiptDetails }) {
   const heading = useRef<HTMLHeadingElement>(null);
@@ -47,6 +48,7 @@ export default function RequestReceipt({ reference, details }: { reference: stri
     ...(details.kind === "room" ? [["Rooms", String(details.rooms)] as [string, string]] : []),
     ["Guests", String(details.guests)],
     ...(details.specialRequests ? [["Special requests", details.specialRequests] as [string, string]] : []),
+    ...(details.coupon ? [["Offer code", details.coupon] as [string, string]] : []),
   ];
   const summary = [
     "HOTEL GANGA IMPERIAL — RESERVATION REQUEST",

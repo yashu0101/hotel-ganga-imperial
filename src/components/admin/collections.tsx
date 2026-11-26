@@ -52,6 +52,7 @@ export const COLLECTIONS = (t: T) => ({
     fields: [
       { key: "title", label: "Title", kind: "text", required: true },
       { key: "discount", label: "Badge text", kind: "text", placeholder: "e.g. 20% off" },
+      { key: "code", label: "Coupon code", kind: "text", placeholder: "e.g. EARLY20 (a % in the badge text sets the discount)" },
       { key: "description", label: "Description", kind: "textarea", full: true },
       { key: "validFrom", label: "Valid from", kind: "date" },
       { key: "validTo", label: "Valid to", kind: "date" },
@@ -64,7 +65,10 @@ export const COLLECTIONS = (t: T) => ({
           {o.title}
           {badge(o.active, t("admin.active"), t("admin.inactive"))}
         </h3>
-        <p>{o.discount}</p>
+        <p>
+          {o.discount}
+          {o.code ? ` · Code: ${o.code}` : ""}
+        </p>
         <p>{o.description}</p>
         {(o.validFrom || o.validTo) && (
           <p>

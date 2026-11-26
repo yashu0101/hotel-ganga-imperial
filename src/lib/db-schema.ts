@@ -52,11 +52,15 @@ export async function initDB() {
     title TEXT NOT NULL,
     description TEXT DEFAULT '',
     discount TEXT DEFAULT '',
+    code TEXT DEFAULT '',
     valid_from TEXT DEFAULT '',
     valid_to TEXT DEFAULT '',
     active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT NOW()
   )`;
+
+  // Add code column if missing (for existing databases)
+  await sql`ALTER TABLE offers ADD COLUMN IF NOT EXISTS code TEXT DEFAULT ''`;
 
   await sql`CREATE TABLE IF NOT EXISTS banquet_packages (
     id TEXT PRIMARY KEY,

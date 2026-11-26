@@ -51,3 +51,25 @@ export function nightlyRate(value: string): number | null {
   const rate = Number(match[1].replaceAll(",", ""));
   return Number.isFinite(rate) && rate > 0 ? rate : null;
 }
+
+type CouponOffer = { title: string; discount: string; code?: string; validFrom: string; validTo: string; active: boolean };
+export const normalizeCoupon = (value: unknown) => cleanText(value, 30).toUpperCase();
+/** An active offer whose code matches (case-insensitive) and whose validity window includes `today`. */
+export function findCoupon<T extends CouponOffer>(offers: T[], code: string, today = hotelToday()): T | null {
+  const wanted = normalizeCoupon(code);
+  if (!wanted) return null;
+  return (
+    offers.find(
+      o =>
+        o.active &&
+        normalizeCoupon(o.code) === wanted &&
+        (!o.validFrom || o.validFrom <= today) &&
+        (!o.validTo || today <= o.validTo),
+    ) ?? null
+  );
+}
+/** Percentage from an offer's badge text such as "20%" or "Save 15% off"; 0 when it is not a percentage. */
+export function couponPercent(offer: Pick<CouponOffer, "discount">) {
+  const pct = Number(offer.discount.match(/(\d{1,2})\s*%/)?.[1] ?? 0);
+  return pct > 0 && pct < 100 ? pct : 0;
+}

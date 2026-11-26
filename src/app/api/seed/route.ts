@@ -19,6 +19,12 @@ export async function POST() {
   await initDB();
 
   // Reviews are never seeded: only real, verified guest reviews may be added (through the admin).
+
+  // Migrate: add coupon codes to existing seeded offers that don't have them.
+  await sql`UPDATE offers SET code = 'EARLY20' WHERE id = 'offer-001' AND (code IS NULL OR code = '')`;
+  await sql`UPDATE offers SET code = 'WEEKEND15' WHERE id = 'offer-002' AND (code IS NULL OR code = '')`;
+  await sql`UPDATE offers SET code = 'HONEYMOON' WHERE id = 'offer-003' AND (code IS NULL OR code = '')`;
+
   const existing = await sql`SELECT COUNT(*) as cnt FROM rooms`;
   if (Number(existing[0].cnt) > 0) {
     return NextResponse.json({ message: "Database already seeded." });
@@ -32,10 +38,10 @@ export async function POST() {
     ('Family Room', 'Twin beds, extra floor space and everything a family needs under one roof. Includes kids welcome kit, extra bedding and family breakfast.', '/images/image-17.jpeg', '₹5,500/night', true, false)`;
 
   // Seed offers
-  await sql`INSERT INTO offers (id, title, description, discount, valid_from, valid_to, active, created_at) VALUES
-    ('offer-001', 'Early Bird Discount', 'Book 30 days in advance and get 20% off on all room types.', '20%', '2026-10-01', '2027-03-31', true, NOW()),
-    ('offer-002', 'Weekend Getaway', 'Special weekend rates - stay Friday to Sunday and save.', '15%', '2026-11-01', '2027-02-28', true, NOW()),
-    ('offer-003', 'Honeymoon Package', 'Suite with complimentary spa, breakfast and room decoration.', 'Complimentary extras', '2026-10-01', '2027-12-31', false, NOW())`;
+  await sql`INSERT INTO offers (id, title, description, discount, code, valid_from, valid_to, active, created_at) VALUES
+    ('offer-001', 'Early Bird Discount', 'Book 30 days in advance and get 20% off on all room types.', '20%', 'EARLY20', '2026-10-01', '2027-03-31', true, NOW()),
+    ('offer-002', 'Weekend Getaway', 'Special weekend rates - stay Friday to Sunday and save.', '15%', 'WEEKEND15', '2026-11-01', '2027-02-28', true, NOW()),
+    ('offer-003', 'Honeymoon Package', 'Suite with complimentary spa, breakfast and room decoration.', 'Complimentary extras', 'HONEYMOON', '2026-10-01', '2027-12-31', false, NOW())`;
 
   // Seed banquet packages
   await sql`INSERT INTO banquet_packages (id, name, description, capacity, price, includes, active, created_at) VALUES
