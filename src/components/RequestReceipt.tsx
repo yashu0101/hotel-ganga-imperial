@@ -10,6 +10,7 @@ export interface ReceiptDetails {
   guests: number;
   rooms: number;
   specialRequests?: string;
+  coupon?: string;
 }
 export default function RequestReceipt({ reference, details }: { reference: string; details: ReceiptDetails }) {
   const heading = useRef<HTMLHeadingElement>(null);
@@ -26,6 +27,7 @@ export default function RequestReceipt({ reference, details }: { reference: stri
     details.rooms ? "Rooms requested: " + details.rooms : "",
     "Guests: " + details.guests,
     details.specialRequests ? "Special requests: " + details.specialRequests : "",
+    details.coupon ? "Offer code: " + details.coupon : "",
     "",
     "This request does not reserve a room or event space. No payment has been taken. Final availability, price and terms must be agreed with the hotel.",
   ]
@@ -57,6 +59,7 @@ export default function RequestReceipt({ reference, details }: { reference: stri
           ["Party size", String(details.guests)],
           ...(details.rooms ? [["Rooms requested", String(details.rooms)]] : []),
           ...(details.specialRequests ? [["Special requests", details.specialRequests]] : []),
+          ...(details.coupon ? [["Offer code", details.coupon]] : []),
         ].map(([label, value]) => (
           <div key={label}>
             <dt>{label}</dt>

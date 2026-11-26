@@ -9,6 +9,21 @@ export const metadata = {
   description:
     "Get in touch with Hotel Ganga Imperial to plan a stay, a meal or a celebration, and find directions to the hotel.",
 };
+const landmarks = [
+  { name: "Banaras Hindu University", distance: "~6 km" },
+  { name: "Kashi Vishwanath Temple", distance: "~8 km" },
+  { name: "Dashashwamedh Ghat", distance: "~9 km" },
+  { name: "Varanasi Junction (railway station)", distance: "~10 km" },
+  { name: "Sarnath", distance: "~15 km" },
+  { name: "Lal Bahadur Shastri Airport", distance: "~28 km" },
+];
+
+const management = [
+  { name: "Dinesh Ji", role: "General Manager", phone: "+91 6388360881" },
+  { name: "Bushra Ashfaque", role: "Managing Director", phone: "+91 6388360881" },
+  { name: "Ashfaque Ahmed", role: "Founder, Atlas Tour & Travels (Est. 1983)", phone: "+91 9616074995" },
+];
+
 // Only configured details are shown. Missing ones are listed in the admin launch checklist.
 export default function Contact() {
   const c = SITE_CONFIG.contact;
@@ -70,10 +85,36 @@ export default function Contact() {
             ) : (
               <p>Ask for directions in your request and the hotel will include them in its reply.</p>
             )}
+            <h3>Nearby landmarks</h3>
+            <dl className="policy-list">
+              {landmarks.map(l => (
+                <div key={l.name}>
+                  <dt>{l.name}</dt>
+                  <dd>{l.distance}</dd>
+                </div>
+              ))}
+            </dl>
             <p className="small-note">
               Need an airport or railway transfer, or parking? Mention it in your request’s special requests.
             </p>
           </div>
+        </div>
+        <div className="decision-note">
+          <h3>Management</h3>
+          <dl className="policy-list">
+            {management.map(m => (
+              <div key={m.name}>
+                <dt>
+                  {m.name}
+                  <br />
+                  <small>{m.role}</small>
+                </dt>
+                <dd>
+                  <a href={telHref(m.phone)}>{m.phone}</a>
+                </dd>
+              </div>
+            ))}
+          </dl>
         </div>
       </div>
     </InteriorShell>

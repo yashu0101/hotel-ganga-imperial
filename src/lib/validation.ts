@@ -93,6 +93,7 @@ export const OFFER_SCHEMA: Schema = {
   title: { type: "string", max: 100, required: true },
   description: { type: "string", max: 500 },
   discount: { type: "string", max: 40 },
+  code: { type: "string", max: 30 },
   validFrom: { type: "date" },
   validTo: { type: "date" },
   active: { type: "boolean", default: true },

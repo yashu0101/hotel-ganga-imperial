@@ -92,6 +92,7 @@ export default function BookPage() {
           guests,
           roomsRequested: type === "room" ? roomsRequested : 0,
           specialRequests,
+          couponCode: String(values.get("couponCode") || "").trim(),
         }),
       }).catch(() => null);
       if (!res) {
@@ -112,6 +113,9 @@ export default function BookPage() {
         guests,
         rooms: type === "room" ? roomsRequested : 0,
         specialRequests,
+        coupon: data.coupon
+          ? `${data.coupon.code} — ${data.coupon.title}${data.coupon.percent ? ` (${data.coupon.percent}% off)` : ""}, applied when the hotel confirms your rate`
+          : "",
       });
       setReference(data.reference);
     } catch (err) {
@@ -366,6 +370,23 @@ export default function BookPage() {
                     <small id="special-requests-help">
                       Up to 500 characters. The hotel will confirm what it can arrange. Please do not include card or ID
                       details.
+                    </small>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="coupon-code">Offer code (optional)</label>
+                    <input
+                      id="coupon-code"
+                      name="couponCode"
+                      autoComplete="off"
+                      autoCapitalize="characters"
+                      spellCheck={false}
+                      maxLength={30}
+                      aria-describedby="coupon-code-help"
+                      style={{ textTransform: "uppercase" }}
+                    />
+                    <small id="coupon-code-help">
+                      We check the code when you send your request. The discount is applied to the rate the hotel
+                      confirms.
                     </small>
                   </div>
                 </fieldset>
