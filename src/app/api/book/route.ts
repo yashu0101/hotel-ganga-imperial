@@ -11,6 +11,10 @@ export async function POST(req: NextRequest) {
     if (Number(req.headers.get("content-length")) > 12000)
       return NextResponse.json({ error: "Request too large." }, { status: 413 });
     const b = await req.json();
+    // Honeypot: guests never see the "website" field, so a value means an automated submission.
+    // Answer like a success so the bot learns nothing, but save and notify nothing.
+    if (cleanText(b.website, 200))
+      return NextResponse.json({ success: true, reference: crypto.randomUUID() }, { status: 201 });
     const name = cleanText(b.name, 100),
       mobile = cleanText(b.mobile, 30),
       email = cleanText(b.email, 150),

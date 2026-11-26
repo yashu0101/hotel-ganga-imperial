@@ -234,6 +234,7 @@ export default function BookPage() {
           guests,
           roomsRequested: type === "room" ? roomsRequested : 0,
           specialRequests: note,
+          website: values.get("website"),
         }),
       }).catch(() => null);
       if (!res) {
@@ -306,6 +307,11 @@ export default function BookPage() {
               ))}
             </div>
             <form id="booking-form" onSubmit={submit}>
+              {/* Spam trap: hidden from guests and screen readers; only bots fill it in. */}
+              <div className="form-trap" aria-hidden="true">
+                <label htmlFor="website">Website</label>
+                <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" />
+              </div>
               <fieldset>
                 <legend>
                   <span aria-hidden="true">1</span> {type === "room" ? "Your stay" : "Your plans"}

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import ts from "typescript";
 import path from "node:path";
+import * as nodeCrypto from "node:crypto";
 import { createHmac } from "node:crypto";
 function load(file, mocks = {}, runtime = {}) {
   const source = ts.transpileModule(fs.readFileSync(file, "utf8"), {
@@ -621,7 +622,7 @@ test("login rejects bad credentials, limits repeated failures and sets a secure 
   const login = load(
     "src/app/api/auth/login/route.ts",
     {
-      "node:crypto": await import("node:crypto"),
+      "node:crypto": nodeCrypto,
       "next/server": nextServer,
       "@/lib/request-limit": limiter,
       "@/lib/auth": {
@@ -826,4 +827,44 @@ test("Postgres collections use parameterised statements for only the changed col
   );
   assert.equal(queries.at(-1).params[5], '["DJ"]');
   assert.equal(await db.deleteRoom("not-a-number"), false, "non-numeric room ids never reach SQL");
+});
+
+test("honeypot submissions look successful to the bot but save and notify nothing", async () => {
+  const before = records.length;
+  const result = await booking.POST(request({ ...payload, website: "https://spam.example" }));
+  assert.equal(result.status, 201);
+  const body = await result.json();
+  assert.equal(body.success, true);
+  assert.match(body.reference, /^[0-9a-f-]{36}$/);
+  assert.equal(records.length, before);
+  assert.equal((await booking.POST(request({ ...payload, website: "" }))).status, 201);
+  assert.equal(records.length, before + 1);
+});
+
+test("scheduled notification retry requires a strong cron secret", async () => {
+  const runs = [];
+  const cronRoute = secret =>
+    load(
+      "src/app/api/cron/notifications/route.ts",
+      {
+        "node:crypto": nodeCrypto,
+        "next/server": response,
+        "@/lib/notifications": { deliverNotifications: async () => (runs.push(1), { configured: true, delivered: 1 }) },
+      },
+      { process: { env: secret === undefined ? {} : { CRON_SECRET: secret } } },
+    );
+  const call = (route, authorization) =>
+    route.GET(
+      new Request("http://localhost/api/cron/notifications", { headers: authorization ? { authorization } : {} }),
+    );
+  const strong = "s".repeat(32);
+  assert.equal((await call(cronRoute(undefined), "Bearer ")).status, 401);
+  assert.equal((await call(cronRoute("short"), "Bearer short")).status, 401);
+  assert.equal((await call(cronRoute(strong))).status, 401);
+  assert.equal((await call(cronRoute(strong), "Bearer wrong")).status, 401);
+  assert.equal(runs.length, 0);
+  const ok = await call(cronRoute(strong), "Bearer " + strong);
+  assert.equal(ok.status, 200);
+  assert.deepEqual(await ok.json(), { configured: true, delivered: 1 });
+  assert.equal(runs.length, 1);
 });
