@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
+type Status = { configured: boolean; pending: number; delivered: number; failed?: number };
 export default function NotificationPanel() {
-  const [state, setState] = useState<{ configured: boolean; pending: number; delivered: number } | null>(null);
+  const [state, setState] = useState<Status | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function refresh() {
@@ -19,11 +20,15 @@ export default function NotificationPanel() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
-  async function retry() {
+  async function retry(requeue: boolean) {
     setBusy(true);
     setError("");
     try {
-      const r = await fetch("/api/notifications", { method: "POST" });
+      const r = await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requeue ? { action: "requeue" } : {}),
+      });
       if (!r.ok) throw Error();
       await refresh();
     } catch {
@@ -32,6 +37,7 @@ export default function NotificationPanel() {
       setBusy(false);
     }
   }
+  const failed = state?.failed ?? 0;
   return (
     <div className="adm-card">
       <h3>Reservation notifications</h3>
@@ -39,15 +45,36 @@ export default function NotificationPanel() {
         <>
           <p>
             {state.pending} pending · {state.delivered} handed to delivery service
+            {failed > 0 && ` · ${failed} failed`}
           </p>
           <p>
             {state.configured
               ? "Signed delivery connection is configured. The receiving service handles staff alerts and guest acknowledgements."
               : "Delivery is not configured. Requests remain saved here; configure the webhook to send staff alerts and guest acknowledgements."}
           </p>
-          <button className="adm-btn" disabled={busy || !state.configured || state.pending === 0} onClick={retry}>
+          {failed > 0 && (
+            <p role="status">
+              {failed} notification{failed === 1 ? "" : "s"} stopped after repeated delivery failures. Those requests
+              are saved: contact the guests directly, fix the receiving service, then retry.
+            </p>
+          )}
+          <button
+            className="adm-btn"
+            disabled={busy || !state.configured || state.pending === 0}
+            onClick={() => retry(false)}
+          >
             {busy ? "Retrying…" : "Retry pending notifications"}
           </button>
+          {failed > 0 && (
+            <button
+              className="adm-btn"
+              style={{ marginLeft: 8 }}
+              disabled={busy || !state.configured}
+              onClick={() => retry(true)}
+            >
+              Retry failed notifications
+            </button>
+          )}
         </>
       )}
       {error && <p role="alert">{error}</p>}

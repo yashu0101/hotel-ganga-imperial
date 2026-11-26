@@ -1,17 +1,32 @@
-import { NextResponse } from "next/server";
-import { verifySession } from "@/lib/auth";
-import { getNotificationJobs } from "@/lib/db";
+import { NextRequest } from "next/server";
+import { getNotificationJobs, requeueFailedNotifications } from "@/lib/db";
 import { deliverNotifications, notificationConfigured } from "@/lib/notifications";
+import { isAdmin, json, readBody, serverError, unauthorized } from "@/lib/admin-route";
+
 export async function GET() {
-  if (!(await verifySession()).authenticated) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const jobs = await getNotificationJobs();
-  return NextResponse.json({
-    configured: notificationConfigured(),
-    pending: jobs.filter(j => j.status === "pending").length,
-    delivered: jobs.filter(j => j.status === "delivered").length,
-  });
+  if (!(await isAdmin())) return unauthorized();
+  try {
+    const jobs = await getNotificationJobs();
+    const count = (status: string) => jobs.filter(j => j.status === status).length;
+    return json({
+      configured: notificationConfigured(),
+      pending: count("pending"),
+      delivered: count("delivered"),
+      failed: count("failed"),
+    });
+  } catch (error) {
+    return serverError(error);
+  }
 }
-export async function POST() {
-  if (!(await verifySession()).authenticated) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  return NextResponse.json(await deliverNotifications());
+
+// Retry pending events. With { "action": "requeue" }, failed events go back in the queue first.
+export async function POST(req: NextRequest) {
+  if (!(await isAdmin())) return unauthorized();
+  try {
+    const body = (await readBody(req)) as { action?: unknown } | undefined;
+    const requeued = body?.action === "requeue" ? await requeueFailedNotifications() : 0;
+    return json({ ...(await deliverNotifications()), requeued });
+  } catch (error) {
+    return serverError(error);
+  }
 }

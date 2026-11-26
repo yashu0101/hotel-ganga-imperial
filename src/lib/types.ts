@@ -38,7 +38,7 @@ export interface Enquiry {
 export interface NotificationJob {
   id: string;
   bookingId: string;
-  status: "pending" | "delivered";
+  status: "pending" | "delivered" | "failed";
   attempts: number;
   createdAt: string;
 }

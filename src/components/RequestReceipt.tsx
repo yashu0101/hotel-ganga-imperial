@@ -31,6 +31,8 @@ export interface ReceiptDetails {
   rooms: number;
   specialRequests?: string;
   coupon?: string;
+  /** Request tracking needs the email the guest gave, so the link is only offered when there is one. */
+  hasEmail?: boolean;
 }
 export default function RequestReceipt({ reference, details }: { reference: string; details: ReceiptDetails }) {
   const heading = useRef<HTMLHeadingElement>(null);
@@ -117,6 +119,12 @@ export default function RequestReceipt({ reference, details }: { reference: stri
       <p className="small-note">
         Need to talk before the hotel replies? Quote reference {reference.slice(0, 8).toUpperCase()}.{" "}
         <Link href="/guest-information">What happens next?</Link>
+        {details.hasEmail && (
+          <>
+            {" "}
+            · <Link href="/track">Check the status of your request</Link>
+          </>
+        )}
       </p>
       <ContactActions
         message={"Hello, I sent reservation request " + reference.slice(0, 8).toUpperCase() + " on your website."}

@@ -121,7 +121,10 @@ export default function Footer() {
         <p className="small-note">
           Check-in/out times, cancellation terms and payment conditions are provided with your reservation quote.
         </p>
-        <nav aria-label="Legal">
+        <nav aria-label="Guest information">
+          <Link className="footer-link" href="/track">
+            Track a request
+          </Link>
           <Link className="footer-link" href="/guest-information">
             Policies & FAQs
           </Link>
