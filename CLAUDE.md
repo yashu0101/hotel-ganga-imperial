@@ -48,7 +48,7 @@ Before calling work done, run all of these: lint, `tsc --noEmit`, `format:check`
 
 **Content.**
 
-- `src/lib/hotel-content.ts`: room details and policies. Unapproved facts stay `""`: guests never see them, and `missingLaunchDetails()` lists them in the admin launch checklist.
+- `src/lib/hotel-content.ts`: room details, policies and privacy-notice facts (`PRIVACY_INFORMATION`, rendered by `/privacy`). Unapproved facts stay `""`: guests never see them, and `missingLaunchDetails()` lists them in the admin launch checklist.
 - `src/lib/config.ts`: site config, contact details and images. Representative images are flagged as samples.
 - `src/lib/context.tsx`: the client `AppProvider` (theme, plus the admin's language).
 - `src/lib/seo.ts`: Hotel JSON-LD built only from known facts.
