@@ -1,26 +1,68 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useApp } from "@/lib/context";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const items = [
-  { href: "#about", label: "Our story", desktop: "About", detail: "A warmer welcome" },
-  { href: "#rooms", label: "Rooms & suites", desktop: "Stay", detail: "Find your quiet retreat" },
-  { href: "#amenities", label: "Unwind", desktop: "Amenities", detail: "Pool, spa & everyday comforts" },
-  { href: "#events", label: "Celebrate", desktop: "Celebrate", detail: "Make an occasion of it" },
-  { href: "#dining", label: "Dine with us", desktop: "Dining", detail: "Good food, shared moments" },
-  { href: "#gallery", label: "Take a look", desktop: "Gallery", detail: "A glimpse of Ganga Imperial" },
+  { id: "about", label: "Our story", desktop: "About", detail: "A warmer welcome" },
+  { id: "rooms", label: "Rooms & suites", desktop: "Stay", detail: "Find your quiet retreat" },
+  { id: "amenities", label: "Unwind", desktop: "Amenities", detail: "Pool, spa & everyday comforts" },
+  { id: "events", label: "Celebrate", desktop: "Celebrate", detail: "Make an occasion of it" },
+  { id: "dining", label: "Dine with us", desktop: "Dining", detail: "Good food, shared moments" },
+  { id: "gallery", label: "Take a look", desktop: "Gallery", detail: "A glimpse of Ganga Imperial" },
 ];
 
 export default function Header() {
-  const { theme, setTheme } = useApp();
   const [open, setOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [active, setActive] = useState("");
   const nav = useRef<HTMLElement>(null);
+  const links = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const close = () => {
     setOpen(false);
     button.current?.focus();
   };
+
+  // Condense the bar once the page has moved past the top.
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 24);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Track which section sits in the middle band of the viewport.
+  useEffect(() => {
+    const sections = ["home", ...items.map(item => item.id)]
+      .map(id => document.getElementById(id))
+      .filter(Boolean) as HTMLElement[];
+    const observer = new IntersectionObserver(
+      entries => {
+        for (const entry of entries)
+          if (entry.isIntersecting) setActive(entry.target.id === "home" ? "" : entry.target.id);
+      },
+      { rootMargin: "-45% 0px -50% 0px" },
+    );
+    sections.forEach(section => observer.observe(section));
+    return () => observer.disconnect();
+  }, []);
+
+  // Slide the brass dash under the active desktop link.
+  useLayoutEffect(() => {
+    const row = links.current;
+    if (!row) return;
+    const place = () => {
+      const link = row.querySelector<HTMLElement>(`[data-section="${active}"]`);
+      row.style.setProperty("--mark-x", (link ? link.offsetLeft : 0) + "px");
+      row.style.setProperty("--mark-w", (link ? link.offsetWidth : 0) + "px");
+      row.toggleAttribute("data-has-active", Boolean(link));
+    };
+    place();
+    window.addEventListener("resize", place);
+    document.fonts?.ready.then(place);
+    return () => window.removeEventListener("resize", place);
+  }, [active]);
 
   useEffect(() => {
     if (!open) return;
@@ -60,8 +102,8 @@ export default function Header() {
   }, [open]);
 
   return (
-    <header className={"site-header solid" + (open ? " menu-is-open" : "")}>
-      <div className="wrap bar">
+    <header className={"site-header" + (scrolled ? " is-scrolled" : "") + (open ? " menu-is-open" : "")}>
+      <div className="bar">
         <a href="#home" className="wordmark" aria-label="Hotel Ganga Imperial, home">
           <small>Hotel</small>Ganga Imperial
         </a>
@@ -75,53 +117,35 @@ export default function Header() {
         >
           <span />
           <span />
-          <span />
         </button>
         <nav ref={nav} id="main-navigation" className={"nav" + (open ? " open" : "")} aria-label="Main">
-          <div className="mobile-menu-intro">
-            <span>EXPLORE THE IMPERIAL</span>
-            <p>Make yourself at home.</p>
-          </div>
-          <div className="nav-links">
+          <p className="mobile-menu-intro">Make yourself at home.</p>
+          <div className="nav-links" ref={links}>
+            <span className="nav-mark" aria-hidden="true" />
             {items.map((item, index) => (
               <a
-                href={item.href}
-                key={item.href}
+                href={"#" + item.id}
+                key={item.id}
+                data-section={item.id}
+                aria-current={active === item.id ? "location" : undefined}
                 onClick={close}
                 className="menu-destination"
                 style={{ "--menu-order": index } as React.CSSProperties}
               >
-                <span className="menu-number" aria-hidden="true">
-                  0{index + 1}
-                </span>
-                <span className="menu-link-copy">
-                  <span className="desktop-menu-label">{item.desktop}</span>
-                  <span className="mobile-menu-label">{item.label}</span>
-                  <small>{item.detail}</small>
-                </span>
-                <span className="menu-arrow" aria-hidden="true">
-                  ↗
-                </span>
+                <span className="desktop-menu-label">{item.desktop}</span>
+                <span className="mobile-menu-label">{item.label}</span>
+                <small>{item.detail}</small>
               </a>
             ))}
           </div>
-          <div className="menu-reservation">
-            <span className="mobile-menu-label menu-reservation-label">YOUR NEXT STAY STARTS HERE</span>
-            <Link className="cta" href="/book" onClick={close}>
-              Request a stay <span aria-hidden="true">↗</span>
-            </Link>
-            <small>Share your dates. We handle the details.</small>
-          </div>
-          <div className="menu-utilities">
-            <span className="mobile-menu-label">A setting for every mood</span>
-            <button
-              className="ctrl-btn"
-              aria-label={"Switch to " + (theme === "dark" ? "light" : "dark") + " theme"}
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            >
-              <span aria-hidden="true">{theme === "dark" ? "☀" : "☾"}</span>
-              <span className="mobile-menu-label">{theme === "dark" ? "Light view" : "Dark view"}</span>
-            </button>
+          <div className="nav-actions">
+            <ThemeToggle menuLabel />
+            <div className="menu-reservation">
+              <Link className="cta" href="/book" onClick={close}>
+                Request a reservation
+              </Link>
+              <small>Share your dates. We handle the details.</small>
+            </div>
           </div>
         </nav>
       </div>

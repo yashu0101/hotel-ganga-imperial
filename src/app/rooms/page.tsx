@@ -70,7 +70,9 @@ export default async function RoomsPage() {
                       <td key={key}>{spec?.[key]?.trim() || "On request"}</td>
                     ))}
                     <td>
-                      <Link href={"/rooms/" + roomSlug(r.name)}>View details ↗</Link>
+                      <Link href={"/rooms/" + roomSlug(r.name)}>
+                        View details <span aria-hidden="true">↗</span>
+                      </Link>
                     </td>
                   </tr>
                 );

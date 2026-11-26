@@ -66,13 +66,13 @@ export default function Contact() {
                 {c.email && <a href={"mailto:" + c.email}>Email the hotel</a>}
                 {whatsapp && (
                   <a href={whatsapp} target="_blank" rel="noreferrer">
-                    WhatsApp ↗
+                    WhatsApp <span aria-hidden="true">↗</span>
                   </a>
                 )}
               </div>
             )}
-            <Link className="btn btn-solid" href="/book">
-              Send a reservation request ↗
+            <Link className="btn btn-solid" href="/book" data-reserve-cta>
+              Request a reservation <span aria-hidden="true">↗</span>
             </Link>
           </div>
           <div className="location-card">
@@ -80,7 +80,7 @@ export default function Contact() {
             <h2>Find your way here</h2>
             {c.mapEmbedUrl ? (
               <a className="btn btn-solid" href={c.mapEmbedUrl} target="_blank" rel="noreferrer">
-                Open hotel directions ↗
+                Open hotel directions <span aria-hidden="true">↗</span>
               </a>
             ) : (
               <p>Ask for directions in your request and the hotel will include them in its reply.</p>
