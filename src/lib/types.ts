@@ -41,6 +41,8 @@ export interface NotificationJob {
   status: "pending" | "delivered" | "failed";
   attempts: number;
   createdAt: string;
+  /** When delivery was last tried; retries wait longer after each failure. */
+  lastAttemptAt?: string;
 }
 
 export interface Booking {
@@ -117,6 +119,8 @@ export interface SiteConfig {
 
 export interface DB {
   notificationJobs?: NotificationJob[];
+  /** Local-development stand-in for the Postgres admin_state table. */
+  adminState?: { sessionVersion?: number };
   enquiries: Enquiry[];
   bookings: Booking[];
   offers: Offer[];

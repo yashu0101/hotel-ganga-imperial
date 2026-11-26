@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { verifySession } from "@/lib/auth";
 import { StorageUnavailableError } from "@/lib/db";
 import { parseInput, type Schema } from "@/lib/validation";
+import { logError } from "@/lib/log";
 
 // Shared handlers for admin-managed collections. Every write requires an admin session and is
 // validated against the collection's schema (unknown fields are rejected). Successful writes
@@ -18,6 +19,7 @@ export async function readBody(req: NextRequest): Promise<unknown> {
   }
 }
 export function serverError(error: unknown) {
+  logError("admin.request_failed", error);
   if (error instanceof StorageUnavailableError) return json({ error: error.message }, 503);
   return json({ error: "Server error" }, 500);
 }

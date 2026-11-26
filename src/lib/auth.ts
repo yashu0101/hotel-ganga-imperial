@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { bumpSessionVersion, getSessionVersion } from "@/lib/db";
 
 function signingKey() {
   const secret = process.env.JWT_SECRET;
@@ -7,11 +8,13 @@ function signingKey() {
   return new TextEncoder().encode(secret);
 }
 const COOKIE_NAME = "admin_session";
+/** One working shift. Signing out ends every session sooner (see endAllSessions). */
+const SESSION_SECONDS = 8 * 60 * 60;
 
 export async function createSession(email: string) {
-  const token = await new SignJWT({ email, role: "admin" })
+  const token = await new SignJWT({ email, role: "admin", v: await getSessionVersion() })
     .setProtectedHeader({ alg: "HS256" })
-    .setExpirationTime("24h")
+    .setExpirationTime(Math.floor(Date.now() / 1000) + SESSION_SECONDS)
     .setIssuedAt()
     .sign(signingKey());
   return token;
@@ -27,13 +30,20 @@ export async function verifySession(): Promise<{
     if (!token) return { authenticated: false };
 
     const { payload } = await jwtVerify(token, signingKey(), { algorithms: ["HS256"] });
+    // A token from before the last sign-out carries an older version and is no longer accepted.
+    const current = payload.v === (await getSessionVersion());
     return {
-      authenticated: payload.role === "admin" && typeof payload.email === "string",
+      authenticated: current && payload.role === "admin" && typeof payload.email === "string",
       email: payload.email as string,
     };
   } catch {
     return { authenticated: false };
   }
+}
+
+/** Sign out everywhere: every existing session token (including copied ones) stops working. */
+export async function endAllSessions() {
+  await bumpSessionVersion();
 }
 
 export function getAdminCredentials() {
@@ -43,4 +53,4 @@ export function getAdminCredentials() {
   };
 }
 
-export { COOKIE_NAME };
+export { COOKIE_NAME, SESSION_SECONDS };

@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
-import { getNotificationJobs, getBookings, markNotification } from "@/lib/db";
+import { logWarning } from "@/lib/log";
+import { claimNotificationJobs, discardNotification, getBooking, markNotification } from "@/lib/db";
 export function notificationConfigured() {
   const url = process.env.NOTIFICATION_WEBHOOK_URL;
   const secret = process.env.NOTIFICATION_WEBHOOK_SECRET;
@@ -9,19 +10,28 @@ export function notificationConfigured() {
     return false;
   }
 }
-export async function deliverNotifications(bookingId?: string) {
+/** True when the scheduled job (/api/cron/notifications) can run: it refuses everything without this secret. */
+export function scheduledJobsConfigured() {
+  const secret = process.env.CRON_SECRET;
+  return !!secret && secret.length >= 32;
+}
+/**
+ * Send due notification events. `force` is for staff pressing Retry (e.g. right after fixing the receiver): it
+ * skips the back-off between attempts but never re-sends an event picked up in the last few minutes.
+ */
+export async function deliverNotifications(bookingId?: string, { force = false }: { force?: boolean } = {}) {
   if (!notificationConfigured()) return { configured: false, delivered: 0, pending: true };
-  // Fewest attempts first, then oldest: a few events the receiver keeps rejecting can't hold every slot,
-  // and after MAX_NOTIFICATION_ATTEMPTS they are marked "failed" and leave the queue (admin can requeue them).
-  const jobs = (await getNotificationJobs())
-    .filter(j => j.status === "pending" && (!bookingId || j.bookingId === bookingId))
-    .sort((a, b) => (a.attempts ?? 0) - (b.attempts ?? 0) || String(a.createdAt).localeCompare(String(b.createdAt)))
-    .slice(0, 10);
-  const bookings = await getBookings();
+  // Only events that are due (retries back off after each failure), fewest attempts first, then oldest. Claiming
+  // stamps them so an overlapping run skips them. After MAX_NOTIFICATION_ATTEMPTS an event is marked "failed" and
+  // leaves the queue until staff requeue it.
+  const jobs = await claimNotificationJobs({ limit: 10, bookingId, force });
   let delivered = 0;
   for (const job of jobs) {
-    const booking = bookings.find(b => b.id === job.bookingId);
-    if (!booking) continue;
+    const booking = await getBooking(job.bookingId);
+    if (!booking) {
+      await discardNotification(job.id); // The request was deleted; nothing left to send.
+      continue;
+    }
     const timestamp = String(Date.now());
     const body = JSON.stringify({
       event: "reservation.requested",
@@ -62,8 +72,10 @@ export async function deliverNotifications(bookingId?: string) {
         redirect: "error",
       });
       ok = response.ok;
-    } catch {
+      if (!ok) logWarning("notification.rejected", { eventId: job.id, status: response.status });
+    } catch (error) {
       ok = false;
+      logWarning("notification.unreachable", { eventId: job.id, error: String(error) });
     }
     await markNotification(job.id, ok);
     if (ok) delivered++;

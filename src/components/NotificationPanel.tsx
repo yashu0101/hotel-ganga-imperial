@@ -1,6 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
-type Status = { configured: boolean; pending: number; delivered: number; failed?: number };
+type Status = {
+  configured: boolean;
+  pending: number;
+  delivered: number;
+  failed?: number;
+  scheduledJobs?: boolean;
+  retentionMonths?: number;
+};
 export default function NotificationPanel() {
   const [state, setState] = useState<Status | null>(null);
   const [busy, setBusy] = useState(false);
@@ -52,6 +59,21 @@ export default function NotificationPanel() {
               ? "Signed delivery connection is configured. The receiving service handles staff alerts and guest acknowledgements."
               : "Delivery is not configured. Requests remain saved here; configure the webhook to send staff alerts and guest acknowledgements."}
           </p>
+          {state.configured && state.pending > 0 && (
+            <p className="small-note">
+              Automatic retries wait longer after each failure (5 minutes, doubling up to 6 hours). Retrying here sends
+              pending notifications straight away, except any sent in the last 5 minutes.
+            </p>
+          )}
+          {state.scheduledJobs === false && (
+            <p role="status">
+              The scheduled job is not configured (CRON_SECRET must be at least 32 characters), so notifications are
+              only retried when you press Retry
+              {(state.retentionMonths ?? 0) > 0 &&
+                `, and requests older than ${state.retentionMonths} months are not being deleted as the privacy notice promises`}
+              .
+            </p>
+          )}
           {failed > 0 && (
             <p role="status">
               {failed} notification{failed === 1 ? "" : "s"} stopped after repeated delivery failures. Those requests

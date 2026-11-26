@@ -21,8 +21,12 @@ export const PRIVACY_INFORMATION = {
   contactName: "",
   /** Email for privacy questions and requests; the reservations email is used when this is empty. */
   contactEmail: "",
-  /** How long reservation requests are kept, e.g. "24 months after the requested stay dates". */
-  retention: "",
+  /**
+   * Months to keep reservation requests and enquiries, counted from when they were sent or from the requested
+   * dates, whichever is later. Once set (e.g. 24), the daily job deletes older requests automatically.
+   * 0 = not decided yet: nothing is deleted automatically and the notice makes no fixed-period promise.
+   */
+  retentionMonths: 0,
   /** Services that receive guest details. Add the notification provider once one is chosen. */
   providers: [
     "Vercel (website hosting)",
@@ -113,11 +117,11 @@ export function missingLaunchDetails({
   const privacy: [keyof typeof PRIVACY_INFORMATION, string][] = [
     ["legalEntity", "Privacy notice: legal business name"],
     ["contactName", "Privacy notice: grievance officer / privacy contact"],
-    ["retention", "Privacy notice: how long requests are kept"],
+    ["retentionMonths", "Privacy notice: how long requests are kept (retentionMonths)"],
     ["lastUpdated", "Privacy notice: last-reviewed date"],
   ];
   for (const [key, label] of privacy)
-    if (!String(PRIVACY_INFORMATION[key]).trim()) missing.push(`${label} (src/lib/hotel-content.ts)`);
+    if (!String(PRIVACY_INFORMATION[key] || "").trim()) missing.push(`${label} (src/lib/hotel-content.ts)`);
   for (const [name, spec] of Object.entries(ROOM_SPECIFICATIONS)) {
     const unknown = ROOM_FACT_LABELS.filter(([key]) => !spec[key].trim()).map(([, label]) => label.toLowerCase());
     if (unknown.length) missing.push(`${name}: ${unknown.join(", ")} (src/lib/hotel-content.ts)`);

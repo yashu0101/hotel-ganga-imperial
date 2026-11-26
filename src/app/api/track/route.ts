@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getBookingByIdAndEmail, StorageUnavailableError } from "@/lib/db";
 import { allowRequest, clientKey } from "@/lib/request-limit";
 import { cleanText } from "@/lib/reservation";
+import { logError } from "@/lib/log";
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,6 +31,7 @@ export async function POST(req: NextRequest) {
       createdAt: booking.createdAt,
     });
   } catch (error) {
+    if (!(error instanceof SyntaxError)) logError("track.lookup_failed", error);
     if (error instanceof StorageUnavailableError)
       return NextResponse.json({ error: "Request tracking is temporarily unavailable." }, { status: 503 });
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });

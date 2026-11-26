@@ -122,7 +122,7 @@ export default function RequestReceipt({ reference, details }: { reference: stri
         {details.hasEmail && (
           <>
             {" "}
-            · <Link href="/track">Check the status of your request</Link>
+            · <Link href={"/track?ref=" + reference.slice(0, 8).toUpperCase()}>Check the status of your request</Link>
           </>
         )}
       </p>

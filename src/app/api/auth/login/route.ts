@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { clientKey, loginAllowed, recordLoginFailure, recordLoginSuccess } from "@/lib/request-limit";
-import { createSession, getAdminCredentials, COOKIE_NAME } from "@/lib/auth";
+import { createSession, getAdminCredentials, COOKIE_NAME, SESSION_SECONDS } from "@/lib/auth";
 
 // Constant-time comparison (hashing first makes the lengths equal).
 const same = (a: string, b: string) =>
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24,
+      maxAge: SESSION_SECONDS,
       path: "/",
     });
     return res;

@@ -2,6 +2,7 @@ import { deliverNotifications } from "@/lib/notifications";
 import { NextRequest, NextResponse } from "next/server";
 import { addBooking, getRooms, getBanquetPackages, getOffers, StorageUnavailableError } from "@/lib/db";
 import { allowRequest, clientKey } from "@/lib/request-limit";
+import { logError } from "@/lib/log";
 import { cleanText, couponPercent, dateError, findCoupon, normalizeCoupon, phoneError } from "@/lib/reservation";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -77,14 +78,16 @@ export async function POST(req: NextRequest) {
     });
     try {
       await deliverNotifications(booking.id);
-    } catch {
-      /* Saved requests remain available for notification retry in admin. */
+    } catch (error) {
+      // The request is saved; its notification stays queued for the next retry.
+      logError("book.notification_failed", error, { reference: booking.id });
     }
     return NextResponse.json(
       coupon ? { success: true, reference: booking.id, coupon } : { success: true, reference: booking.id },
       { status: 201 },
     );
   } catch (error) {
+    logError("book.request_failed", error);
     if (error instanceof StorageUnavailableError)
       return NextResponse.json(
         { error: "Online requests are temporarily unavailable. Please call or message the hotel." },
