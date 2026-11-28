@@ -18,9 +18,9 @@ export const HOTEL_INFORMATION = {
 // Privacy notice facts (shown on /privacy). Same rule: leave "" until the hotel approves a value.
 export const PRIVACY_INFORMATION = {
   /** Legal name of the business responsible for guest data, e.g. "Ganga Imperial Hospitality Pvt. Ltd.". */
-  legalEntity: "",
+  legalEntity: "Hotel Ganga Imperial",
   /** Person or role guests can contact about their data (the grievance officer under India's DPDP Act). */
-  contactName: "",
+  contactName: "the General Manager",
   /** Email for privacy questions and requests; the reservations email is used when this is empty. */
   contactEmail: "",
   /**
@@ -28,7 +28,7 @@ export const PRIVACY_INFORMATION = {
    * dates, whichever is later. Once set (e.g. 24), the daily job deletes older requests automatically.
    * 0 = not decided yet: nothing is deleted automatically and the notice makes no fixed-period promise.
    */
-  retentionMonths: 0,
+  retentionMonths: 12,
   /** Services that receive guest details. Add the notification provider once one is chosen. */
   providers: [
     "Vercel (website hosting)",
