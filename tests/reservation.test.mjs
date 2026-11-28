@@ -1958,3 +1958,17 @@ test("booking steppers stay within the server's limits", () => {
   assert.equal(format.clampCount("2.7", 1, 20), 2);
   assert.equal(format.clampCount(250, 1, 20), 20);
 });
+
+test("admin shows the fixed request types in the admin's language and leaves names as entered", () => {
+  const format = load("src/components/admin/format.ts");
+  const hi = {
+    "admin.opt.hall": "बैंक्वेट हॉल",
+    "admin.opt.dining": "भोजन पूछताछ",
+    "admin.opt.package": "बैंक्वेट - {name}",
+  };
+  const t = key => hi[key] ?? key;
+  assert.equal(format.requestType(t, "Banquet hall"), "बैंक्वेट हॉल");
+  assert.equal(format.requestType(t, "Dining enquiry"), "भोजन पूछताछ");
+  assert.equal(format.requestType(t, "Banquet - Gold"), "बैंक्वेट - Gold");
+  assert.equal(format.requestType(t, "Deluxe Room"), "Deluxe Room");
+});

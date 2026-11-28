@@ -34,6 +34,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     "admin.opt.other": "Other",
     "admin.opt.hall": "Banquet hall",
     "admin.opt.dining": "Dining enquiry",
+    "admin.opt.package": "Banquet - {name}",
     "admin.h.staffStatus":
       "Confirmed: you've agreed the booking with the guest. Pending: you still need to check something before confirming.",
     "admin.h.noNotify": "The guest isn't sent an automatic message. Share the reference with them yourself.",
@@ -373,6 +374,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     "admin.opt.other": "अन्य",
     "admin.opt.hall": "बैंक्वेट हॉल",
     "admin.opt.dining": "भोजन पूछताछ",
+    "admin.opt.package": "बैंक्वेट - {name}",
     "admin.h.staffStatus": "पुष्ट: आपने अतिथि के साथ बुकिंग तय कर ली है। लंबित: पुष्टि से पहले आपको अभी कुछ जाँचना है।",
     "admin.h.noNotify": "अतिथि को कोई स्वचालित संदेश नहीं भेजा जाता। संदर्भ संख्या उन्हें स्वयं बताएँ।",
     "admin.h.offerCode": "आज वेबसाइट पर चल रहे ऑफ़र। अतिथि के साथ दर तय करते समय ऑफ़र लागू करें।",

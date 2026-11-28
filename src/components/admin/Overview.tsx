@@ -5,7 +5,7 @@ import type { Booking, Offer } from "@/lib/types";
 import Icon from "./icons";
 import { ContactLinks, type RequestRow } from "./RequestTable";
 import { useNow } from "./ui";
-import { counted, elapsed, fill, formatDay, hotelDay, LATE_AFTER_MINUTES, localeFor } from "./format";
+import { counted, elapsed, fill, formatDay, hotelDay, LATE_AFTER_MINUTES, localeFor, requestType } from "./format";
 import type { Section } from "./Sidebar";
 
 // The first screen staff see: who is waiting for a reply (oldest first), who arrives and
@@ -69,7 +69,7 @@ export default function Overview({ bookings, requests, enquiries, offers, notice
             <button type="button" className="adm-link-row" onClick={() => go("requests", b.id)}>
               <strong>{b.name}</strong>
               <span>
-                {b.roomType}
+                {requestType(t, b.roomType)}
                 {(b.roomsRequested || 1) > 1 && " × " + b.roomsRequested}
               </span>
               <span className="adm-muted">{counted(t, "admin.guestsCount", b.guests)}</span>
@@ -147,7 +147,7 @@ export default function Overview({ bookings, requests, enquiries, offers, notice
                       <span className="name">{r.name}</span>
                       <span className="what">
                         <span>
-                          {r.what || t("admin.enquiry")}
+                          {r.what ? requestType(t, r.what) : t("admin.enquiry")}
                           {(r.rooms || 1) > 1 && " × " + r.rooms}
                         </span>
                         {r.checkin && (

@@ -15,6 +15,7 @@ import {
   LATE_AFTER_MINUTES,
   localeFor,
   reference,
+  requestType,
 } from "./format";
 
 // Reservation requests and (older) enquiries share this view: status filters with counts,
@@ -117,13 +118,15 @@ export default function RequestTable({ kind, rows, statuses, selectedId, onSelec
       r =>
         (!status || r.status === status) &&
         (!q ||
-          [r.name, r.email, r.what, r.city ?? "", reference(r.id)].some(v => v.toLowerCase().includes(q)) ||
+          [r.name, r.email, r.what, requestType(t, r.what), r.city ?? "", reference(r.id)].some(v =>
+            v.toLowerCase().includes(q),
+          ) ||
           (digits.length >= 3 && r.phone.replace(/\D/g, "").includes(digits))),
     );
     return sort === "received"
       ? [...found].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       : [...found].sort((a, b) => (a.checkin || "9999").localeCompare(b.checkin || "9999"));
-  }, [rows, query, status, sort]);
+  }, [rows, query, status, sort, t]);
   const selected = rows.find(r => r.id === selectedId) ?? null;
 
   return (
@@ -228,7 +231,7 @@ export default function RequestTable({ kind, rows, statuses, selectedId, onSelec
                         {nights > 0 && <span className="sub">{counted(t, "admin.nights", nights)}</span>}
                       </td>
                       <td>
-                        {r.what || "–"}
+                        {r.what ? requestType(t, r.what) : "–"}
                         {(r.rooms || 1) > 1 && (
                           <span className="sub">{fill(t("admin.roomsCount"), { n: r.rooms! })}</span>
                         )}
@@ -355,7 +358,7 @@ export function RequestDetail({
     [
       row.kind === "enquiry" ? t("admin.type") : t("admin.room"),
       <>
-        {row.what || "–"}
+        {row.what ? requestType(t, row.what) : "–"}
         {(row.rooms || 1) > 1 && " × " + fill(t("admin.roomsCount"), { n: row.rooms! })}
       </>,
     ],

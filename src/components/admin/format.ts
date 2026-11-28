@@ -87,6 +87,22 @@ export function counted(t: (key: string) => string, key: string, n: number) {
   return fill(t(n === 1 ? key + "One" : key), { n });
 }
 
+/** Request types for events and dining, stored in English as the website sends them. */
+export const HALL = "Banquet hall",
+  DINING = "Dining enquiry",
+  PACKAGE_PREFIX = "Banquet - ";
+
+/**
+ * A request's type in the admin's language. The fixed event and dining types are translated; room and
+ * package names are shown as staff entered them.
+ */
+export function requestType(t: (key: string) => string, what: string) {
+  if (what === HALL) return t("admin.opt.hall");
+  if (what === DINING) return t("admin.opt.dining");
+  if (what.startsWith(PACKAGE_PREFIX)) return fill(t("admin.opt.package"), { name: what.slice(PACKAGE_PREFIX.length) });
+  return what;
+}
+
 /** A whole number within [min, max] for the booking steppers; anything unreadable becomes min. */
 export function clampCount(value: string | number, min: number, max: number) {
   const n = Math.floor(Number(value));

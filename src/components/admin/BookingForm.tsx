@@ -3,7 +3,18 @@ import { useState } from "react";
 import { useApp } from "@/lib/context";
 import type { BanquetPackage, Booking, Offer, Room } from "@/lib/types";
 import { adminRequest } from "./api";
-import { addDays, clampCount, counted, daysBetween, formatDay, hotelDay, localeFor } from "./format";
+import {
+  addDays,
+  clampCount,
+  counted,
+  daysBetween,
+  DINING,
+  formatDay,
+  HALL,
+  hotelDay,
+  localeFor,
+  PACKAGE_PREFIX,
+} from "./format";
 import Icon from "./icons";
 import { StatusBadge } from "./status";
 import { Modal, useAdminUI } from "./ui";
@@ -19,8 +30,6 @@ export interface BookingDraft {
 }
 
 const roomValue = (r: Room) => "room:" + (r.id || r.name);
-export const HALL = "Banquet hall",
-  DINING = "Dining enquiry";
 const LIMITS = { rooms: [1, 10], guests: [1, 20], eventGuests: [1, 300] } as const;
 
 function Stepper({
@@ -121,7 +130,7 @@ export default function BookingForm({
   const [error, setError] = useState("");
   const set = (key: keyof typeof start, value: string) => setValues(v => ({ ...v, [key]: value }));
   const room = visibleRooms.find(r => roomValue(r) === values.type);
-  const pkg = activePackages.find(p => "Banquet - " + p.name === values.type);
+  const pkg = activePackages.find(p => PACKAGE_PREFIX + p.name === values.type);
   const event = values.type === HALL || !!pkg;
   const [guestMin, guestMax] = event ? LIMITS.eventGuests : LIMITS.guests;
   const dirty = JSON.stringify(values) !== JSON.stringify(start);
@@ -132,7 +141,7 @@ export default function BookingForm({
   // Leaving an event for a room or dining keeps the guest count inside the lower limit.
   const setType = (type: string) =>
     setValues(v => {
-      const isEvent = type === HALL || type.startsWith("Banquet - ");
+      const isEvent = type === HALL || type.startsWith(PACKAGE_PREFIX);
       const max = isEvent ? LIMITS.eventGuests[1] : LIMITS.guests[1];
       return { ...v, type, guests: String(clampCount(v.guests, 1, max)) };
     });
@@ -281,7 +290,7 @@ export default function BookingForm({
               <p className="adm-type-label">{t("admin.opt.events")}</p>
               <div className="adm-type-cards">
                 {card(HALL, t("admin.opt.hall"))}
-                {activePackages.map(p => card("Banquet - " + p.name, p.name, p.capacity || p.price || undefined))}
+                {activePackages.map(p => card(PACKAGE_PREFIX + p.name, p.name, p.capacity || p.price || undefined))}
                 {card(DINING, t("admin.opt.dining"))}
               </div>
             </div>

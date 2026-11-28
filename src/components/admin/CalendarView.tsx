@@ -6,7 +6,7 @@ import type { Booking, Room } from "@/lib/types";
 import { BOOKING_STATUSES } from "@/lib/validation";
 import type { BookingDraft } from "./BookingForm";
 import { lastDay, layoutWeek, monthWeeks, roomFor } from "./calendar-layout";
-import { counted, fill, formatDay, hotelDay, localeFor } from "./format";
+import { counted, fill, formatDay, HALL, hotelDay, localeFor, requestType } from "./format";
 import Icon from "./icons";
 import { RequestDetail, type RequestRow } from "./RequestTable";
 import { StatusBadge, toneOf } from "./status";
@@ -63,12 +63,12 @@ export default function CalendarView({ bookings, rooms, bookingRow, onAdd, onSta
   const monthLabel = formatDay(month + "-01", locale, { month: "long", year: "numeric" });
   const dayLong = (day: string) => formatDay(day, locale, { weekday: "long", day: "numeric", month: "long" });
   const short = (day: string) => formatDay(day, locale, { day: "numeric", month: "short" });
-  const draftType = filter && filter !== EVENTS ? "room:" + filter : filter === EVENTS ? "Banquet hall" : undefined;
+  const draftType = filter && filter !== EVENTS ? "room:" + filter : filter === EVENTS ? HALL : undefined;
   const add = (date: string) => onAdd({ date, type: draftType });
   const describe = (b: Booking) =>
     [
       b.name,
-      b.roomType + ((b.roomsRequested || 1) > 1 ? " × " + b.roomsRequested : ""),
+      requestType(t, b.roomType) + ((b.roomsRequested || 1) > 1 ? " × " + b.roomsRequested : ""),
       b.checkout ? `${short(b.checkin)} – ${short(b.checkout)}` : short(b.checkin),
       t("admin.status." + b.bookingStatus),
     ].join(", ");
@@ -254,7 +254,7 @@ export default function CalendarView({ bookings, rooms, bookingRow, onAdd, onSta
                       >
                         <strong>{b.name}</strong>
                         <span>
-                          {b.roomType}
+                          {requestType(t, b.roomType)}
                           {(b.roomsRequested || 1) > 1 && " × " + b.roomsRequested}
                         </span>
                         <span className="adm-muted">
