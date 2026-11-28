@@ -1,9 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useApp } from "@/lib/context";
-import { SITE_CONFIG } from "@/lib/config";
-import { missingLaunchDetails } from "@/lib/hotel-content";
-import type { Room } from "@/lib/types";
+import type { LaunchGroup, LaunchItem } from "@/lib/hotel-content";
 import Icon from "./icons";
 import { fill } from "./format";
 import type { Section } from "./Sidebar";
@@ -20,36 +18,38 @@ export interface NotificationStatus {
   retentionMonths?: number;
 }
 
-type Group = "contact" | "policies" | "privacy" | "rooms";
-const GROUPS: Group[] = ["contact", "policies", "privacy", "rooms"];
+const GROUPS: LaunchGroup[] = ["contact", "policies", "privacy", "rooms", "content"];
+/** Where staff fix each kind of item. Contact details are environment variables, so they have no section. */
+const FIX_IN: Partial<Record<LaunchItem["key"], Section>> = {
+  times: "settings",
+  responseTime: "settings",
+  legalEntity: "settings",
+  privacyContact: "settings",
+  retention: "settings",
+  privacyReviewed: "settings",
+  roomFacts: "rooms",
+  roomPhoto: "rooms",
+  roomRate: "rooms",
+  offer: "offers",
+  package: "banquet",
+  dining: "dining",
+};
 
-/** Missing details, grouped by who fixes them and where. Each item is "What (where)". */
-export function launchItems(rooms: Room[]) {
-  const items = missingLaunchDetails({ contact: SITE_CONFIG.contact, rooms: rooms.filter(r => !r.hidden) });
-  return items.map(raw => {
-    const match = raw.match(/^(.*?)(?: \(([^()]*)\))?$/);
-    const what = match?.[1] ?? raw,
-      where = match?.[2] ?? "";
-    const group: Group = raw.includes("NEXT_PUBLIC_")
-      ? "contact"
-      : raw.startsWith("Privacy notice")
-        ? "privacy"
-        : raw.includes("Room Types") || raw.includes("real photography")
-          ? "rooms"
-          : "policies";
-    const short = what.replace(/^Privacy notice: /, "");
-    return { raw, what: short.charAt(0).toUpperCase() + short.slice(1), where, group };
-  });
+/** A checklist item in the admin's language. */
+export function launchItemLabel(t: (key: string) => string, item: LaunchItem) {
+  const facts = (item.facts ?? []).map(f => t("admin.f." + f).toLowerCase()).join(", ");
+  return fill(t("admin.check." + item.key), { name: item.name ?? "", facts });
 }
 
 export default function SetupView({
-  rooms,
+  items,
   status,
   statusError,
   onRetry,
   go,
 }: {
-  rooms: Room[];
+  /** The launch checklist (launchChecklist in hotel-content.ts). */
+  items: LaunchItem[];
   status: NotificationStatus | null;
   statusError: boolean;
   onRetry: (requeue: boolean) => Promise<void>;
@@ -57,7 +57,6 @@ export default function SetupView({
 }) {
   const { t } = useApp();
   const [busy, setBusy] = useState(false);
-  const items = launchItems(rooms);
   const failed = status?.failed ?? 0;
 
   async function retry(requeue: boolean) {
@@ -175,22 +174,25 @@ export default function SetupView({
                     <h3>{t("admin.launch." + group)}</h3>
                     <p className="adm-hint">{t("admin.launch." + group + "Hint")}</p>
                     <ul className="adm-checklist">
-                      {list.map(item => (
-                        <li key={item.raw}>
-                          <span className="box" aria-hidden="true" />
-                          <span>
-                            {item.what}
-                            {/* Only contact details need a pointer: the variable to set. The other groups say where in their hint. */}
-                            {item.where && group === "contact" && <code>{item.where}</code>}
-                          </span>
-                        </li>
-                      ))}
+                      {list.map(item => {
+                        const section = FIX_IN[item.key];
+                        return (
+                          <li key={item.key + ":" + (item.name ?? "")}>
+                            <span className="box" aria-hidden="true" />
+                            <span>
+                              {launchItemLabel(t, item)}
+                              {/* Contact details are set in hosting: show the variable to set. */}
+                              {item.env && <code>{item.env}</code>}
+                            </span>
+                            {section && (
+                              <button type="button" className="adm-btn small" onClick={() => go(section)}>
+                                {t("admin.fix")}
+                              </button>
+                            )}
+                          </li>
+                        );
+                      })}
                     </ul>
-                    {group === "rooms" && (
-                      <button type="button" className="adm-btn small" onClick={() => go("rooms")}>
-                        {t("admin.openRooms")}
-                      </button>
-                    )}
                   </div>
                 );
               })}

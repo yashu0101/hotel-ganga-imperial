@@ -5,6 +5,7 @@ import type { Offer } from "@/lib/types";
 
 // Admin only: guests see offers on the server-rendered homepage.
 export const { GET, POST, PATCH, DELETE } = adminCollectionRoute<Offer>({
+  name: "offers",
   schema: OFFER_SCHEMA,
   list: getOffers,
   add: addOffer,

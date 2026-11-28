@@ -36,6 +36,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // End-to-end tests run their own dev server in a separate folder, so they can run beside `npm run dev`.
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   poweredByHeader: false,
   images: { formats: ["image/avif", "image/webp"] },
   // Ship the local content file with every server function, so the JSON fallback can still

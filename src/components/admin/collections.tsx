@@ -17,6 +17,12 @@ const day = (d: string, locale: string) =>
     : "";
 const ROOM_FACTS = ["size", "bed", "occupancy", "bathroom", "location", "view"] as const;
 
+/** A list column tagging unapproved sample content (listed in the launch checklist until staff untick it). */
+const sampleColumn = <I extends { sample?: boolean }>(t: T) => ({
+  label: t("admin.c.content"),
+  cell: (item: I) => (item.sample ? <span className="adm-tag small">{t("admin.sampleTag")}</span> : "–"),
+});
+
 const dateRange = (from: string, to: string, locale: string) =>
   from || to ? `${day(from, locale) || "…"} – ${day(to, locale) || "…"}` : "";
 
@@ -47,6 +53,13 @@ export const COLLECTIONS = (t: T, locale: string) => ({
       },
       { key: "rate", label: t("admin.f.rate"), kind: "text", placeholder: "₹3,000/night", group: t("admin.g.basics") },
       {
+        key: "sampleRate",
+        label: t("admin.f.sampleRate"),
+        kind: "checkbox",
+        group: t("admin.g.basics"),
+        hint: t("admin.h.sampleContent"),
+      },
+      {
         key: "text",
         label: t("admin.f.description"),
         kind: "textarea",
@@ -68,7 +81,7 @@ export const COLLECTIONS = (t: T, locale: string) => ({
         kind: "checkbox",
         defaultValue: true,
         group: t("admin.g.photo"),
-        hint: t("admin.h.sample"),
+        hint: t("admin.h.sampleContent"),
       },
       {
         key: "size",
@@ -137,7 +150,17 @@ export const COLLECTIONS = (t: T, locale: string) => ({
     subtitle: r => "/rooms/" + r.slug,
     image: r => r.image,
     columns: [
-      { label: t("admin.f.rate"), cell: r => r.rate || <span className="adm-muted">{t("admin.onRequest")}</span> },
+      {
+        label: t("admin.f.rate"),
+        cell: r =>
+          r.rate ? (
+            <>
+              {r.rate} {r.sampleRate && <span className="adm-tag small">{t("admin.sampleTag")}</span>}
+            </>
+          ) : (
+            <span className="adm-muted">{t("admin.onRequest")}</span>
+          ),
+      },
       {
         label: t("admin.c.facts"),
         cell: r => {
@@ -185,7 +208,26 @@ export const COLLECTIONS = (t: T, locale: string) => ({
       },
       { key: "validFrom", label: t("admin.f.validFrom"), kind: "date" },
       { key: "validTo", label: t("admin.f.validTo"), kind: "date" },
+      {
+        key: "minAdvanceDays",
+        label: t("admin.f.minAdvanceDays"),
+        kind: "number",
+        min: 0,
+        max: 365,
+        defaultValue: 0,
+        hint: t("admin.h.minAdvanceDays"),
+      },
+      {
+        key: "minNights",
+        label: t("admin.f.minNights"),
+        kind: "number",
+        min: 0,
+        max: 30,
+        defaultValue: 0,
+        hint: t("admin.h.minNights"),
+      },
       { key: "active", label: t("admin.f.activeOffer"), kind: "checkbox", defaultValue: true },
+      { key: "sample", label: t("admin.f.sampleContent"), kind: "checkbox", hint: t("admin.h.sampleContent") },
     ],
     itemName: o => o.title,
     subtitle: o => o.description,
@@ -193,6 +235,7 @@ export const COLLECTIONS = (t: T, locale: string) => ({
       { label: t("admin.f.badge"), cell: o => o.discount || "–" },
       { label: t("admin.f.code"), cell: o => (o.code ? <code>{o.code}</code> : "–") },
       { label: t("admin.c.valid"), cell: o => dateRange(o.validFrom, o.validTo, locale) || t("admin.always") },
+      sampleColumn<Offer>(t),
     ],
     toggle: { key: "active", label: t("admin.c.onSite") },
   } satisfies CollectionConfig<Offer & Record<string, unknown>>,
@@ -229,12 +272,14 @@ export const COLLECTIONS = (t: T, locale: string) => ({
         hint: t("admin.h.list"),
       },
       { key: "active", label: t("admin.f.activePackage"), kind: "checkbox", defaultValue: true },
+      { key: "sample", label: t("admin.f.sampleContent"), kind: "checkbox", hint: t("admin.h.sampleContent") },
     ],
     itemName: p => p.name,
     subtitle: p => p.includes.join(", "),
     columns: [
       { label: t("admin.f.price"), cell: p => p.price || "–" },
       { label: t("admin.f.capacity"), cell: p => p.capacity || "–" },
+      sampleColumn<BanquetPackage>(t),
     ],
     toggle: { key: "active", label: t("admin.c.onSite") },
   } satisfies CollectionConfig<BanquetPackage & Record<string, unknown>>,
@@ -269,12 +314,14 @@ export const COLLECTIONS = (t: T, locale: string) => ({
         placeholder: "Seasonal vegetables, dal, rice, rotis and dessert.",
       },
       { key: "active", label: t("admin.f.activeOption"), kind: "checkbox", defaultValue: true },
+      { key: "sample", label: t("admin.f.sampleContent"), kind: "checkbox", hint: t("admin.h.sampleContent") },
     ],
     itemName: d => d.name,
     subtitle: d => d.description,
     columns: [
       { label: t("admin.f.category"), cell: d => t("admin.dining." + d.category) },
       { label: t("admin.f.price"), cell: d => d.price || "–" },
+      sampleColumn<DiningOption>(t),
     ],
     toggle: { key: "active", label: t("admin.c.onSite") },
   } satisfies CollectionConfig<DiningOption & Record<string, unknown>>,

@@ -27,7 +27,11 @@ function load(file, mocks = {}, runtime = {}) {
   return compiledModule.exports;
 }
 const dates = load("src/lib/reservation.ts");
-const future = "2099-01-10";
+const hotelContent = load("src/lib/hotel-content.ts");
+// Arrival dates must be within two years, so tests use dates a month ahead.
+const inDays = n => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+const future = inDays(30),
+  futureOut = inDays(32);
 const response = { NextResponse: { json: (value, options = {}) => Response.json(value, options) } };
 const records = [];
 const db = {
@@ -51,7 +55,9 @@ const db = {
   },
 };
 const offersForTests = db.getOffers;
+const jsonBody = load("src/lib/json-body.ts");
 const booking = load("src/app/api/book/route.ts", {
+  "@/lib/json-body": jsonBody,
   "@/lib/notifications": { deliverNotifications: async () => ({ configured: false }) },
   "next/server": response,
   "@/lib/db": db,
@@ -64,7 +70,7 @@ const payload = {
   email: "",
   roomType: "Deluxe Room",
   checkin: future,
-  checkout: "2099-01-12",
+  checkout: futureOut,
   guests: 2,
 };
 const request = b =>
@@ -125,12 +131,22 @@ class StorageUnavailableError extends Error {}
 class ConflictError extends Error {}
 class RoomAddressTakenError extends ConflictError {}
 class OfferCodeTakenError extends ConflictError {}
-function adminRoute(name, db, authenticated, revalidated = []) {
+/** `audits` collects activity-log entries; "throw" makes writing them fail. */
+function adminRoute(name, db, authenticated, revalidated = [], audits = []) {
   const adminRouteModule = load("src/lib/admin-route.ts", {
     "next/server": response,
     "next/cache": { revalidatePath: (...a) => revalidated.push(a) },
-    "@/lib/auth": { verifySession: async () => ({ authenticated }) },
-    "@/lib/db": { StorageUnavailableError, ConflictError },
+    "@/lib/auth": {
+      verifySession: async () => (authenticated ? { authenticated, email: "staff@hotel.in" } : { authenticated }),
+    },
+    "@/lib/db": {
+      StorageUnavailableError,
+      ConflictError,
+      addAuditEntry: async entry => {
+        if (audits === "throw") throw Error("audit storage down");
+        audits.push(entry);
+      },
+    },
     "@/lib/validation": validation,
   });
   return load("src/app/api/" + name + "/route.ts", {
@@ -235,6 +251,9 @@ test("admin edits accept only declared, valid fields and refresh the public page
     validFrom: "",
     validTo: "",
     active: true,
+    minAdvanceDays: 0,
+    minNights: 0,
+    sample: false,
   });
   assert.equal((await created.json()).item.id, "o1");
   assert.equal((await offers.PATCH(jsonRequest("PATCH", { id: "o1", active: false }))).status, 200);
@@ -312,6 +331,7 @@ test("validates and persists requested room counts", async () => {
 test("requests are tied to the room's id, so a rename does not break or misfile them", async () => {
   const saved = [];
   const route = load("src/app/api/book/route.ts", {
+    "@/lib/json-body": jsonBody,
     "@/lib/notifications": { deliverNotifications: async () => ({ configured: false }) },
     "next/server": response,
     "@/lib/db": {
@@ -361,6 +381,7 @@ test("local booking and its notification event are persisted in one atomic file 
       path: { default: path.posix },
       "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
+      "./hotel-content": hotelContent,
     },
     { process: { env: {}, cwd: () => "/virtual" } },
   );
@@ -402,6 +423,7 @@ test("a notification that keeps failing is marked failed and can be requeued", a
       path: { default: path.posix },
       "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
+      "./hotel-content": hotelContent,
     },
     { process: { env: {}, cwd: () => "/virtual" } },
   );
@@ -441,6 +463,7 @@ function jsonDb(initial) {
       path: { default: path.posix },
       "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
+      "./hotel-content": hotelContent,
     },
     { process: { env: {}, cwd: () => "/virtual" } },
   );
@@ -515,13 +538,12 @@ test("staff retries are forced; automatic and post-request deliveries respect th
   );
   const route = load("src/app/api/notifications/route.ts", {
     "next/server": response,
-    "@/lib/db": { requeueFailedNotifications: async () => 2 },
+    "@/lib/db": { requeueFailedNotifications: async () => 2, getSettings: async () => ({ retentionMonths: 24 }) },
     "@/lib/notifications": {
       notificationConfigured: () => true,
       scheduledJobsConfigured: () => false,
       deliverNotifications: async (bookingId, options) => (claims.push({ bookingId, ...options }), { delivered: 0 }),
     },
-    "@/lib/hotel-content": { PRIVACY_INFORMATION: { retentionMonths: 24 } },
     "@/lib/admin-route": {
       isAdmin: async () => true,
       json: (body, status = 200) => Response.json(body, { status }),
@@ -551,6 +573,7 @@ test("delivery looks up each request and discards events whose request was delet
           { id: "event-1", bookingId: "booking-1", attempts: 0 },
         ],
         getBooking: async id => (id === "booking-1" ? { ...payload, id } : null),
+        isBookingInDeleted: async () => false,
         discardNotification: async id => discarded.push(id),
         markNotification: async (id, ok) => marked.push([id, ok]),
       },
@@ -607,13 +630,24 @@ test("retention deletes only requests whose sent date and requested dates are pa
   const deleted = [];
   const retentionModule = months =>
     load("src/lib/retention.ts", {
-      "@/lib/db": { purgeRequestsBefore: async date => (deleted.push(date.toISOString()), 3) },
-      "@/lib/hotel-content": { PRIVACY_INFORMATION: { retentionMonths: months } },
+      "@/lib/db": {
+        purgeRequestsBefore: async date => (deleted.push(date.toISOString()), 3),
+        purgeDeletedBefore: async () => 0,
+        getSettings: async () => ({ retentionMonths: months }),
+      },
     });
   const now = new Date("2026-11-26T12:00:00.000Z");
-  assert.deepEqual(await retentionModule(0).purgeExpiredRequests(now), { configured: false, deleted: 0 });
+  assert.deepEqual(await retentionModule(0).purgeExpiredRequests(now), {
+    configured: false,
+    deleted: 0,
+    erasedFromDeleted: 0,
+  });
   assert.equal(deleted.length, 0);
-  assert.deepEqual(await retentionModule(24).purgeExpiredRequests(now), { configured: true, deleted: 3 });
+  assert.deepEqual(await retentionModule(24).purgeExpiredRequests(now), {
+    configured: true,
+    deleted: 3,
+    erasedFromDeleted: 0,
+  });
   assert.deepEqual(deleted, ["2024-11-26T12:00:00.000Z"]);
   const { retentionCutoff } = retentionModule(1);
   const cutoff = (now, months) => retentionCutoff(months, new Date(now)).toISOString();
@@ -703,6 +737,7 @@ test("sign-in works on a new Postgres database before /api/seed has created any 
       path: { default: path.posix },
       "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
+      "./hotel-content": hotelContent,
       "@neondatabase/serverless": { neon: () => sql },
     },
     { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
@@ -730,6 +765,7 @@ test("Postgres saves the booking and event in the same transaction", async () =>
       path: { default: path.posix },
       "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
+      "./hotel-content": hotelContent,
       "@neondatabase/serverless": { neon: () => sql },
     },
     { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
@@ -766,6 +802,7 @@ test("Postgres marks repeatedly failing notifications failed, requeues them and 
       path: { default: path.posix },
       "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
+      "./hotel-content": hotelContent,
       "@neondatabase/serverless": { neon: () => sql },
     },
     { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
@@ -887,6 +924,7 @@ test("Postgres stores special requests and staff notifications include them", as
       path: { default: path.posix },
       "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
+      "./hotel-content": hotelContent,
       "@neondatabase/serverless": { neon: () => sql },
     },
     { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
@@ -964,8 +1002,8 @@ test("guests only see known room facts; unknown ones are hidden rather than show
     content.roomFacts({ size: "", bed: "", occupancy: "", bathroom: "", location: "Floor 5", view: "" }),
     [["Location in the hotel", "Floor 5"]],
   );
-  for (const value of Object.values(content.HOTEL_INFORMATION))
-    assert.doesNotMatch(value, /to be (updated|confirmed)|not yet/i);
+  for (const value of Object.values(content.DEFAULT_SETTINGS))
+    assert.doesNotMatch(String(value), /to be (updated|confirmed)|not yet/i);
 });
 
 test("built-in rooms have their own address, real images and no placeholder facts or inclusions", () => {
@@ -1007,16 +1045,32 @@ test("room links find the room by address, earlier address, then name", () => {
 
 test("admin launch checklist lists every missing guest-facing detail", () => {
   const content = load("src/lib/hotel-content.ts");
+  const settings = { ...content.DEFAULT_SETTINGS };
   const empty = { phone: "", whatsapp: "", email: "", address: "", mapEmbedUrl: "" };
-  const missing = content.missingLaunchDetails({ contact: empty, rooms: [{ name: "Suite", sample: true }] });
-  for (const item of ["phone", "WhatsApp", "email", "address", "directions", "check-in", "Suite"])
+  const missing = content.missingLaunchDetails({ contact: empty, settings, rooms: [{ name: "Suite", sample: true }] });
+  for (const item of [
+    "phone",
+    "WhatsApp",
+    "email",
+    "address",
+    "directions",
+    "check-in",
+    "Suite",
+    "legal business name",
+  ])
     assert.ok(
       missing.some(m => m.toLowerCase().includes(item.toLowerCase())),
       "missing " + item,
     );
-  // Privacy facts the hotel has approved in hotel-content.ts are no longer listed.
-  for (const item of ["legal business name", "grievance officer", "how long requests are kept", "last-reviewed date"])
+  // Privacy facts the hotel has approved are no longer listed.
+  for (const item of ["grievance officer", "how long requests are kept", "last-reviewed date"])
     assert.ok(!missing.some(m => m.toLowerCase().includes(item)), "still listed: " + item);
+  const named = content.missingLaunchDetails({
+    contact: empty,
+    settings: { ...settings, legalEntity: "Ganga Imperial Hospitality Pvt. Ltd." },
+    rooms: [],
+  });
+  assert.ok(!named.some(m => m.toLowerCase().includes("legal business name")));
   const ready = content.missingLaunchDetails({
     contact: {
       phone: "+91 1",
@@ -1025,6 +1079,7 @@ test("admin launch checklist lists every missing guest-facing detail", () => {
       address: "Patna",
       mapEmbedUrl: "https://maps.example",
     },
+    settings,
     rooms: [],
   });
   assert.ok(!ready.some(m => /phone|whatsapp|email|address|directions/i.test(m)));
@@ -1032,6 +1087,7 @@ test("admin launch checklist lists every missing guest-facing detail", () => {
   const facts = { size: "28 m²", bed: "King", occupancy: "2", bathroom: "Shower", location: "Floor 2", view: "" };
   const rooms = content.missingLaunchDetails({
     contact: empty,
+    settings,
     rooms: [
       { name: "Garden Room", sample: false, ...facts },
       { name: "Complete Room", sample: false, ...facts, view: "City" },
@@ -1042,14 +1098,58 @@ test("admin launch checklist lists every missing guest-facing detail", () => {
   assert.ok(!rooms.some(m => /Deluxe Room|Premium Room|Family Room/.test(m)), "no rooms that are not on the site");
 });
 
+test("the launch checklist lists sample prices and offers guests can see until staff approve them", () => {
+  const content = load("src/lib/hotel-content.ts");
+  const contact = { phone: "1", whatsapp: "1", email: "a@b.in", address: "x", mapEmbedUrl: "https://m" };
+  const missing = content.missingLaunchDetails({
+    contact,
+    settings: content.DEFAULT_SETTINGS,
+    rooms: [
+      { name: "Deluxe Room", sample: false, sampleRate: true },
+      { name: "Approved Room", sample: false, sampleRate: false },
+    ],
+    offers: [
+      { title: "Early Bird", active: true, sample: true },
+      { title: "Switched off", active: false, sample: true },
+      { title: "Real offer", active: true, sample: false },
+    ],
+    packages: [
+      { name: "Gold Package", active: true, sample: true },
+      { name: "Hidden Package", active: false, sample: true },
+    ],
+    dining: [{ name: "Lunch Thali", active: true, sample: true }],
+  });
+  for (const item of ["Deluxe Room: sample rate", "Early Bird", "Gold Package", "Lunch Thali"])
+    assert.ok(
+      missing.some(m => m.includes(item)),
+      "missing " + item,
+    );
+  for (const item of ["Approved Room: sample", "Switched off", "Real offer", "Hidden Package"])
+    assert.ok(!missing.some(m => m.includes(item)), "listed " + item);
+});
+
+test("seeded sample offers ship switched off and every sample price is flagged", () => {
+  const seeded = JSON.parse(fs.readFileSync("data/db.json", "utf8"));
+  assert.ok(seeded.offers.length > 0);
+  for (const o of seeded.offers) {
+    assert.equal(o.active, false, o.title + " is switched off");
+    assert.equal(o.sample, true, o.title + " is flagged as a sample");
+  }
+  for (const p of [...seeded.banquetPackages, ...seeded.diningOptions]) assert.equal(p.sample, true, p.name);
+  const early = seeded.offers.find(o => o.code === "EARLY20");
+  assert.equal(early.minAdvanceDays, 30, "its 30-day condition is checked");
+  const config = load("src/lib/config.ts", {}, {});
+  for (const r of config.SITE_CONFIG.rooms) assert.equal(r.sampleRate, true, r.name + " rate is a sample");
+});
+
 test("Hotel JSON-LD uses only known facts and is safe to embed in a script tag", () => {
-  const info = { HOTEL_INFORMATION: { checkIn: "", checkOut: "" } };
-  const seo = load("src/lib/seo.ts", { "@/lib/reservation": dates, "@/lib/hotel-content": info });
+  const seo = load("src/lib/seo.ts", { "@/lib/reservation": dates });
   const rooms = [
     { name: "Deluxe Room", rate: "₹3,000/night", hidden: false },
     { name: "Suite", rate: "₹7,500/night", hidden: false },
     { name: "Hidden", rate: "₹99/night", hidden: true },
     { name: "Family", rate: "On request", hidden: false },
+    { name: "Sample", rate: "₹1,000/night", hidden: false, sampleRate: true },
   ];
   const bare = seo.hotelJsonLd({
     rooms,
@@ -1083,13 +1183,11 @@ test("Hotel JSON-LD uses only known facts and is safe to embed in a script tag",
   assert.equal(full.address, "Main Road, Patna");
   assert.equal(full.hasMap, "https://maps.example/x");
   assert.equal(full.priceRange, undefined);
-  const timed = load("src/lib/seo.ts", {
-    "@/lib/reservation": dates,
-    "@/lib/hotel-content": { HOTEL_INFORMATION: { checkIn: "12:00", checkOut: "11:00" } },
-  }).hotelJsonLd({
+  const timed = seo.hotelJsonLd({
     rooms: [],
     contact: { phone: "", whatsapp: "", email: "", address: "", mapEmbedUrl: "" },
     siteUrl: "",
+    times: { checkIn: "12:00", checkOut: "11:00" },
   });
   assert.equal(timed.checkinTime, "12:00");
   assert.equal(timed.checkoutTime, "11:00");
@@ -1170,8 +1268,12 @@ test("login rejects bad credentials, limits repeated failures and sets a secure 
   );
 });
 
-function jsonStore(initial, builtInRooms = [{ name: "Deluxe Room", text: "", image: "", rate: "", sample: true }]) {
-  const files = new Map(initial === undefined ? [] : [["/virtual/data/db.json", JSON.stringify(initial)]]);
+function jsonStore(
+  initial,
+  builtInRooms = [{ name: "Deluxe Room", text: "", image: "", rate: "", sample: true }],
+  { env = {}, file = "/virtual/data/db.json" } = {},
+) {
+  const files = new Map(initial === undefined ? [] : [[file, JSON.stringify(initial)]]);
   let readOnly = false;
   const fakeFs = {
     readFileSync: p => {
@@ -1197,11 +1299,22 @@ function jsonStore(initial, builtInRooms = [{ name: "Deluxe Room", text: "", ima
       path: { default: path.posix },
       "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: builtInRooms } },
+      "./hotel-content": hotelContent,
     },
-    { process: { env: {}, cwd: () => "/virtual" } },
+    { process: { env, cwd: () => "/virtual" } },
   );
-  return { db, setReadOnly: v => (readOnly = v), saved: () => JSON.parse(files.get("/virtual/data/db.json")) };
+  return { db, files, setReadOnly: v => (readOnly = v), saved: () => JSON.parse(files.get(file)) };
 }
+
+test("HOTEL_DB_FILE points local storage at another file, so end-to-end tests never touch data/db.json", async () => {
+  const store = jsonStore({ bookings: [], config: { rooms: [] } }, undefined, {
+    env: { HOTEL_DB_FILE: "e2e/db.json" },
+    file: "/virtual/e2e/db.json",
+  });
+  await store.db.addOffer({ title: "E2E", description: "", discount: "", validFrom: "", validTo: "", active: true });
+  assert.equal(store.saved().offers[0].title, "E2E");
+  assert.equal(store.files.has("/virtual/data/db.json"), false);
+});
 
 test("rooms are addressed by stable id, not list position", async () => {
   const store = jsonStore({
@@ -1356,18 +1469,21 @@ test("Postgres gives older rooms an address and their inclusions once, then keep
       path: { default: path.posix },
       "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [{ name: "Suite", inRoom: ["King bed"], services: ["Butler service"] }] } },
+      "./hotel-content": hotelContent,
       "@neondatabase/serverless": { neon: () => sql },
     },
     { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
   );
   await db.getRooms();
-  const upgrade = queries.find(q => q.text.startsWith("UPDATE rooms SET"));
+  // The one-time room upgrade (slug, inclusions, photo), not the sample_rate backfill.
+  const upgrades = queries.filter(q => q.text.startsWith("UPDATE rooms SET") && !q.text.includes("sample_rate"));
+  const upgrade = upgrades[0];
   assert.match(
     upgrade.text,
     /^UPDATE rooms SET slug = \$1, in_room = \$2, services = \$3, image = \$4 WHERE idx = \$5$/,
   );
   assert.deepEqual(upgrade.params, ["suite", '["King bed"]', '["Butler service"]', "/images/image-17.jpeg", 1]);
-  assert.equal(queries.filter(q => q.text.startsWith("UPDATE rooms SET")).length, 1, "current rows are left alone");
+  assert.equal(upgrades.length, 1, "current rows are left alone");
   assert.ok(queries.some(q => /CREATE UNIQUE INDEX IF NOT EXISTS rooms_slug_key ON rooms \(slug\)/.test(q.text)));
   const before = queries.length;
   await db.getRooms();
@@ -1436,7 +1552,7 @@ test("read-only storage (e.g. Vercel without DATABASE_URL) serves defaults and r
         gender: "other",
         roomType: "Deluxe Room",
         checkin: future,
-        checkout: "2099-01-12",
+        checkout: futureOut,
         guests: 2,
         amount: 0,
       }),
@@ -1459,6 +1575,7 @@ test("Postgres collections use parameterised statements for only the changed col
       path: { default: path.posix },
       "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
+      "./hotel-content": hotelContent,
       "@neondatabase/serverless": { neon: () => sql },
     },
     { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
@@ -1580,6 +1697,7 @@ test("a valid coupon is recorded on the request; an invalid one is rejected befo
 test("request tracking needs reference and email, and never returns contact details", async () => {
   const lookups = [];
   const track = load("src/app/api/track/route.ts", {
+    "@/lib/json-body": jsonBody,
     "next/server": response,
     "@/lib/db": {
       StorageUnavailableError: class extends Error {},
@@ -1622,7 +1740,7 @@ test("stay rules are shared: rooms, events, dining, counts and dates", () => {
     { name: "Gold", active: true },
     { name: "Old", active: false },
   ];
-  const stay = { checkin: future, checkout: "2099-01-12", guests: 2 };
+  const stay = { checkin: future, checkout: futureOut, guests: 2 };
   const ok = dates.resolveStay(
     { ...stay, roomId: "deluxe-room", roomType: "Renamed", roomsRequested: 2 },
     rooms,
@@ -1633,7 +1751,7 @@ test("stay rules are shared: rooms, events, dining, counts and dates", () => {
     roomId: "deluxe-room",
     roomsRequested: 2,
     checkin: future,
-    checkout: "2099-01-12",
+    checkout: futureOut,
     guests: 2,
     event: false,
   });
@@ -1683,6 +1801,7 @@ test("staff bookings are saved with their status and source and queue no notific
       path: { default: path.posix },
       "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
+      "./hotel-content": hotelContent,
     },
     { process: { env: {}, cwd: () => "/virtual" } },
   );
@@ -1710,6 +1829,7 @@ test("staff bookings are saved with their status and source and queue no notific
       path: { default: path.posix },
       "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
+      "./hotel-content": hotelContent,
       "@neondatabase/serverless": { neon: () => sql },
     },
     { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
@@ -1731,6 +1851,7 @@ test("staff bookings are saved with their status and source and queue no notific
       path: { default: path.posix },
       "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
+      "./hotel-content": hotelContent,
       "@neondatabase/serverless": { neon: () => Object.assign(() => sqlRows, { transaction: async () => [] }) },
     },
     { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
@@ -1760,7 +1881,7 @@ test("staff can add a confirmed booking without notifying the guest", async () =
     roomId: "deluxe-room",
     roomsRequested: 1,
     checkin: future,
-    checkout: "2099-01-12",
+    checkout: futureOut,
     guests: 2,
     bookingStatus: "confirmed",
   };
@@ -1867,6 +1988,7 @@ test("requests sent before offer codes had their own fields show the code there"
       path: { default: path.posix },
       "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
+      "./hotel-content": hotelContent,
       "@neondatabase/serverless": {
         neon: () =>
           Object.assign(
@@ -1927,7 +2049,7 @@ test("calendar weeks start on Monday and stays are split across weeks into lanes
 test("a room request can't borrow the event guest limit by also naming an event", () => {
   const rooms = [{ id: "deluxe-room", name: "Deluxe Room", hidden: false }];
   const mixed = dates.resolveStay(
-    { roomId: "deluxe-room", roomType: "Banquet hall", checkin: future, checkout: "2099-01-12", guests: 300 },
+    { roomId: "deluxe-room", roomType: "Banquet hall", checkin: future, checkout: futureOut, guests: 300 },
     rooms,
     [],
   );
@@ -1971,4 +2093,890 @@ test("admin shows the fixed request types in the admin's language and leaves nam
   assert.equal(format.requestType(t, "Dining enquiry"), "भोजन पूछताछ");
   assert.equal(format.requestType(t, "Banquet - Gold"), "बैंक्वेट - Gold");
   assert.equal(format.requestType(t, "Deluxe Room"), "Deluxe Room");
+});
+
+test("the booking and tracking APIs answer 400, not 500, to a body that is not a JSON object", async () => {
+  const track = load("src/app/api/track/route.ts", {
+    "next/server": response,
+    "@/lib/db": { StorageUnavailableError: class extends Error {}, getBookingByIdAndEmail: async () => null },
+    "@/lib/request-limit": { allowRequest: () => true, clientKey: () => "test" },
+    "@/lib/reservation": dates,
+    "@/lib/json-body": jsonBody,
+  });
+  for (const body of ["null", "[]", "42", '"text"', "{not json"]) {
+    const send = url => new Request(url, { method: "POST", headers: { "Content-Type": "application/json" }, body });
+    assert.equal((await booking.POST(send("http://localhost/api/book"))).status, 400, "book " + body);
+    assert.equal((await track.POST(send("http://localhost/api/track"))).status, 400, "track " + body);
+  }
+});
+
+test("the booking API refuses an oversized body even when it is streamed without a Content-Length", async () => {
+  const before = records.length;
+  const big = new TextEncoder().encode(JSON.stringify({ ...payload, specialRequests: "x".repeat(20_000) }));
+  const streamed = new Request("http://localhost/api/book", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: new ReadableStream({
+      start(controller) {
+        for (let i = 0; i < big.length; i += 1000) controller.enqueue(big.slice(i, i + 1000));
+        controller.close();
+      },
+    }),
+    duplex: "half",
+  });
+  assert.equal(streamed.headers.get("content-length"), null);
+  assert.equal((await booking.POST(streamed)).status, 413);
+  assert.equal(records.length, before, "nothing saved");
+});
+
+test("arrival dates are limited to two years ahead and stays to 90 nights", () => {
+  const room = [{ id: "r", name: "Room", hidden: false }];
+  const stay = (checkin, checkout) => dates.resolveStay({ roomId: "r", checkin, checkout, guests: 2 }, room, []);
+  assert.ok(stay(inDays(729), inDays(731)).stay, "two years ahead is fine");
+  assert.match(stay(inDays(740), inDays(742)).error, /two years/);
+  assert.match(stay("9999-01-01", "9999-01-03").error, /two years/);
+  assert.ok(stay(future, inDays(30 + 90)).stay, "90 nights is fine");
+  assert.match(stay(future, inDays(30 + 91)).error, /90 nights/);
+  const event = dates.resolveStay({ roomType: "Banquet hall", checkin: inDays(800), guests: 50 }, room, []);
+  assert.match(event.error, /two years/);
+});
+
+test("offer codes check the offer's minimum notice and minimum stay against the requested dates", () => {
+  const offers = [
+    {
+      title: "Early Bird",
+      discount: "20%",
+      code: "EARLY20",
+      validFrom: "",
+      validTo: "",
+      active: true,
+      minAdvanceDays: 30,
+    },
+    { title: "Weekend", discount: "15%", code: "WEEKEND15", validFrom: "", validTo: "", active: true, minNights: 2 },
+  ];
+  const today = "2026-12-01";
+  const stay = (checkin, checkout = "") => ({ checkin, checkout });
+  assert.match(
+    dates.resolveCoupon(offers, "EARLY20", today, stay("2026-12-20", "2026-12-22")).error,
+    /at least 30 days/,
+  );
+  assert.equal(dates.resolveCoupon(offers, "EARLY20", today, stay("2026-12-31", "2027-01-02")).coupon.code, "EARLY20");
+  assert.match(dates.resolveCoupon(offers, "WEEKEND15", today, stay("2026-12-04", "2026-12-05")).error, /2 nights/);
+  assert.match(dates.resolveCoupon(offers, "WEEKEND15", today, stay("2026-12-04")).error, /2 nights/);
+  assert.equal(
+    dates.resolveCoupon(offers, "WEEKEND15", today, stay("2026-12-04", "2026-12-06")).coupon.code,
+    "WEEKEND15",
+  );
+});
+
+test("the booking API refuses an offer code whose conditions the request doesn't meet", async () => {
+  const conditional = load("src/app/api/book/route.ts", {
+    "@/lib/json-body": jsonBody,
+    "@/lib/notifications": { deliverNotifications: async () => ({ configured: false }) },
+    "next/server": response,
+    "@/lib/db": {
+      ...db,
+      getOffers: async () => [
+        {
+          title: "Early Bird",
+          discount: "20%",
+          code: "EARLY20",
+          validFrom: "",
+          validTo: "",
+          active: true,
+          minAdvanceDays: 60,
+        },
+      ],
+    },
+    "@/lib/reservation": dates,
+    "@/lib/request-limit": { allowRequest: () => true, clientKey: () => "test" },
+  });
+  const res = await conditional.POST(request({ ...payload, couponCode: "EARLY20" }));
+  assert.equal(res.status, 400);
+  const body = await res.json();
+  assert.equal(body.field, "couponCode");
+  assert.match(body.error, /at least 60 days/);
+});
+
+test("hotel settings start from the built-in defaults and staff changes are stored", async () => {
+  const content = load("src/lib/hotel-content.ts");
+  const store = jsonStore({ bookings: [], config: { rooms: [] } });
+  const db = store.db;
+  const initial = await db.getSettings();
+  assert.equal(initial.legalEntity, "", "the registered business name is not known yet");
+  assert.equal(initial.retentionMonths, content.DEFAULT_SETTINGS.retentionMonths);
+  const saved = await db.updateSettings({ checkIn: "12:00 noon", legalEntity: "Ganga Imperial Hospitality Pvt. Ltd." });
+  assert.equal(saved.checkIn, "12:00 noon");
+  assert.equal(saved.cancellation, content.DEFAULT_SETTINGS.cancellation, "unchanged fields keep their default");
+  assert.deepEqual(store.saved().settings, {
+    checkIn: "12:00 noon",
+    legalEntity: "Ganga Imperial Hospitality Pvt. Ltd.",
+  });
+  assert.equal((await db.getSettings()).legalEntity, "Ganga Imperial Hospitality Pvt. Ltd.");
+});
+
+test("Postgres keeps hotel settings in one row, created on first use", async () => {
+  const queries = [];
+  let stored = null;
+  const sql = (strings, ...values) => ({ query: strings.join("?"), values });
+  sql.query = async (text, params = []) => {
+    queries.push(text);
+    if (/^SELECT value FROM hotel_settings/.test(text)) return stored ? [{ value: stored }] : [];
+    if (/^INSERT INTO hotel_settings/.test(text)) stored = params[0];
+    return [];
+  };
+  const db = load(
+    "src/lib/db.ts",
+    {
+      fs: { default: {} },
+      path: { default: path.posix },
+      "./validation": validation,
+      "./config": { SITE_CONFIG: { rooms: [] } },
+      "./hotel-content": hotelContent,
+      "@neondatabase/serverless": { neon: () => sql },
+    },
+    { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
+  );
+  assert.equal((await db.getSettings()).checkIn, "");
+  await db.updateSettings({ checkIn: "14:00" });
+  assert.ok(queries.some(q => /CREATE TABLE IF NOT EXISTS hotel_settings/.test(q)));
+  assert.equal(JSON.parse(stored).checkIn, "14:00");
+  assert.equal((await db.getSettings()).checkIn, "14:00");
+});
+
+test("settings, offers and content items accept the new fields with safe defaults", () => {
+  const offer = validation.parseInput(validation.OFFER_SCHEMA, { title: "Monsoon" });
+  assert.equal(offer.data.minAdvanceDays, 0);
+  assert.equal(offer.data.minNights, 0);
+  assert.equal(offer.data.sample, false);
+  assert.equal(validation.parseInput(validation.OFFER_SCHEMA, { title: "x", minNights: 31 }).ok, false);
+  assert.equal(validation.parseInput(validation.BANQUET_SCHEMA, { name: "Gold" }).data.sample, false);
+  assert.equal(validation.parseInput(validation.DINING_SCHEMA, { name: "Thali" }).data.sample, false);
+  assert.equal(validation.parseInput(validation.ROOM_SCHEMA, { name: "Suite" }).data.sampleRate, false);
+  const settings = validation.parseInput(
+    validation.SETTINGS_SCHEMA,
+    { checkIn: " 12:00 ", retentionMonths: 24 },
+    { partial: true },
+  );
+  assert.deepEqual(settings.data, { checkIn: "12:00", retentionMonths: 24 });
+  assert.equal(validation.parseInput(validation.SETTINGS_SCHEMA, { retentionMonths: -1 }, { partial: true }).ok, false);
+  assert.equal(
+    validation.parseInput(validation.SETTINGS_SCHEMA, { privacyContactEmail: "nope" }, { partial: true }).ok,
+    false,
+  );
+});
+
+test("staff read and change hotel settings through a validated, admin-only API that refreshes the site", async () => {
+  const saved = [];
+  const revalidated = [];
+  const db = {
+    getSettings: async () => ({ ...hotelContent.DEFAULT_SETTINGS }),
+    updateSettings: async changes => (saved.push(changes), { ...hotelContent.DEFAULT_SETTINGS, ...changes }),
+  };
+  const anonymous = adminRoute("settings", db, false);
+  assert.equal((await anonymous.GET()).status, 401);
+  assert.equal((await anonymous.PATCH(jsonRequest("PATCH", { checkIn: "12:00" }))).status, 401);
+  const route = adminRoute("settings", db, true, revalidated);
+  assert.equal((await (await route.GET()).json()).retentionMonths, hotelContent.DEFAULT_SETTINGS.retentionMonths);
+  assert.equal((await route.PATCH(jsonRequest("PATCH", { unknown: "x" }))).status, 400);
+  assert.equal((await route.PATCH(jsonRequest("PATCH", { retentionMonths: "12" }))).status, 400);
+  assert.equal(saved.length, 0);
+  const res = await route.PATCH(
+    jsonRequest("PATCH", { checkIn: " 12:00 noon ", legalEntity: "Ganga Imperial Pvt. Ltd." }),
+  );
+  assert.equal(res.status, 200);
+  assert.deepEqual(saved, [{ checkIn: "12:00 noon", legalEntity: "Ganga Imperial Pvt. Ltd." }]);
+  assert.equal((await res.json()).item.checkIn, "12:00 noon");
+  assert.ok(revalidated.length === 1 && revalidated[0][0] === "/");
+});
+
+// ---------- Staff tooling: restorable deletes, audit log, paging, CSV export ----------
+const guestRequest = (overrides = {}) => ({
+  name: "Asha Verma",
+  mobile: "+919999999999",
+  email: "asha@example.in",
+  city: "",
+  country: "",
+  gender: "other",
+  roomType: "Deluxe Room",
+  checkin: future,
+  checkout: futureOut,
+  guests: 2,
+  amount: 0,
+  ...overrides,
+});
+
+test("a deleted request moves to Deleted: hidden everywhere else, restorable, then erased after 30 days", async () => {
+  const store = jsonStore({ bookings: [], enquiries: [], config: { rooms: [] } });
+  const { db } = store;
+  const kept = await db.addBooking(guestRequest());
+  const removed = await db.addBooking(guestRequest({ email: "gone@example.in" }));
+  assert.equal(await db.deleteBooking(removed.id), true);
+  assert.deepEqual(
+    (await db.getBookings()).map(b => b.id),
+    [kept.id],
+  );
+  assert.equal(await db.getBooking(removed.id), null, "notifications treat it as deleted");
+  assert.equal(await db.getBookingByIdAndEmail(removed.id.slice(0, 8), "gone@example.in"), null, "not trackable");
+  const deleted = await db.getBookings({ deleted: true });
+  assert.deepEqual(
+    deleted.map(b => b.id),
+    [removed.id],
+  );
+  assert.ok(deleted[0].deletedAt);
+  assert.equal(await db.restoreBooking(removed.id), true);
+  assert.equal((await db.getBookings()).length, 2);
+  assert.equal(await db.restoreBooking("missing"), false);
+
+  await db.deleteBooking(removed.id);
+  assert.equal(await db.purgeDeletedBefore(new Date(Date.now() - 60_000)), 0, "recently deleted requests are kept");
+  assert.equal(await db.purgeDeletedBefore(new Date(Date.now() + 60_000)), 1);
+  assert.equal((await db.getBookings({ deleted: true })).length, 0);
+  assert.deepEqual(
+    store.saved().notificationJobs.map(j => j.bookingId),
+    [kept.id],
+    "its notification event goes with it",
+  );
+  assert.equal(store.saved().bookings.length, 1);
+});
+
+test("an older enquiry can be deleted, restored and erased the same way", async () => {
+  const enquiry = {
+    id: "e1",
+    name: "G",
+    phone: "",
+    email: "",
+    type: "",
+    guests: 1,
+    checkin: "",
+    checkout: "",
+    message: "",
+    status: "new",
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+  const store = jsonStore({ bookings: [], enquiries: [enquiry], config: { rooms: [] } });
+  const { db } = store;
+  assert.equal(await db.deleteEnquiry("e1"), true);
+  assert.equal((await db.getEnquiries()).length, 0);
+  assert.equal((await db.getEnquiries({ deleted: true })).length, 1);
+  assert.equal(await db.restoreEnquiry("e1"), true);
+  assert.equal((await db.getEnquiries()).length, 1);
+  await db.deleteEnquiry("e1");
+  assert.equal(await db.purgeDeletedBefore(new Date(Date.now() + 60_000)), 1);
+  assert.equal(store.saved().enquiries.length, 0);
+});
+
+test("staff can permanently erase a deleted request (a guest's erasure request) but not a live one", async () => {
+  const store = jsonStore({ bookings: [], config: { rooms: [] } });
+  const { db } = store;
+  const b = await db.addBooking(guestRequest());
+  assert.equal(await db.eraseBooking(b.id), false, "only from Deleted");
+  await db.deleteBooking(b.id);
+  assert.equal(await db.eraseBooking(b.id), true);
+  assert.equal(store.saved().bookings.length, 0);
+  assert.equal(store.saved().notificationJobs.length, 0);
+});
+
+test("retention also empties Deleted after 30 days, even before a retention period is chosen", async () => {
+  const purged = [];
+  const retention = load("src/lib/retention.ts", {
+    "@/lib/db": {
+      purgeRequestsBefore: async () => 0,
+      purgeDeletedBefore: async date => (purged.push(date.toISOString()), 2),
+      getSettings: async () => ({ retentionMonths: 0 }),
+    },
+  });
+  const now = new Date("2026-12-31T00:00:00.000Z");
+  assert.deepEqual(await retention.purgeExpiredRequests(now), { configured: false, deleted: 0, erasedFromDeleted: 2 });
+  assert.deepEqual(purged, ["2026-12-01T00:00:00.000Z"]);
+});
+
+test("requests load in pages: recent and open ones first, then older pages on demand", async () => {
+  const at = (id, createdAt, bookingStatus, checkin, checkout) => ({
+    ...guestRequest(),
+    id,
+    createdAt,
+    bookingStatus,
+    checkin,
+    checkout,
+  });
+  const store = jsonStore({
+    bookings: [
+      at("old-open", "2025-01-01T00:00:00.000Z", "pending", "2025-02-01", "2025-02-02"),
+      at("old-done", "2025-01-02T00:00:00.000Z", "checked-out", "2025-02-01", "2025-02-02"),
+      at("old-future", "2025-01-03T00:00:00.000Z", "cancelled", "2026-08-01", "2026-08-02"),
+      at("older-done", "2024-06-01T00:00:00.000Z", "checked-out", "2024-07-01", "2024-07-02"),
+      at("recent", "2026-07-01T00:00:00.000Z", "checked-out", "2026-07-02", "2026-07-03"),
+    ],
+    config: { rooms: [] },
+  });
+  const ids = list => list.map(b => b.id);
+  assert.deepEqual(ids(await store.db.getBookings({ since: "2026-06-01" })), ["recent", "old-future", "old-open"]);
+  assert.deepEqual(ids(await store.db.getBookings({ before: "2026-06-01T00:00:00.000Z", limit: 2 })), [
+    "old-future",
+    "old-done",
+  ]);
+  assert.deepEqual(ids(await store.db.getBookings({ before: "2025-01-02T00:00:00.000Z", limit: 2 })), [
+    "old-open",
+    "older-done",
+  ]);
+});
+
+test("the requests API pages its list and validates the paging parameters", async () => {
+  const calls = [];
+  const route = adminRoute("bookings", { getBookings: async opts => (calls.push(opts), []) }, true);
+  const get = query => route.GET(new Request("http://localhost/api/bookings" + query));
+  assert.equal((await get("?since=2026-06-01")).status, 200);
+  assert.equal((await get("?before=2026-06-01T00:00:00.000Z&limit=200")).status, 200);
+  assert.equal((await get("?deleted=1")).status, 200);
+  assert.equal((await get("")).status, 200);
+  assert.deepEqual(calls, [
+    { since: "2026-06-01" },
+    { before: "2026-06-01T00:00:00.000Z", limit: 200 },
+    { deleted: true },
+    {},
+  ]);
+  for (const bad of ["?since=yesterday", "?before=nope", "?before=2026-06-01T00:00:00.000Z&limit=5000"])
+    assert.equal((await get(bad)).status, 400, bad);
+});
+
+test("deleting from the dashboard moves a request to Deleted; staff can restore it or erase it from there", async () => {
+  const calls = [];
+  const db = {
+    deleteBooking: async id => (calls.push(["delete", id]), id === "b1"),
+    restoreBooking: async id => (calls.push(["restore", id]), id === "b1"),
+    eraseBooking: async id => (calls.push(["erase", id]), id === "b1"),
+    updateBooking: async () => null,
+  };
+  const route = adminRoute("bookings", db, true);
+  const del = query => route.DELETE(new Request("http://localhost/api/bookings" + query, { method: "DELETE" }));
+  assert.equal((await del("?id=b1")).status, 200);
+  assert.equal((await route.PATCH(jsonRequest("PATCH", { id: "b1", restore: true }))).status, 200);
+  assert.equal((await route.PATCH(jsonRequest("PATCH", { id: "zz", restore: true }))).status, 404);
+  assert.equal((await route.PATCH(jsonRequest("PATCH", { id: "b1", restore: "yes" }))).status, 400);
+  assert.equal((await del("?id=b1&permanent=1")).status, 200);
+  assert.equal((await del("?id=zz&permanent=1")).status, 404);
+  assert.deepEqual(calls, [
+    ["delete", "b1"],
+    ["restore", "b1"],
+    ["restore", "zz"],
+    ["erase", "b1"],
+    ["erase", "zz"],
+  ]);
+});
+
+test("every staff change is recorded with who made it, without guest details", async () => {
+  const audits = [];
+  const offers = adminRoute(
+    "offers",
+    {
+      addOffer: async d => ({ ...d, id: "o1" }),
+      updateOffer: async (id, d) => ({ id, title: "Monsoon", ...d }),
+      deleteOffer: async () => true,
+    },
+    true,
+    [],
+    audits,
+  );
+  await offers.POST(jsonRequest("POST", { title: "Monsoon" }));
+  await offers.PATCH(jsonRequest("PATCH", { id: "o1", active: false, discount: "10%" }));
+  await offers.DELETE(new Request("http://localhost/api/offers?id=o1", { method: "DELETE" }));
+  assert.deepEqual(
+    audits.map(a => [a.actor, a.action, a.target, a.targetId, a.summary && JSON.parse(a.summary)]),
+    [
+      ["staff@hotel.in", "create", "offers", "o1", { label: "Monsoon" }],
+      ["staff@hotel.in", "update", "offers", "o1", { label: "Monsoon", fields: ["active", "discount"] }],
+      ["staff@hotel.in", "delete", "offers", "o1", ""],
+    ],
+  );
+  audits.length = 0;
+  const bookings = adminRoute(
+    "bookings",
+    {
+      updateBooking: async (id, d) => ({ ...guestRequest(), id, ...d }),
+      deleteBooking: async () => true,
+    },
+    true,
+    [],
+    audits,
+  );
+  await bookings.PATCH(jsonRequest("PATCH", { id: "3f9a12bc-0000", bookingStatus: "confirmed" }));
+  await bookings.DELETE(new Request("http://localhost/api/bookings?id=3f9a12bc-0000", { method: "DELETE" }));
+  assert.deepEqual(
+    audits.map(a => [a.action, a.target, a.targetId, JSON.parse(a.summary)]),
+    [
+      ["status", "bookings", "3f9a12bc-0000", { reference: "3F9A12BC", status: "confirmed" }],
+      ["delete", "bookings", "3f9a12bc-0000", { reference: "3F9A12BC" }],
+    ],
+  );
+  assert.ok(!JSON.stringify(audits).includes("Asha"), "no guest names in the log");
+});
+
+test("a failed audit write never undoes or fails the change staff made", async () => {
+  const offers = adminRoute(
+    "offers",
+    { updateOffer: async (id, d) => ({ id, title: "Monsoon", ...d }) },
+    true,
+    [],
+    "throw",
+  );
+  assert.equal((await offers.PATCH(jsonRequest("PATCH", { id: "o1", active: false }))).status, 200);
+});
+
+test("the activity log is stored newest first, capped, and readable by staff only", async () => {
+  const store = jsonStore({ bookings: [], config: { rooms: [] } });
+  for (let i = 0; i < 5; i++)
+    await store.db.addAuditEntry({
+      actor: "a@b.in",
+      action: "update",
+      target: "offers",
+      targetId: "o" + i,
+      summary: "",
+    });
+  const log = await store.db.getAuditLog(3);
+  assert.deepEqual(
+    log.map(e => e.targetId),
+    ["o4", "o3", "o2"],
+  );
+  assert.ok(log[0].id && log[0].at);
+  const route = adminRoute("audit", { getAuditLog: async () => log }, false);
+  assert.equal((await route.GET(new Request("http://localhost/api/audit"))).status, 401);
+  const staff = adminRoute("audit", { getAuditLog: async n => log.slice(0, n) }, true);
+  assert.equal((await (await staff.GET(new Request("http://localhost/api/audit"))).json()).length, 3);
+});
+
+test("staff can export requests as CSV that spreadsheets can't run as formulas", async () => {
+  const route = adminRoute(
+    "bookings/export",
+    {
+      getBookings: async () => [
+        {
+          ...guestRequest({ name: '=HYPERLINK("http://x")', specialRequests: 'Late "arrival", please' }),
+          id: "3f9a12bc-0000",
+          bookingStatus: "pending",
+          roomsRequested: 2,
+          couponCode: "EARLY20",
+          createdAt: "2026-11-28T10:30:00.000Z",
+        },
+      ],
+    },
+    true,
+  );
+  const res = await route.GET(new Request("http://localhost/api/bookings/export"));
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type"), /text\/csv/);
+  assert.match(res.headers.get("content-disposition"), /attachment; filename="requests-\d{4}-\d{2}-\d{2}\.csv"/);
+  const [header, row] = (await res.text()).replace(/^﻿/, "").trim().split("\r\n");
+  assert.match(header, /^Reference,Received,Name,Phone,Email,/);
+  assert.ok(row.startsWith('3F9A12BC,2026-11-28 16:00,"\'=HYPERLINK(""http://x"")"'), row);
+  assert.ok(row.includes('"Late ""arrival"", please"'));
+  const anonymous = adminRoute("bookings/export", {}, false);
+  assert.equal((await anonymous.GET(new Request("http://localhost/api/bookings/export"))).status, 401);
+});
+
+test("a room added with a deleted room's name never takes over that room's past requests", async () => {
+  const store = jsonStore({
+    bookings: [
+      { ...guestRequest(), id: "b-old", roomId: "suite", roomType: "Suite", createdAt: "2026-01-01T00:00:00.000Z" },
+    ],
+    config: { rooms: [{ id: "suite", name: "Suite", text: "", image: "", rate: "", sample: false }] },
+  });
+  assert.equal(await store.db.deleteRoom("suite"), true);
+  const again = await store.db.addRoom({ name: "Suite", text: "", image: "", rate: "", sample: false });
+  assert.notEqual(again.id, "suite");
+  const fresh = jsonStore({
+    bookings: [
+      { ...guestRequest(), id: "b", roomId: "garden", roomType: "Garden", createdAt: "2026-01-01T00:00:00.000Z" },
+    ],
+    config: { rooms: [] },
+  });
+  const garden = await fresh.db.addRoom({ name: "Garden", text: "", image: "", rate: "", sample: false });
+  assert.notEqual(garden.id, "garden", "an id older requests still point to is never reused");
+});
+
+test("local storage never loses a request when many arrive at once", async () => {
+  const store = jsonStore({ bookings: [], config: { rooms: [] } });
+  await Promise.all(Array.from({ length: 25 }, (_, i) => store.db.addBooking(guestRequest({ name: "Guest " + i }))));
+  assert.equal(store.saved().bookings.length, 25);
+  assert.equal(store.saved().notificationJobs.length, 25);
+});
+
+test("the calendar tells room stays from events by the request itself, even after its room type is deleted", () => {
+  const format = load("src/components/admin/format.ts");
+  assert.equal(format.isRoomStay({ roomType: "Premium Room", roomsRequested: 1 }), true, "room since deleted");
+  assert.equal(format.isRoomStay({ roomType: "Old Room Name" }), true, "older request without a room count");
+  assert.equal(format.isRoomStay({ roomType: "Banquet hall", roomsRequested: 0 }), false);
+  assert.equal(format.isRoomStay({ roomType: "Banquet - Gold", roomsRequested: 0 }), false);
+  assert.equal(format.isRoomStay({ roomType: "Dining enquiry" }), false);
+  assert.equal(format.isRoomStay({ roomType: "Banquet hall" }), false, "older event request without a count");
+});
+
+test("the calendar and the booking form name a room the same way", () => {
+  const format = load("src/components/admin/format.ts");
+  assert.equal(format.roomValue({ id: "7", name: "Suite", slug: "suite" }), "room:7");
+  assert.equal(format.roomValue({ name: "Suite", slug: "suite" }), "room:Suite");
+});
+
+test("analytics counts the rooms requested, not banquet or dining requests", () => {
+  const format = load("src/components/admin/format.ts");
+  const requests = [
+    { roomType: "Deluxe Room", roomsRequested: 2 },
+    { roomType: "Suite" },
+    { roomType: "Banquet - Gold", roomsRequested: 0 },
+    { roomType: "Dining enquiry", roomsRequested: 0 },
+  ];
+  assert.equal(format.roomsRequested(requests), 3);
+});
+
+test("Leaving today includes single-day events and dining, not only stays with a check-out date", () => {
+  const format = load("src/components/admin/format.ts");
+  const today = "2026-12-05";
+  const checkedIn = b => ({ bookingStatus: "checked-in", checkout: "", ...b });
+  assert.equal(format.dueToLeave(checkedIn({ checkin: "2026-12-05" }), today), true, "one-day banquet");
+  assert.equal(format.dueToLeave(checkedIn({ checkin: "2026-12-03", checkout: "2026-12-05" }), today), true);
+  assert.equal(format.dueToLeave(checkedIn({ checkin: "2026-12-04", checkout: "2026-12-06" }), today), false);
+  assert.equal(format.dueToLeave({ bookingStatus: "confirmed", checkin: "2026-12-05", checkout: "" }, today), false);
+});
+
+test("the privacy email in Settings accepts real addresses and refuses broken ones", () => {
+  const parse = email =>
+    validation.parseInput(validation.SETTINGS_SCHEMA, { privacyContactEmail: email }, { partial: true });
+  for (const ok of ["reservations@gangaimperial.com", "stay.privacy@hotel.co.in", ""])
+    assert.equal(parse(ok).ok, true, ok);
+  for (const bad of ["nope", "a b@cd.in", "staff@hotel", "@hotel.in"]) assert.equal(parse(bad).ok, false, bad);
+});
+
+test("a request in Deleted keeps its notification waiting: not sent, not counted, sent if restored", async () => {
+  const store = jsonStore({ bookings: [], config: { rooms: [] } });
+  const { db } = store;
+  const b = await db.addBooking(guestRequest());
+  await db.deleteBooking(b.id);
+  assert.deepEqual(await db.claimNotificationJobs({ force: true }), []);
+  assert.equal((await db.countNotifications()).pending, 0, "deleted requests don't show as waiting to send");
+  assert.equal(store.saved().notificationJobs.length, 1, "the event is kept while the request can be restored");
+  await db.restoreBooking(b.id);
+  assert.deepEqual(
+    (await db.claimNotificationJobs({ force: true })).map(j => j.bookingId),
+    [b.id],
+  );
+});
+
+test("a request in Deleted can't have its status changed", async () => {
+  const store = jsonStore({ bookings: [], config: { rooms: [] } });
+  const b = await store.db.addBooking(guestRequest());
+  await store.db.deleteBooking(b.id);
+  assert.equal(await store.db.updateBooking(b.id, { bookingStatus: "confirmed" }), null);
+  assert.equal(store.saved().bookings[0].bookingStatus, "pending");
+});
+
+test("Postgres leaves notifications of deleted requests waiting and refuses their status changes", async () => {
+  const queries = [];
+  const sql = strings => {
+    queries.push(strings.join("?"));
+    return [];
+  };
+  sql.query = async text => (queries.push(text), []);
+  sql.transaction = async () => [];
+  const db = load(
+    "src/lib/db.ts",
+    {
+      fs: { default: {} },
+      path: { default: path.posix },
+      "./validation": validation,
+      "./config": { SITE_CONFIG: { rooms: [] } },
+      "./hotel-content": hotelContent,
+      "@neondatabase/serverless": { neon: () => sql },
+    },
+    { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
+  );
+  await db.claimNotificationJobs({});
+  assert.match(
+    queries.at(-1),
+    /NOT EXISTS \(SELECT 1 FROM bookings b WHERE b\.id = notification_outbox\.booking_id AND b\.deleted_at IS NOT NULL\)/,
+  );
+  await db.countNotifications();
+  assert.match(queries.at(-1), /NOT EXISTS/);
+  await db.updateBooking("b1", { bookingStatus: "confirmed" });
+  assert.match(queries.at(-1), /WHERE id = \? AND deleted_at IS NULL RETURNING \*/);
+});
+
+test("older pages are asked for by an exact ISO time", async () => {
+  const route = adminRoute("bookings", { getBookings: async () => [] }, true);
+  const get = query => route.GET(new Request("http://localhost/api/bookings" + query));
+  for (const bad of ["?before=1", "?before=Nov%201%202026", "?before=2026-06-01"])
+    assert.equal((await get(bad)).status, 400, bad);
+  assert.equal((await get("?before=2026-06-01T00:00:00Z")).status, 200);
+});
+
+// ---------- Second review ----------
+test("date arithmetic on a half-typed date gives no date instead of crashing the form", () => {
+  assert.equal(dates.addDaysISO("20261-01-01", 90), "");
+  assert.equal(dates.addDaysISO("", 90), "");
+  assert.equal(dates.addDaysISO("2026-12-30", 3), "2027-01-02");
+});
+
+test("an existing Postgres database gets the seeded content flagged as samples once, when the columns are added", async () => {
+  const queries = [];
+  const sql = strings => (queries.push(strings.join("?")), []);
+  sql.query = async (text, params = []) => (queries.push(text + " " + JSON.stringify(params)), []);
+  sql.transaction = async () => [];
+  const db = load(
+    "src/lib/db.ts",
+    {
+      fs: { default: {} },
+      path: { default: path.posix },
+      "./validation": validation,
+      "./config": { SITE_CONFIG: { rooms: [{ name: "Deluxe Room", rate: "₹3,000/night", sampleRate: true }] } },
+      "./hotel-content": hotelContent,
+      "@neondatabase/serverless": { neon: () => sql },
+    },
+    { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
+  );
+  await db.prepareStorage();
+  const all = queries.join("\n");
+  for (const [table, ids] of [
+    ["offers", "'offer-001', 'offer-002', 'offer-003'"],
+    ["banquet_packages", "'banq-001', 'banq-002', 'banq-003'"],
+    ["dining_options", "'din-001', 'din-002', 'din-003', 'din-004', 'din-005'"],
+  ]) {
+    assert.ok(
+      all.includes(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS sample BOOLEAN\n`) ||
+        all.includes(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS sample BOOLEAN `),
+      table + ": column added without a default first",
+    );
+    assert.ok(all.includes(`UPDATE ${table} SET sample = (id IN (${ids})) WHERE sample IS NULL`), table + " backfill");
+    assert.ok(all.includes(`ALTER TABLE ${table} ALTER COLUMN sample SET DEFAULT false`), table + " default");
+  }
+  assert.ok(
+    all.includes(
+      "UPDATE offers SET min_advance_days = CASE WHEN id = 'offer-001' THEN 30 ELSE 0 END WHERE min_advance_days IS NULL",
+    ),
+  );
+  assert.ok(
+    all.includes(
+      "UPDATE offers SET min_nights = CASE WHEN id = 'offer-002' THEN 2 ELSE 0 END WHERE min_nights IS NULL",
+    ),
+  );
+  assert.match(
+    all,
+    /UPDATE rooms SET sample_rate = \(\(name, rate\) IN \(\(\$1, \$2\)\)\) WHERE sample_rate IS NULL \["Deluxe Room","₹3,000\/night"\]/,
+  );
+});
+
+test("delivery leaves a notification waiting when its request is only in Deleted", async () => {
+  const discarded = [],
+    marked = [];
+  const notifications = load(
+    "src/lib/notifications.ts",
+    {
+      "node:crypto": { createHmac },
+      "@/lib/db": {
+        claimNotificationJobs: async () => [{ id: "e1", bookingId: "in-deleted", attempts: 0 }],
+        getBooking: async () => null,
+        isBookingInDeleted: async id => id === "in-deleted",
+        discardNotification: async id => discarded.push(id),
+        markNotification: async (id, ok) => marked.push([id, ok]),
+      },
+    },
+    {
+      process: {
+        env: {
+          NOTIFICATION_WEBHOOK_URL: "https://notifications.example.test/hotel",
+          NOTIFICATION_WEBHOOK_SECRET: "test-secret-that-is-at-least-32-characters",
+        },
+      },
+      fetch: async () => ({ ok: true }),
+    },
+  );
+  assert.equal((await notifications.deliverNotifications()).delivered, 0);
+  assert.deepEqual(discarded, []);
+  assert.deepEqual(marked, []);
+});
+
+test("an enquiry in Deleted can't have its status changed", async () => {
+  const enquiry = {
+    id: "e1",
+    name: "G",
+    phone: "",
+    email: "",
+    type: "",
+    guests: 1,
+    checkin: "",
+    checkout: "",
+    message: "",
+    status: "new",
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+  const store = jsonStore({ bookings: [], enquiries: [enquiry], config: { rooms: [] } });
+  await store.db.deleteEnquiry("e1");
+  assert.equal(await store.db.updateEnquiryStatus("e1", "contacted"), null);
+  assert.equal(store.saved().enquiries[0].status, "new");
+  assert.equal(await store.db.isBookingInDeleted("e1"), false, "only requests count, and only ones in Deleted");
+});
+
+test("older pages never skip requests sent in the same millisecond", async () => {
+  const at = (id, createdAt) => ({ ...guestRequest(), id, createdAt, bookingStatus: "checked-out" });
+  const t = "2025-01-01T10:00:00.000Z";
+  const store = jsonStore({
+    bookings: [at("a", t), at("b", t), at("c", "2025-01-01T09:00:00.000Z")],
+    config: { rooms: [] },
+  });
+  const page = async (before, beforeId) => (await store.db.getBookings({ before, beforeId, limit: 1 })).map(b => b.id);
+  assert.deepEqual(await page("2025-01-01T10:00:00.001Z"), ["b"]);
+  assert.deepEqual(await page(t, "b"), ["a"]);
+  assert.deepEqual(await page(t, "a"), ["c"]);
+});
+
+test("the calendar can load the requests whose stays fall in a given month", async () => {
+  const at = (id, checkin, checkout) => ({
+    ...guestRequest(),
+    id,
+    checkin,
+    checkout,
+    createdAt: "2024-01-01T00:00:00.000Z",
+  });
+  const store = jsonStore({
+    bookings: [
+      at("inside", "2025-02-10", "2025-02-12"),
+      at("across-start", "2025-01-30", "2025-02-02"),
+      at("one-day-event", "2025-02-28", ""),
+      at("before", "2025-01-10", "2025-01-12"),
+      at("after", "2025-03-01", "2025-03-03"),
+    ],
+    config: { rooms: [] },
+  });
+  const ids = (await store.db.getBookings({ staysFrom: "2025-02-01", staysTo: "2025-02-28" })).map(b => b.id).sort();
+  assert.deepEqual(ids, ["across-start", "inside", "one-day-event"]);
+  const calls = [];
+  const route = adminRoute("bookings", { getBookings: async q => (calls.push(q), []) }, true);
+  const get = q => route.GET(new Request("http://localhost/api/bookings" + q));
+  assert.equal((await get("?staysFrom=2025-02-01&staysTo=2025-02-28")).status, 200);
+  assert.equal((await get("?before=2025-01-01T10:00:00.000Z&beforeId=b&limit=50")).status, 200);
+  assert.deepEqual(calls, [
+    { staysFrom: "2025-02-01", staysTo: "2025-02-28" },
+    { before: "2025-01-01T10:00:00.000Z", beforeId: "b", limit: 50 },
+  ]);
+  for (const bad of [
+    "?staysFrom=2025-02-01",
+    "?staysFrom=2025-03-01&staysTo=2025-02-01",
+    "?before=2025-01-01T10:00:00.000Z&beforeId=a%20b",
+  ])
+    assert.equal((await get(bad)).status, 400, bad);
+});
+
+test("activity entries store structured details the admin can translate, and never a reviewer's name", async () => {
+  const audits = [];
+  const reviews = adminRoute(
+    "reviews",
+    { addReview: async d => ({ ...d, id: "r1" }), updateReview: async (id, d) => ({ id, name: "Priya Sharma", ...d }) },
+    true,
+    [],
+    audits,
+  );
+  await reviews.POST(jsonRequest("POST", { name: "Priya Sharma", text: "Lovely" }));
+  await reviews.PATCH(jsonRequest("PATCH", { id: "r1", rating: 4 }));
+  assert.ok(!JSON.stringify(audits).includes("Priya"), "reviewers are guests");
+  assert.deepEqual(JSON.parse(audits[1].summary), { fields: ["rating"] });
+  audits.length = 0;
+  const settings = adminRoute(
+    "settings",
+    { updateSettings: async c => ({ ...hotelContent.DEFAULT_SETTINGS, ...c }) },
+    true,
+    [],
+    audits,
+  );
+  await settings.PATCH(jsonRequest("PATCH", { checkIn: "12:00" }));
+  assert.deepEqual(JSON.parse(audits[0].summary), { fields: ["checkIn"] });
+});
+
+test("Postgres merges a settings change into the stored settings in one statement", async () => {
+  const queries = [];
+  const sql = strings => (queries.push(strings.join("?")), []);
+  sql.query = async text => (
+    queries.push(text),
+    /RETURNING value/.test(text) ? [{ value: JSON.stringify({ checkIn: "14:00" }) }] : []
+  );
+  const db = load(
+    "src/lib/db.ts",
+    {
+      fs: { default: {} },
+      path: { default: path.posix },
+      "./validation": validation,
+      "./config": { SITE_CONFIG: { rooms: [] } },
+      "./hotel-content": hotelContent,
+      "@neondatabase/serverless": { neon: () => sql },
+    },
+    { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
+  );
+  const saved = await db.updateSettings({ checkIn: "14:00" });
+  assert.match(
+    queries.at(-1),
+    /DO UPDATE SET value = \(hotel_settings\.value::jsonb \|\| EXCLUDED\.value::jsonb\)::text RETURNING value/,
+  );
+  assert.equal(saved.checkIn, "14:00");
+});
+
+test("CSV cells with a semicolon are quoted, so spreadsheets that split on it can't start a formula", async () => {
+  const route = adminRoute(
+    "bookings/export",
+    {
+      getBookings: async () => [
+        {
+          ...guestRequest({ name: "a;=1+1" }),
+          id: "3f9a12bc-0000",
+          bookingStatus: "pending",
+          createdAt: "2026-11-28T10:30:00.000Z",
+        },
+      ],
+    },
+    true,
+  );
+  const text = await (await route.GET(new Request("http://localhost/api/bookings/export"))).text();
+  assert.ok(text.includes('"a;=1+1"'), text);
+});
+
+test("activity details read in the admin's language", () => {
+  const format = load("src/components/admin/format.ts");
+  const hi = {
+    "admin.status.confirmed": "पुष्ट",
+    "admin.f.discount": "छूट",
+    "admin.setting.checkIn": "चेक-इन का समय",
+    "admin.exportedCount": "{n} अनुरोध",
+  };
+  const t = key => hi[key] ?? key;
+  assert.equal(
+    format.describeChange(t, JSON.stringify({ reference: "3F9A12BC", status: "confirmed" })),
+    "3F9A12BC · पुष्ट",
+  );
+  assert.equal(
+    format.describeChange(t, JSON.stringify({ label: "Monsoon", fields: ["discount", "odd"] })),
+    "Monsoon · छूट, odd",
+  );
+  assert.equal(format.describeChange(t, JSON.stringify({ fields: ["checkIn"] })), "चेक-इन का समय");
+  assert.equal(format.describeChange(t, JSON.stringify({ count: 12 })), "12 अनुरोध");
+  assert.equal(format.describeChange(t, ""), "–");
+  assert.equal(format.describeChange(t, "plain text"), "plain text");
+});
+
+test("admin request failures read in the admin's language; the server's own messages are kept", async () => {
+  const hi = {
+    "admin.networkError": "सर्वर तक नहीं पहुँच सके।",
+    "admin.requestFailed": "सर्वर पर कुछ गड़बड़ हुई।",
+  };
+  const t = key => hi[key] ?? key;
+  const api = fetchImpl => load("src/components/admin/api.ts", {}, { fetch: fetchImpl });
+  const offline = api(async () => {
+    throw new TypeError("Failed to fetch");
+  });
+  const network = await offline.adminRequest("/api/offers").catch(e => e);
+  assert.equal(offline.errorText(t, network), "सर्वर तक नहीं पहुँच सके।");
+  assert.doesNotMatch(network.message, /Failed to fetch/);
+  const broken = api(async () => new Response("<html>oops</html>", { status: 502 }));
+  assert.equal(broken.errorText(t, await broken.adminRequest("/api/offers").catch(e => e)), "सर्वर पर कुछ गड़बड़ हुई।");
+  const refused = api(async () => Response.json({ error: "The code is already used." }, { status: 409 }));
+  assert.equal(
+    refused.errorText(t, await refused.adminRequest("/api/offers").catch(e => e)),
+    "The code is already used.",
+  );
+  assert.equal(offline.errorText(t, "plain"), "plain");
 });

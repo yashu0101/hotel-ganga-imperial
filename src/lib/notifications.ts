@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { logWarning } from "@/lib/log";
-import { claimNotificationJobs, discardNotification, getBooking, markNotification } from "@/lib/db";
+import { claimNotificationJobs, discardNotification, getBooking, isBookingInDeleted, markNotification } from "@/lib/db";
 export function notificationConfigured() {
   const url = process.env.NOTIFICATION_WEBHOOK_URL;
   const secret = process.env.NOTIFICATION_WEBHOOK_SECRET;
@@ -29,7 +29,8 @@ export async function deliverNotifications(bookingId?: string, { force = false }
   for (const job of jobs) {
     const booking = await getBooking(job.bookingId);
     if (!booking) {
-      await discardNotification(job.id); // The request was deleted; nothing left to send.
+      // In Deleted, the request can still be restored: leave the event waiting. Erased or never stored: discard it.
+      if (!(await isBookingInDeleted(job.bookingId))) await discardNotification(job.id);
       continue;
     }
     const timestamp = String(Date.now());

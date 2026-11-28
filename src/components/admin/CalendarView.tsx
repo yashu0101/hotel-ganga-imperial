@@ -6,7 +6,7 @@ import type { Booking, Room } from "@/lib/types";
 import { BOOKING_STATUSES } from "@/lib/validation";
 import type { BookingDraft } from "./BookingForm";
 import { lastDay, layoutWeek, monthWeeks, roomFor } from "./calendar-layout";
-import { counted, fill, formatDay, HALL, hotelDay, localeFor, requestType } from "./format";
+import { counted, fill, formatDay, HALL, hotelDay, isRoomStay, localeFor, requestType, roomValue } from "./format";
 import Icon from "./icons";
 import { RequestDetail, type RequestRow } from "./RequestTable";
 import { StatusBadge, toneOf } from "./status";
@@ -27,9 +27,11 @@ interface Props {
   onAdd: (draft: BookingDraft) => void;
   onStatus: (row: RequestRow, status: string) => Promise<void>;
   onDelete: (row: RequestRow) => Promise<boolean>;
+  /** Called when staff move to a month, so the dashboard can load older stays in it. */
+  onMonth?: (month: string) => Promise<void>;
 }
 
-export default function CalendarView({ bookings, rooms, bookingRow, onAdd, onStatus, onDelete }: Props) {
+export default function CalendarView({ bookings, rooms, bookingRow, onAdd, onStatus, onDelete, onMonth }: Props) {
   const { t, lang } = useApp();
   const locale = localeFor(lang);
   const today = hotelDay();
@@ -37,33 +39,43 @@ export default function CalendarView({ bookings, rooms, bookingRow, onAdd, onSta
   const [filter, setFilter] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [openDay, setOpenDay] = useState<string | null>(null);
+  const [loadingMonth, setLoadingMonth] = useState(false);
+  const show = (next: string) => {
+    setMonth(next);
+    if (!onMonth) return;
+    setLoadingMonth(true);
+    void onMonth(next).finally(() => setLoadingMonth(false));
+  };
 
   const visibleRooms = rooms.filter(r => !r.hidden);
   const roomKey = (r: Room) => r.id || r.slug;
   // Requests match their room by id; older requests without one match by the name they were sent with.
   // Hidden room types still hold their booked guests, so bookings match against every room type.
   const roomOf = (b: Booking) => roomFor(b, rooms);
-  const lastNight = (b: Booking) => lastDay(b, !!roomOf(b));
+  // Room stay or event is read from the request, not from whether its room type still exists.
+  const lastNight = (b: Booking) => lastDay(b, isRoomStay(b));
   const shown = bookings.filter(b => {
     if (!ACTIVE.has(b.bookingStatus) || !b.checkin) return false;
     if (!filter) return true;
+    if (filter === EVENTS) return !isRoomStay(b);
     const room = roomOf(b);
-    return filter === EVENTS ? !room : !!room && roomKey(room) === filter;
+    return isRoomStay(b) && !!room && roomKey(room) === filter;
   });
   const byId = new Map(shown.map(b => [b.id, b]));
   const covering = (day: string) => shown.filter(b => b.checkin <= day && lastNight(b) >= day);
-  const roomsOn = (day: string) => covering(day).reduce((n, b) => n + (roomOf(b) ? b.roomsRequested || 1 : 0), 0);
+  const roomsOn = (day: string) => covering(day).reduce((n, b) => n + (isRoomStay(b) ? b.roomsRequested || 1 : 0), 0);
 
   const weeks = monthWeeks(month);
   const [year, mon] = month.split("-").map(Number);
   const shift = (n: number) => {
     const d = new Date(Date.UTC(year, mon - 1 + n, 1));
-    setMonth(`${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`);
+    show(`${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`);
   };
   const monthLabel = formatDay(month + "-01", locale, { month: "long", year: "numeric" });
   const dayLong = (day: string) => formatDay(day, locale, { weekday: "long", day: "numeric", month: "long" });
   const short = (day: string) => formatDay(day, locale, { day: "numeric", month: "short" });
-  const draftType = filter && filter !== EVENTS ? "room:" + filter : filter === EVENTS ? HALL : undefined;
+  const filteredRoom = visibleRooms.find(r => roomKey(r) === filter);
+  const draftType = filteredRoom ? roomValue(filteredRoom) : filter === EVENTS ? HALL : undefined;
   const add = (date: string) => onAdd({ date, type: draftType });
   const describe = (b: Booking) =>
     [
@@ -89,7 +101,7 @@ export default function CalendarView({ bookings, rooms, bookingRow, onAdd, onSta
             type="button"
             className="adm-btn small"
             disabled={month === today.slice(0, 7)}
-            onClick={() => setMonth(today.slice(0, 7))}
+            onClick={() => show(today.slice(0, 7))}
           >
             {t("admin.thisMonth")}
           </button>
@@ -114,6 +126,11 @@ export default function CalendarView({ bookings, rooms, bookingRow, onAdd, onSta
         </div>
       </div>
 
+      {loadingMonth && (
+        <p className="adm-muted" role="status">
+          {t("admin.calendarLoading")}
+        </p>
+      )}
       <ul className="adm-legend adm-month-legend">
         {["pending", "confirmed", "checked-in"].map(s => (
           <li key={s} className={"tone-" + toneOf(s)}>
@@ -192,14 +209,14 @@ export default function CalendarView({ bookings, rooms, bookingRow, onAdd, onSta
                       toneOf(b.bookingStatus) +
                       (s.continuesBefore ? " cont-before" : "") +
                       (s.continuesAfter ? " cont-after" : "") +
-                      (roomOf(b) ? "" : " event")
+                      (isRoomStay(b) ? "" : " event")
                     }
                     style={{ gridColumn: `${s.from + 1} / ${s.to + 2}`, gridRow: s.lane + 2 }}
                     onClick={() => setOpenId(b.id)}
                     title={describe(b)}
                     aria-label={describe(b)}
                   >
-                    {!roomOf(b) && <Icon name="banquet" size={13} />}
+                    {!isRoomStay(b) && <Icon name="banquet" size={13} />}
                     <span className="who">{b.name}</span>
                     {(b.roomsRequested || 1) > 1 && <span className="qty">× {b.roomsRequested}</span>}
                   </button>

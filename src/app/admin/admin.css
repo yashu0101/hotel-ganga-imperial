@@ -146,6 +146,11 @@
   color: var(--a-ink-2);
   max-width: 72ch;
 }
+.adm-lead + .adm-table-wrap,
+.adm-lead + .adm-form,
+.adm-lead + .adm-empty {
+  margin-top: 16px;
+}
 .adm-skip {
   position: absolute;
   left: 16px;
@@ -658,6 +663,19 @@
   left: 50%;
   transform: translateX(-50%);
   z-index: 40;
+}
+/* Shown as a popover so toasts appear above open dialogs; undo the browser's popover box. */
+.adm-toast-region[popover] {
+  inset: auto auto 24px 50%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+  color: inherit;
+}
+.adm-toast-region[popover]:not(:popover-open) {
+  display: none;
 }
 .adm-toast {
   display: flex;
@@ -2225,6 +2243,65 @@
 }
 .adm-checklist code {
   margin-left: 8px;
+}
+
+.adm-checklist li > .adm-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ---------- Paging, older requests, Deleted, Settings ---------- */
+.adm-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--a-line);
+  color: var(--a-ink-2);
+  font-size: 0.88rem;
+}
+.adm-older {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+}
+.adm-older .adm-hint {
+  margin: 0;
+}
+.adm-older-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.adm-row-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+.adm-row-actions .adm-btn + .adm-btn {
+  margin-left: 8px;
+}
+.adm-settings {
+  display: grid;
+  gap: 20px;
+}
+.adm-settings-foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 0;
+  background: var(--a-bg);
+}
+.adm-settings-foot .adm-form-error {
+  margin: 0 auto 0 0;
 }
 
 /* ---------- Loading / sign-in gate ---------- */

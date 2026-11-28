@@ -2,7 +2,7 @@ import { canonical } from "@/lib/seo";
 import Link from "next/link";
 import InteriorShell from "@/components/InteriorShell";
 import { SITE_CONFIG } from "@/lib/config";
-import { PRIVACY_INFORMATION } from "@/lib/hotel-content";
+import { getSettings } from "@/lib/db";
 import Icon from "@/components/Icon";
 
 export const metadata = {
@@ -12,10 +12,16 @@ export const metadata = {
     "How Hotel Ganga Imperial collects, uses, shares and keeps the details you share in a reservation request.",
 };
 
-// Facts left "" in PRIVACY_INFORMATION are not shown; they appear in the admin launch checklist instead.
-export default function Privacy() {
-  const { legalEntity, contactName, retentionMonths, providers, lastUpdated } = PRIVACY_INFORMATION;
-  const contactEmail = PRIVACY_INFORMATION.contactEmail || SITE_CONFIG.contact.email;
+// Facts are edited under Admin → Settings. Ones left "" are not shown; they appear in the admin launch checklist.
+// Static, refreshed every 5 minutes and right after a change.
+export const revalidate = 300;
+
+export default async function Privacy() {
+  const settings = await getSettings();
+  const { legalEntity, retentionMonths, providers } = settings;
+  const contactName = settings.privacyContactName,
+    lastUpdated = settings.privacyLastUpdated;
+  const contactEmail = settings.privacyContactEmail || SITE_CONFIG.contact.email;
   const business = legalEntity || SITE_CONFIG.hotelName;
   return (
     <InteriorShell>

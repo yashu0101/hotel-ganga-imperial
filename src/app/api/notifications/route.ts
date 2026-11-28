@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
-import { countNotifications, requeueFailedNotifications } from "@/lib/db";
+import { countNotifications, getSettings, requeueFailedNotifications } from "@/lib/db";
 import { deliverNotifications, notificationConfigured, scheduledJobsConfigured } from "@/lib/notifications";
-import { PRIVACY_INFORMATION } from "@/lib/hotel-content";
 import { isAdmin, json, readBody, serverError, unauthorized } from "@/lib/admin-route";
 
 export async function GET() {
@@ -11,7 +10,7 @@ export async function GET() {
       configured: notificationConfigured(),
       // The panel warns when the scheduled job cannot run, since the retention promise and automatic retries need it.
       scheduledJobs: scheduledJobsConfigured(),
-      retentionMonths: PRIVACY_INFORMATION.retentionMonths,
+      retentionMonths: (await getSettings()).retentionMonths,
       ...(await countNotifications()),
     });
   } catch (error) {

@@ -14,7 +14,7 @@ import DoorIntro from "@/components/DoorIntro";
 import Experience from "@/components/Experience";
 import MotionEffects from "@/components/MotionEffects";
 import MobileReserve from "@/components/MobileReserve";
-import { getOffers, getRooms } from "@/lib/db";
+import { getOffers, getRooms, getSettings } from "@/lib/db";
 import { SITE_CONFIG } from "@/lib/config";
 import { canonical, hotelJsonLd, jsonLdScript } from "@/lib/seo";
 
@@ -23,7 +23,7 @@ export const revalidate = 300;
 export const metadata = { ...canonical("/") };
 
 export default async function Home() {
-  const [allRooms, offers] = await Promise.all([getRooms(), getOffers()]);
+  const [allRooms, offers, settings] = await Promise.all([getRooms(), getOffers(), getSettings()]);
   const rooms = allRooms.filter(r => !r.hidden);
   return (
     <>
@@ -31,7 +31,12 @@ export default async function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: jsonLdScript(
-            hotelJsonLd({ rooms, contact: SITE_CONFIG.contact, siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "" }),
+            hotelJsonLd({
+              rooms,
+              contact: SITE_CONFIG.contact,
+              siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "",
+              times: { checkIn: settings.checkIn, checkOut: settings.checkOut },
+            }),
           ),
         }}
       />

@@ -10,12 +10,15 @@ export type Section =
   | "requests"
   | "calendar"
   | "enquiries"
+  | "deleted"
   | "rooms"
   | "offers"
   | "banquet"
   | "dining"
   | "reviews"
   | "analytics"
+  | "activity"
+  | "settings"
   | "setup";
 
 export const NAV: { group: string; items: { id: Section; icon: IconName }[] }[] = [
@@ -26,6 +29,7 @@ export const NAV: { group: string; items: { id: Section; icon: IconName }[] }[] 
       { id: "requests", icon: "requests" },
       { id: "calendar", icon: "calendar" },
       { id: "enquiries", icon: "enquiries" },
+      { id: "deleted", icon: "trash" },
     ],
   },
   {
@@ -42,6 +46,8 @@ export const NAV: { group: string; items: { id: Section; icon: IconName }[] }[] 
     group: "admin.group.manage",
     items: [
       { id: "analytics", icon: "analytics" },
+      { id: "activity", icon: "list" },
+      { id: "settings", icon: "sliders" },
       { id: "setup", icon: "setup" },
     ],
   },

@@ -103,8 +103,51 @@ export function requestType(t: (key: string) => string, what: string) {
   return what;
 }
 
+/**
+ * Whether a request is a room stay rather than an event or dining request. Decided from the request itself, so a
+ * stay whose room type was deleted or renamed still counts as rooms (and ends the night before check-out).
+ */
+export function isRoomStay(b: { roomType: string; roomsRequested?: number }) {
+  if (b.roomsRequested === 0) return false;
+  return b.roomType !== HALL && b.roomType !== DINING && !b.roomType.startsWith(PACKAGE_PREFIX);
+}
+/** A checked-in guest due to leave by `today`: on the check-out or end date, or the only day of a one-day request. */
+export function dueToLeave(b: { bookingStatus: string; checkin: string; checkout: string }, today: string) {
+  return b.bookingStatus === "checked-in" && !!b.checkin && (b.checkout || b.checkin) <= today;
+}
+/** Rooms asked for across requests; events and dining ask for none. */
+export function roomsRequested(requests: { roomType: string; roomsRequested?: number }[]) {
+  return requests.reduce((n, b) => n + (isRoomStay(b) ? b.roomsRequested || 1 : 0), 0);
+}
+/** The booking form's value for a room. The calendar uses it too, so a filtered day opens the form on that room. */
+export const roomValue = (r: { id?: string; name: string }) => "room:" + (r.id || r.name);
+
 /** A whole number within [min, max] for the booking steppers; anything unreadable becomes min. */
 export function clampCount(value: string | number, min: number, max: number) {
   const n = Math.floor(Number(value));
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : min;
+}
+
+/** An entry's details (stored as JSON by recordChange) in the admin's language. */
+export function describeChange(t: (key: string) => string, summary: string) {
+  if (!summary) return "–";
+  let details: { label?: string; reference?: string; fields?: string[]; status?: string; count?: number };
+  try {
+    details = JSON.parse(summary);
+  } catch {
+    return summary;
+  }
+  const known = (key: string) => (t(key) === key ? "" : t(key));
+  const field = (key: string) => known("admin.f." + key) || known("admin.setting." + key) || key;
+  return (
+    [
+      details.label,
+      details.reference,
+      details.status && (known("admin.status." + details.status) || details.status),
+      details.fields?.map(field).join(", "),
+      details.count !== undefined && fill(t("admin.exportedCount"), { n: details.count }),
+    ]
+      .filter(Boolean)
+      .join(" · ") || "–"
+  );
 }

@@ -1,7 +1,20 @@
 import fs from "fs";
 import path from "path";
-import type { NotificationJob, Enquiry, Booking, Offer, Room, BanquetPackage, DiningOption, Review, DB } from "./types";
+import type {
+  NotificationJob,
+  Enquiry,
+  Booking,
+  Offer,
+  Room,
+  BanquetPackage,
+  DiningOption,
+  Review,
+  DB,
+  HotelSettings,
+  AuditEntry,
+} from "./types";
 import { SITE_CONFIG } from "./config";
+import { DEFAULT_SETTINGS } from "./hotel-content";
 import { slugify } from "./validation";
 
 // Storage has two interchangeable backends with identical behaviour:
@@ -31,7 +44,11 @@ function getSQL() {
 // ============================================================
 // JSON file
 // ============================================================
-const DB_PATH = path.join(process.cwd(), "data", "db.json");
+// HOTEL_DB_FILE (relative to the project) lets end-to-end tests use a throwaway copy instead of data/db.json. The
+// default path stays static so file tracing ships only data/db.json; the override is excluded from tracing.
+const DB_PATH = process.env.HOTEL_DB_FILE
+  ? path.join(/*turbopackIgnore: true*/ process.cwd(), process.env.HOTEL_DB_FILE)
+  : path.join(process.cwd(), "data", "db.json");
 const emptyDB = (): DB => ({
   enquiries: [],
   bookings: [],
@@ -119,7 +136,11 @@ const ENQUIRIES: CollectionDef = {
   table: "enquiries",
   jsonKey: "enquiries",
   newestFirst: true,
-  fields: ["name", "phone", "email", "type", "guests", "checkin", "checkout", "message", "status"].map(k => f(k)),
+  fields: [
+    ...["name", "phone", "email", "type", "guests", "checkin", "checkout", "message", "status"].map(k => f(k)),
+    f("deletedAt", "deleted_at", { decode: v => (v ? String(v) : undefined) }),
+  ],
+  migrations: ["ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS deleted_at TEXT"],
 };
 const OFFERS: CollectionDef = {
   table: "offers",
@@ -133,20 +154,63 @@ const OFFERS: CollectionDef = {
     f("validFrom", "valid_from"),
     f("validTo", "valid_to"),
     f("active"),
+    f("minAdvanceDays", "min_advance_days", { decode: v => Number(v ?? 0) }),
+    f("minNights", "min_nights", { decode: v => Number(v ?? 0) }),
+    f("sample", "sample", { decode: v => !!v }),
   ],
-  migrations: ["ALTER TABLE offers ADD COLUMN IF NOT EXISTS code TEXT DEFAULT ''"],
+  migrations: [
+    "ALTER TABLE offers ADD COLUMN IF NOT EXISTS code TEXT DEFAULT ''",
+    // Columns added after launch are added without a default first, so the rows stored before (and only those) are
+    // NULL and get the seeded content's values once: its conditions, and the sample flag for the seeded offers.
+    "ALTER TABLE offers ADD COLUMN IF NOT EXISTS min_advance_days INT",
+    "UPDATE offers SET min_advance_days = CASE WHEN id = 'offer-001' THEN 30 ELSE 0 END WHERE min_advance_days IS NULL",
+    "ALTER TABLE offers ALTER COLUMN min_advance_days SET DEFAULT 0",
+    "ALTER TABLE offers ADD COLUMN IF NOT EXISTS min_nights INT",
+    "UPDATE offers SET min_nights = CASE WHEN id = 'offer-002' THEN 2 ELSE 0 END WHERE min_nights IS NULL",
+    "ALTER TABLE offers ALTER COLUMN min_nights SET DEFAULT 0",
+    "ALTER TABLE offers ADD COLUMN IF NOT EXISTS sample BOOLEAN",
+    "UPDATE offers SET sample = (id IN ('offer-001', 'offer-002', 'offer-003')) WHERE sample IS NULL",
+    "ALTER TABLE offers ALTER COLUMN sample SET DEFAULT false",
+  ],
 };
 const BANQUET: CollectionDef = {
   table: "banquet_packages",
   jsonKey: "banquetPackages",
   newestFirst: false,
-  fields: [f("name"), f("description"), f("capacity"), f("price"), f("includes", "includes", jsonList), f("active")],
+  fields: [
+    f("name"),
+    f("description"),
+    f("capacity"),
+    f("price"),
+    f("includes", "includes", jsonList),
+    f("active"),
+    f("sample", "sample", { decode: v => !!v }),
+  ],
+  // Seeded packages (stored before this column existed) are flagged as samples once.
+  migrations: [
+    "ALTER TABLE banquet_packages ADD COLUMN IF NOT EXISTS sample BOOLEAN",
+    "UPDATE banquet_packages SET sample = (id IN ('banq-001', 'banq-002', 'banq-003')) WHERE sample IS NULL",
+    "ALTER TABLE banquet_packages ALTER COLUMN sample SET DEFAULT false",
+  ],
 };
 const DINING: CollectionDef = {
   table: "dining_options",
   jsonKey: "diningOptions",
   newestFirst: false,
-  fields: [f("name"), f("description"), f("price"), f("category"), f("active")],
+  fields: [
+    f("name"),
+    f("description"),
+    f("price"),
+    f("category"),
+    f("active"),
+    f("sample", "sample", { decode: v => !!v }),
+  ],
+  // Seeded dining options (stored before this column existed) are flagged as samples once.
+  migrations: [
+    "ALTER TABLE dining_options ADD COLUMN IF NOT EXISTS sample BOOLEAN",
+    "UPDATE dining_options SET sample = (id IN ('din-001', 'din-002', 'din-003', 'din-004', 'din-005')) WHERE sample IS NULL",
+    "ALTER TABLE dining_options ALTER COLUMN sample SET DEFAULT false",
+  ],
 };
 const REVIEWS: CollectionDef = {
   table: "reviews",
@@ -266,10 +330,29 @@ const banquet = collection<BanquetPackage>(BANQUET);
 const dining = collection<DiningOption>(DINING);
 const reviews = collection<Review>(REVIEWS);
 
-export const getEnquiries = enquiries.list;
+/** Older enquiries; `deleted: true` lists the ones in Deleted instead. */
+export const getEnquiries = async ({ deleted = false } = {}) =>
+  (await enquiries.list()).filter(e => !!e.deletedAt === deleted);
 export const addEnquiry = (e: Omit<Enquiry, "id" | "createdAt" | "status">) => enquiries.add({ ...e, status: "new" });
-export const updateEnquiryStatus = (id: string, status: Enquiry["status"]) => enquiries.update(id, { status });
-export const deleteEnquiry = enquiries.remove;
+/** Changes an enquiry's status; null when it doesn't exist or is in Deleted. */
+export async function updateEnquiryStatus(id: string, status: Enquiry["status"]) {
+  const current = (await enquiries.list()).find(e => e.id === id && !e.deletedAt);
+  return current ? enquiries.update(id, { status }) : null;
+}
+/** Moves an enquiry to Deleted, from where it can be restored for 30 days. */
+export async function deleteEnquiry(id: string) {
+  const current = (await enquiries.list()).find(e => e.id === id && !e.deletedAt);
+  return !!current && !!(await enquiries.update(id, { deletedAt: new Date().toISOString() }));
+}
+export async function restoreEnquiry(id: string) {
+  const current = (await enquiries.list()).find(e => e.id === id && e.deletedAt);
+  return !!current && !!(await enquiries.update(id, { deletedAt: null } as unknown as Partial<Enquiry>));
+}
+/** Erase an enquiry that is already in Deleted (e.g. when a guest asks for their data to be erased). */
+export async function eraseEnquiry(id: string) {
+  const current = (await enquiries.list()).find(e => e.id === id && e.deletedAt);
+  return !!current && enquiries.remove(id);
+}
 /** Thrown when another offer already uses the code: guests could not tell which offer they were given. */
 export class OfferCodeTakenError extends ConflictError {
   constructor(code: string, title: string) {
@@ -316,6 +399,7 @@ const ROOM_FIELDS = [
   "text",
   "image",
   "rate",
+  "sampleRate",
   "sample",
   "hidden",
   ...ROOM_FACTS,
@@ -324,7 +408,12 @@ const ROOM_FIELDS = [
 ] as const;
 type RoomInput = Omit<Room, "id" | "previousSlugs">;
 /** Postgres column per room field where the names differ. Lists are stored as JSON text. */
-const ROOM_COLUMNS: Record<string, string> = { inRoom: "in_room", previousSlugs: "previous_slugs", view: "room_view" };
+const ROOM_COLUMNS: Record<string, string> = {
+  inRoom: "in_room",
+  previousSlugs: "previous_slugs",
+  view: "room_view",
+  sampleRate: "sample_rate",
+};
 const ROOM_LISTS = new Set(["inRoom", "services", "previousSlugs"]);
 const roomColumn = (key: string) => ROOM_COLUMNS[key] ?? key;
 const encodeRoomValue = (key: string, value: unknown) => (ROOM_LISTS.has(key) ? JSON.stringify(value ?? []) : value);
@@ -400,6 +489,7 @@ const roomRow = (r: Record<string, unknown>): Room =>
     text: r.text,
     image: r.image,
     rate: r.rate,
+    sampleRate: !!r.sample_rate,
     sample: !!r.sample,
     hidden: !!r.hidden,
     ...Object.fromEntries(ROOM_FACTS.map(k => [k, r[roomColumn(k)] ?? ""])),
@@ -420,6 +510,16 @@ async function prepareRooms() {
     await sql.query("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS slug TEXT");
     await sql.query("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS previous_slugs TEXT DEFAULT '[]'");
     await sql.query("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS services TEXT DEFAULT '[]'");
+    // Rooms stored before sample_rate existed get it once: a room still showing its seeded name and rate is a sample.
+    await sql.query("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS sample_rate BOOLEAN");
+    const seeded = SITE_CONFIG.rooms.filter(r => r.sampleRate);
+    if (seeded.length)
+      await sql.query(
+        `UPDATE rooms SET sample_rate = ((name, rate) IN (${seeded.map((_, i) => `($${2 * i + 1}, $${2 * i + 2})`).join(", ")})) WHERE sample_rate IS NULL`,
+        seeded.flatMap(r => [r.name, r.rate]),
+      );
+    else await sql.query("UPDATE rooms SET sample_rate = false WHERE sample_rate IS NULL");
+    await sql.query("ALTER TABLE rooms ALTER COLUMN sample_rate SET DEFAULT false");
     for (const key of ROOM_FACTS)
       await sql.query(`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS ${roomColumn(key)} TEXT DEFAULT ''`);
     const rows: Record<string, unknown>[] = await sql.query("SELECT * FROM rooms ORDER BY idx");
@@ -483,7 +583,14 @@ export async function addRoom(input: Omit<RoomInput, "slug"> & { slug?: string }
   }
   const db = readDB();
   if (room.slug && db.config.rooms.some(r => r.slug === room.slug)) throw new RoomAddressTakenError(room.slug);
-  const created = { ...room, id: "", slug: room.slug || "" } as Room;
+  // Never reuse an id older requests point at (a deleted room's, or one a request still names), so a new room with
+  // an old name does not take over that room's past requests.
+  const usedIds = new Set([
+    ...db.config.rooms.map(r => r.id ?? ""),
+    ...(db.retiredRoomIds ?? []),
+    ...db.bookings.map(b => b.roomId ?? ""),
+  ]);
+  const created = { ...room, id: freeSlug(slugify(room.name), usedIds), slug: room.slug || "" } as Room;
   db.config.rooms.push(created);
   normalizeRooms(db);
   writeDB(db);
@@ -540,6 +647,7 @@ export async function deleteRoom(id: string): Promise<boolean> {
   const index = db.config.rooms.findIndex(r => r.id === id);
   if (index === -1) return false;
   db.config.rooms.splice(index, 1);
+  db.retiredRoomIds = [...new Set([...(db.retiredRoomIds ?? []), id])];
   writeDB(db);
   return true;
 }
@@ -579,6 +687,7 @@ function mapBookingRow(r: Record<string, unknown>): Booking {
     couponCode: r.coupon_code == null ? undefined : String(r.coupon_code),
     couponOffer: r.coupon_offer == null ? undefined : String(r.coupon_offer),
     createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+    ...(r.deleted_at ? { deletedAt: isoString(r.deleted_at) } : {}),
   } as Booking);
 }
 /**
@@ -602,6 +711,7 @@ async function prepareBookingExtensions() {
     await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS source TEXT DEFAULT ''`;
     await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS coupon_code TEXT`;
     await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS coupon_offer TEXT`;
+    await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`;
     await sql`CREATE TABLE IF NOT EXISTS notification_outbox (id TEXT PRIMARY KEY, booking_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW())`;
     await sql`ALTER TABLE notification_outbox ADD COLUMN IF NOT EXISTS last_attempt_at TIMESTAMPTZ`;
   })().catch(error => {
@@ -632,6 +742,8 @@ export async function prepareStorage() {
   await prepareBookingExtensions();
   await prepareAdminState();
   await prepareRooms();
+  await prepareSettings();
+  await prepareAudit();
   for (const def of [ENQUIRIES, OFFERS, BANQUET, DINING, REVIEWS])
     for (const statement of def.migrations ?? []) await getSQL().query(statement);
 }
@@ -646,9 +758,10 @@ export async function getBookingByIdAndEmail(reference: string, email: string): 
   // References are UUIDs. Anything else cannot match, which also keeps LIKE wildcards out of the query.
   if (!/^[0-9a-f-]{8,36}$/.test(ref) || !wanted) return null;
   if (IS_POSTGRES) {
+    await prepareBookingExtensions();
     const sql = getSQL();
     const rows =
-      await sql`SELECT * FROM bookings WHERE id LIKE ${ref + "%"} AND LOWER(TRIM(email)) = ${wanted} ORDER BY created_at DESC LIMIT 1`;
+      await sql`SELECT * FROM bookings WHERE id LIKE ${ref + "%"} AND LOWER(TRIM(email)) = ${wanted} AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`;
     return rows[0] ? mapBookingRow(rows[0]) : null;
   }
   return (
@@ -657,13 +770,15 @@ export async function getBookingByIdAndEmail(reference: string, email: string): 
     ) ?? null
   );
 }
+/** A request that is not in Deleted, or null. */
 export async function getBooking(id: string): Promise<Booking | null> {
   if (IS_POSTGRES) {
+    await prepareBookingExtensions();
     const sql = getSQL();
-    const rows = await sql`SELECT * FROM bookings WHERE id = ${id}`;
+    const rows = await sql`SELECT * FROM bookings WHERE id = ${id} AND deleted_at IS NULL`;
     return rows[0] ? mapBookingRow(rows[0]) : null;
   }
-  return readDB().bookings.find(b => b.id === id) ?? null;
+  return readDB().bookings.find(b => b.id === id && !b.deletedAt) ?? null;
 }
 
 /**
@@ -695,12 +810,66 @@ export async function purgeRequestsBefore(before: Date): Promise<number> {
   writeDB(db);
   return removed;
 }
-export async function getBookings(): Promise<Booking[]> {
+/** Statuses that still need staff: always loaded with the recent requests, however old the request is. */
+const OPEN_STATUSES = ["pending", "confirmed", "checked-in"];
+export interface BookingQuery {
+  /** Recent and open requests: sent on or after this day, with dates on or after it, or still open. */
+  since?: string;
+  /** One page of older requests: sent before this moment (ISO), newest first, at most `limit`. */
+  before?: string;
+  /** With `before`: the last request of the previous page, so requests sent in the same millisecond aren't skipped. */
+  beforeId?: string;
+  limit?: number;
+  /** Requests whose stay or event touches these days (YYYY-MM-DD, inclusive), for a calendar month. */
+  staysFrom?: string;
+  staysTo?: string;
+  /** The requests in Deleted instead (most recently deleted first). */
+  deleted?: boolean;
+}
+/** Requests newest first. Without options: every request not in Deleted. */
+export async function getBookings({
+  since,
+  before,
+  beforeId = "",
+  limit = 200,
+  staysFrom,
+  staysTo,
+  deleted = false,
+}: BookingQuery = {}): Promise<Booking[]> {
   if (IS_POSTGRES) {
+    await prepareBookingExtensions();
     const sql = getSQL();
-    return (await sql`SELECT * FROM bookings ORDER BY created_at DESC`).map(mapBookingRow);
+    const rows = deleted
+      ? await sql`SELECT * FROM bookings WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`
+      : since
+        ? await sql`SELECT * FROM bookings WHERE deleted_at IS NULL AND (created_at >= ${since + "T00:00:00Z"} OR checkin >= ${since} OR checkout >= ${since} OR booking_status = ANY(${OPEN_STATUSES})) ORDER BY created_at DESC`
+        : before
+          ? await sql`SELECT * FROM bookings WHERE deleted_at IS NULL AND (created_at < ${before} OR (created_at = ${before} AND id < ${beforeId})) ORDER BY created_at DESC, id DESC LIMIT ${limit}`
+          : staysFrom && staysTo
+            ? await sql`SELECT * FROM bookings WHERE deleted_at IS NULL AND checkin <> '' AND checkin <= ${staysTo} AND COALESCE(NULLIF(checkout, ''), checkin) >= ${staysFrom} ORDER BY created_at DESC`
+            : await sql`SELECT * FROM bookings WHERE deleted_at IS NULL ORDER BY created_at DESC`;
+    return rows.map(mapBookingRow);
   }
-  return [...readDB().bookings].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const all = readDB().bookings;
+  if (deleted) return all.filter(b => b.deletedAt).sort((a, b) => b.deletedAt!.localeCompare(a.deletedAt!));
+  const live = all
+    .filter(b => !b.deletedAt)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+  if (since)
+    return live.filter(
+      b =>
+        b.createdAt >= since ||
+        (b.checkin || "") >= since ||
+        (b.checkout || "") >= since ||
+        OPEN_STATUSES.includes(b.bookingStatus),
+    );
+  if (before)
+    return live
+      .filter(b => b.createdAt < before || (b.createdAt === before && !!beforeId && b.id < beforeId))
+      .slice(0, limit);
+  if (staysFrom && staysTo)
+    return live.filter(b => !!b.checkin && b.checkin <= staysTo && (b.checkout || b.checkin) >= staysFrom);
+  return live;
 }
 export async function addBooking(b: NewBooking, options: NewBookingOptions = {}): Promise<Booking> {
   const { status = "pending", source, notify = true } = options;
@@ -739,34 +908,102 @@ export async function addBooking(b: NewBooking, options: NewBookingOptions = {})
 /** Staff can only change a request's status. Payment fields are not used: no payments are taken. */
 export async function updateBooking(id: string, updates: Pick<Booking, "bookingStatus">): Promise<Booking | null> {
   if (IS_POSTGRES) {
+    await prepareBookingExtensions();
     const sql = getSQL();
-    const rows = await sql`UPDATE bookings SET booking_status = ${updates.bookingStatus} WHERE id = ${id} RETURNING *`;
+    const rows =
+      await sql`UPDATE bookings SET booking_status = ${updates.bookingStatus} WHERE id = ${id} AND deleted_at IS NULL RETURNING *`;
     return rows[0] ? mapBookingRow(rows[0]) : null;
   }
   const db = readDB();
-  const booking = db.bookings.find(x => x.id === id);
+  const booking = db.bookings.find(x => x.id === id && !x.deletedAt);
   if (!booking) return null;
   booking.bookingStatus = updates.bookingStatus;
   writeDB(db);
   return booking;
 }
+/**
+ * Moves a request to Deleted. It disappears from the dashboard and tracking, its queued notification waits unsent,
+ * and it can be restored for 30 days before the retention job erases it.
+ */
 export async function deleteBooking(id: string): Promise<boolean> {
   if (IS_POSTGRES) {
-    const sql = getSQL();
     await prepareBookingExtensions();
-    const [, rows] = await sql.transaction([
-      sql`DELETE FROM notification_outbox WHERE booking_id = ${id}`,
-      sql`DELETE FROM bookings WHERE id = ${id} RETURNING id`,
-    ]);
+    const sql = getSQL();
+    const rows = await sql`UPDATE bookings SET deleted_at = NOW() WHERE id = ${id} AND deleted_at IS NULL RETURNING id`;
     return rows.length > 0;
   }
   const db = readDB();
-  const index = db.bookings.findIndex(x => x.id === id);
-  if (index === -1) return false;
-  db.bookings.splice(index, 1);
+  const booking = db.bookings.find(x => x.id === id && !x.deletedAt);
+  if (!booking) return false;
+  booking.deletedAt = new Date().toISOString();
+  writeDB(db);
+  return true;
+}
+/** Whether a request is in Deleted (restorable), as opposed to erased or never stored. */
+export async function isBookingInDeleted(id: string): Promise<boolean> {
+  if (IS_POSTGRES) {
+    await prepareBookingExtensions();
+    const sql = getSQL();
+    return (await sql`SELECT id FROM bookings WHERE id = ${id} AND deleted_at IS NOT NULL`).length > 0;
+  }
+  return readDB().bookings.some(b => b.id === id && !!b.deletedAt);
+}
+/** Brings a request back from Deleted. */
+export async function restoreBooking(id: string): Promise<boolean> {
+  if (IS_POSTGRES) {
+    await prepareBookingExtensions();
+    const sql = getSQL();
+    const rows =
+      await sql`UPDATE bookings SET deleted_at = NULL WHERE id = ${id} AND deleted_at IS NOT NULL RETURNING id`;
+    return rows.length > 0;
+  }
+  const db = readDB();
+  const booking = db.bookings.find(x => x.id === id && x.deletedAt);
+  if (!booking) return false;
+  delete booking.deletedAt;
+  writeDB(db);
+  return true;
+}
+/** Erases a request that is already in Deleted, with its notification event (e.g. a guest's erasure request). */
+export async function eraseBooking(id: string): Promise<boolean> {
+  if (IS_POSTGRES) {
+    await prepareBookingExtensions();
+    const sql = getSQL();
+    const rows =
+      await sql`WITH gone AS (DELETE FROM bookings WHERE id = ${id} AND deleted_at IS NOT NULL RETURNING id), events AS (DELETE FROM notification_outbox WHERE booking_id IN (SELECT id FROM gone)) SELECT COUNT(*)::int AS n FROM gone`;
+    return Number(rows[0]?.n ?? 0) > 0;
+  }
+  const db = readDB();
+  if (!db.bookings.some(x => x.id === id && x.deletedAt)) return false;
+  db.bookings = db.bookings.filter(x => x.id !== id);
   db.notificationJobs = db.notificationJobs!.filter(j => j.bookingId !== id);
   writeDB(db);
   return true;
+}
+/** Erase everything that went into Deleted before `before` (the retention job passes 30 days ago). */
+export async function purgeDeletedBefore(before: Date): Promise<number> {
+  const cutoff = before.toISOString();
+  if (IS_POSTGRES) {
+    await prepareBookingExtensions();
+    for (const statement of ENQUIRIES.migrations ?? []) await getSQL().query(statement);
+    const sql = getSQL();
+    const [bookings, enquiryRows] = await sql.transaction([
+      sql`WITH gone AS (DELETE FROM bookings WHERE deleted_at < ${cutoff} RETURNING id), events AS (DELETE FROM notification_outbox WHERE booking_id IN (SELECT id FROM gone)) SELECT COUNT(*)::int AS n FROM gone`,
+      sql`WITH gone AS (DELETE FROM enquiries WHERE deleted_at IS NOT NULL AND deleted_at < ${cutoff} RETURNING id) SELECT COUNT(*)::int AS n FROM gone`,
+    ]);
+    return Number(bookings[0]?.n ?? 0) + Number(enquiryRows[0]?.n ?? 0);
+  }
+  const db = readDB();
+  const expired = (r: { deletedAt?: string | null }) => !!r.deletedAt && r.deletedAt < cutoff;
+  const gone = new Set(db.bookings.filter(expired).map(b => b.id));
+  const enquiryCount = db.enquiries.length;
+  db.enquiries = db.enquiries.filter(e => !expired(e));
+  const removed = gone.size + enquiryCount - db.enquiries.length;
+  if (!removed) return 0;
+  db.bookings = db.bookings.filter(b => !gone.has(b.id));
+  db.notificationJobs = db.notificationJobs!.filter(j => !gone.has(j.bookingId));
+  writeDB(db);
+  return removed;
 }
 
 export async function getNotificationJobs(): Promise<NotificationJob[]> {
@@ -817,6 +1054,7 @@ export async function claimNotificationJobs({
     const rows = await sql`UPDATE notification_outbox SET last_attempt_at = NOW() WHERE id IN (
       SELECT id FROM notification_outbox
       WHERE status = 'pending' AND (${bookingId ?? null}::text IS NULL OR booking_id = ${bookingId ?? null})
+        AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.id = notification_outbox.booking_id AND b.deleted_at IS NOT NULL)
         AND (last_attempt_at IS NULL OR last_attempt_at <= NOW() - (CASE WHEN ${force} THEN ${NOTIFICATION_CLAIM_GUARD_MINUTES} ELSE GREATEST(${NOTIFICATION_CLAIM_GUARD_MINUTES}, LEAST(5 * POWER(2, attempts - 1), 360)) END) * INTERVAL '1 minute')
       ORDER BY attempts ASC, created_at ASC LIMIT ${limit} FOR UPDATE SKIP LOCKED
     ) RETURNING *`;
@@ -835,10 +1073,12 @@ export async function claimNotificationJobs({
   }
   const db = readDB();
   const now = Date.now();
+  const inDeleted = deletedIds(db);
   const due = db
     .notificationJobs!.filter(
       j =>
         j.status === "pending" &&
+        !inDeleted.has(j.bookingId) &&
         (!bookingId || j.bookingId === bookingId) &&
         (!j.lastAttemptAt ||
           Date.parse(j.lastAttemptAt) <=
@@ -856,13 +1096,17 @@ export async function countNotifications(): Promise<Record<NotificationJob["stat
   if (IS_POSTGRES) {
     await prepareBookingExtensions();
     const sql = getSQL();
-    for (const r of await sql`SELECT status, COUNT(*)::int AS n FROM notification_outbox GROUP BY status`)
+    for (const r of await sql`SELECT status, COUNT(*)::int AS n FROM notification_outbox WHERE NOT EXISTS (SELECT 1 FROM bookings b WHERE b.id = notification_outbox.booking_id AND b.deleted_at IS NOT NULL) GROUP BY status`)
       if (r.status in counts) counts[r.status as keyof typeof counts] = Number(r.n);
     return counts;
   }
-  for (const j of readDB().notificationJobs!) if (j.status in counts) counts[j.status]++;
+  const db = readDB();
+  const inDeleted = deletedIds(db);
+  for (const j of db.notificationJobs!) if (j.status in counts && !inDeleted.has(j.bookingId)) counts[j.status]++;
   return counts;
 }
+/** Requests in Deleted: their notification events wait (unsent, uncounted) until the request is restored or erased. */
+const deletedIds = (db: DB) => new Set(db.bookings.filter(b => b.deletedAt).map(b => b.id));
 /** Remove an event whose request no longer exists, so it cannot hold a retry slot. */
 export async function discardNotification(id: string) {
   if (IS_POSTGRES) {
@@ -939,4 +1183,104 @@ export async function bumpSessionVersion(): Promise<number> {
   db.adminState = { ...db.adminState, sessionVersion: (db.adminState?.sessionVersion ?? 0) + 1 };
   writeDB(db);
   return db.adminState.sessionVersion!;
+}
+
+// ============================================================
+// Hotel settings (policies and privacy facts, Admin → Settings). Only values staff changed are stored; the rest
+// come from DEFAULT_SETTINGS, so a new default reaches sites that never changed that value.
+// ============================================================
+const SETTING_KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof HotelSettings)[];
+const storedSettings = (value: unknown): Partial<HotelSettings> => {
+  const record = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  return Object.fromEntries(SETTING_KEYS.filter(k => record[k] !== undefined).map(k => [k, record[k]]));
+};
+let settingsSetup: Promise<void> | undefined;
+async function prepareSettings() {
+  if (!IS_POSTGRES) return;
+  settingsSetup ??= (async () => {
+    await getSQL().query("CREATE TABLE IF NOT EXISTS hotel_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  })().catch(error => {
+    settingsSetup = undefined;
+    throw error;
+  });
+  await settingsSetup;
+}
+async function readStoredSettings(): Promise<Partial<HotelSettings>> {
+  if (IS_POSTGRES) {
+    await prepareSettings();
+    const rows = await getSQL().query("SELECT value FROM hotel_settings WHERE key = 'hotel'");
+    return storedSettings(rows[0] ? JSON.parse(String(rows[0].value)) : {});
+  }
+  return storedSettings(readDB().settings);
+}
+export async function getSettings(): Promise<HotelSettings> {
+  return { ...DEFAULT_SETTINGS, ...(await readStoredSettings()) };
+}
+/** Saves only the given settings, merged into the stored ones in one step, so two saves never undo each other. */
+export async function updateSettings(changes: Partial<HotelSettings>): Promise<HotelSettings> {
+  if (IS_POSTGRES) {
+    await prepareSettings();
+    const rows = await getSQL().query(
+      "INSERT INTO hotel_settings (key, value) VALUES ('hotel', $1) ON CONFLICT (key) DO UPDATE SET value = (hotel_settings.value::jsonb || EXCLUDED.value::jsonb)::text RETURNING value",
+      [JSON.stringify(storedSettings(changes))],
+    );
+    return { ...DEFAULT_SETTINGS, ...storedSettings(JSON.parse(String(rows[0]?.value ?? "{}"))) };
+  }
+  const db = readDB();
+  db.settings = { ...storedSettings(db.settings), ...storedSettings(changes) };
+  writeDB(db);
+  return { ...DEFAULT_SETTINGS, ...db.settings };
+}
+
+// ============================================================
+// Activity log: who changed what in the admin. Entries name requests by reference, never by guest details.
+// ============================================================
+/** Entries kept in the local file; Postgres keeps about 13 months. */
+const MAX_LOCAL_AUDIT_ENTRIES = 2000;
+let auditSetup: Promise<void> | undefined;
+async function prepareAudit() {
+  if (!IS_POSTGRES) return;
+  auditSetup ??= (async () => {
+    const sql = getSQL();
+    await sql.query(
+      "CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, at TIMESTAMPTZ NOT NULL DEFAULT NOW(), actor TEXT NOT NULL, action TEXT NOT NULL, target TEXT NOT NULL, target_id TEXT NOT NULL DEFAULT '', summary TEXT NOT NULL DEFAULT '')",
+    );
+    await sql.query("CREATE INDEX IF NOT EXISTS audit_log_at ON audit_log (at DESC)");
+  })().catch(error => {
+    auditSetup = undefined;
+    throw error;
+  });
+  await auditSetup;
+}
+export async function addAuditEntry(entry: Omit<AuditEntry, "id" | "at">): Promise<void> {
+  const item: AuditEntry = { ...entry, id: crypto.randomUUID(), at: new Date().toISOString() };
+  if (IS_POSTGRES) {
+    await prepareAudit();
+    const sql = getSQL();
+    await sql.transaction([
+      sql`INSERT INTO audit_log (id, at, actor, action, target, target_id, summary) VALUES (${item.id}, ${item.at}, ${item.actor}, ${item.action}, ${item.target}, ${item.targetId}, ${item.summary})`,
+      sql`DELETE FROM audit_log WHERE at < NOW() - INTERVAL '400 days'`,
+    ]);
+    return;
+  }
+  const db = readDB();
+  db.auditLog = [...(db.auditLog ?? []), item].slice(-MAX_LOCAL_AUDIT_ENTRIES);
+  writeDB(db);
+}
+/** The latest entries, newest first. */
+export async function getAuditLog(limit = 200): Promise<AuditEntry[]> {
+  if (IS_POSTGRES) {
+    await prepareAudit();
+    const rows = await getSQL().query("SELECT * FROM audit_log ORDER BY at DESC LIMIT $1", [limit]);
+    return rows.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      at: isoString(r.at),
+      actor: String(r.actor),
+      action: String(r.action),
+      target: String(r.target),
+      targetId: String(r.target_id ?? ""),
+      summary: String(r.summary ?? ""),
+    }));
+  }
+  return [...(readDB().auditLog ?? [])].reverse().slice(0, limit);
 }

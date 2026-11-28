@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "@/lib/context";
 import Analytics from "@/components/admin/Analytics";
@@ -9,14 +9,29 @@ import CollectionEditor from "@/components/admin/CollectionEditor";
 import Icon from "@/components/admin/icons";
 import Overview from "@/components/admin/Overview";
 import RequestTable, { type RequestRow } from "@/components/admin/RequestTable";
-import SetupView, { launchItems, type NotificationStatus } from "@/components/admin/SetupView";
+import SetupView, { type NotificationStatus } from "@/components/admin/SetupView";
+import SettingsView from "@/components/admin/SettingsView";
+import DeletedView, { type DeletedRow } from "@/components/admin/DeletedView";
+import ActivityView from "@/components/admin/ActivityView";
 import Sidebar, { SECTIONS, type Badges, type Section } from "@/components/admin/Sidebar";
-import { adminRequest, SESSION_EXPIRED } from "@/components/admin/api";
+import { adminRequest, errorText, SESSION_EXPIRED } from "@/components/admin/api";
 import { COLLECTIONS } from "@/components/admin/collections";
 import { fill, formatDay, hotelDay, localeFor } from "@/components/admin/format";
 import { AdminUIProvider, useAdminUI } from "@/components/admin/ui";
 import { BOOKING_STATUSES, ENQUIRY_STATUSES } from "@/lib/validation";
-import type { Booking, Enquiry, Room, Offer, BanquetPackage, DiningOption, Review } from "@/lib/types";
+import { SITE_CONFIG } from "@/lib/config";
+import { DEFAULT_SETTINGS, launchChecklist } from "@/lib/hotel-content";
+import type {
+  AuditEntry,
+  Booking,
+  Enquiry,
+  Room,
+  Offer,
+  BanquetPackage,
+  DiningOption,
+  Review,
+  HotelSettings,
+} from "@/lib/types";
 
 interface Data {
   bookings: Booking[];
@@ -28,8 +43,15 @@ interface Data {
   reviews: Review[];
 }
 const EMPTY: Data = { bookings: [], enquiries: [], rooms: [], offers: [], banquet: [], dining: [], reviews: [] };
-const ENDPOINTS: [keyof Data, string][] = [
-  ["bookings", "/api/bookings"],
+/**
+ * Requests load in pages: everything sent in the last 180 days, plus older ones that are still open or have dates
+ * from then on. That covers Today, the calendar around now and the 90-day analytics; staff load older pages on demand.
+ */
+const RECENT_DAYS = 180,
+  OLDER_PAGE = 200;
+const recentSince = () => hotelDay(-RECENT_DAYS);
+const ENDPOINTS = (): [keyof Data, string][] => [
+  ["bookings", "/api/bookings?since=" + recentSince()],
   ["enquiries", "/api/enquiries"],
   ["rooms", "/api/rooms"],
   ["offers", "/api/offers"],
@@ -49,6 +71,10 @@ const NEEDS: Partial<Record<Section, (keyof Data)[]>> = {
   dining: ["dining"],
   reviews: ["reviews"],
   analytics: ["bookings"],
+};
+const withoutDuplicates = <T extends { id: string }>(list: T[]) => {
+  const seen = new Set<string>();
+  return list.filter(item => !seen.has(item.id) && !!seen.add(item.id));
 };
 
 const bookingRow = (b: Booking): RequestRow => ({
@@ -85,12 +111,15 @@ const enquiryRow = (e: Enquiry): RequestRow => ({
   createdAt: e.createdAt,
 });
 
-/** "#requests/<id>" → section and the open item. Unknown hashes land on Today. */
+/** "#requests/<id>" → section and the open item. Unknown hashes land on Today; a garbled id opens nothing. */
 function readHash(): { section: Section; id: string | null } {
   const [section, id] = window.location.hash.slice(1).split("/");
-  return SECTIONS.includes(section as Section)
-    ? { section: section as Section, id: id ? decodeURIComponent(id) : null }
-    : { section: "today", id: null };
+  if (!SECTIONS.includes(section as Section)) return { section: "today", id: null };
+  try {
+    return { section: section as Section, id: id ? decodeURIComponent(id) : null };
+  } catch {
+    return { section: section as Section, id: null };
+  }
 }
 
 export default function AdminPage() {
@@ -120,6 +149,19 @@ function Dashboard() {
   const [notificationsFailed, setNotificationsFailed] = useState(false);
   // The add-booking drawer, opened from Requests or a calendar day.
   const [adding, setAdding] = useState<BookingDraft | null>(null);
+  const [settings, setSettings] = useState<HotelSettings | null>(null);
+  const [settingsFailed, setSettingsFailed] = useState(false);
+  // Older requests: the next page starts before `cursor`; `more` until a page comes back short.
+  // Older requests: the next page starts after (cursor, cursorId), the last request already loaded; `more` until
+  // a page comes back short.
+  const [older, setOlder] = useState({ cursor: "", cursorId: "", more: true });
+  // Calendar months before the recent window whose stays have been loaded.
+  const loadedMonths = useRef(new Set<string>());
+  // Deleted requests and the activity log load when their section opens (null: not loaded yet).
+  const [deleted, setDeleted] = useState<{ bookings: Booking[]; enquiries: Enquiry[] } | null>(null);
+  const [deletedFailed, setDeletedFailed] = useState(false);
+  const [activity, setActivity] = useState<AuditEntry[] | null>(null);
+  const [activityFailed, setActivityFailed] = useState(false);
   const set =
     <K extends keyof Data>(key: K) =>
     (items: Data[K]) =>
@@ -179,18 +221,87 @@ function Dashboard() {
   useEffect(() => {
     if (!ready) return;
     void loadNotifications();
-    Promise.allSettled(ENDPOINTS.map(([, url]) => adminRequest<unknown[]>(url))).then(results => {
+    adminRequest<HotelSettings>("/api/settings")
+      .then(s => (setSettings(s), setSettingsFailed(false)))
+      .catch(() => setSettingsFailed(true));
+    const endpoints = ENDPOINTS();
+    setOlder({ cursor: recentSince() + "T00:00:00.000Z", cursorId: "", more: true });
+    loadedMonths.current.clear();
+    Promise.allSettled(endpoints.map(([, url]) => adminRequest<unknown[]>(url))).then(results => {
       const next = { ...EMPTY };
       const missing = new Set<keyof Data>();
       results.forEach((r, i) => {
-        if (r.status === "fulfilled" && Array.isArray(r.value)) (next[ENDPOINTS[i][0]] as unknown[]) = r.value;
-        else missing.add(ENDPOINTS[i][0]);
+        if (r.status === "fulfilled" && Array.isArray(r.value)) (next[endpoints[i][0]] as unknown[]) = r.value;
+        else missing.add(endpoints[i][0]);
       });
       setFailed(missing);
       setData(next);
       setLoaded(true);
     });
   }, [ready, loadNotifications]);
+
+  const loadOlder = useCallback(async () => {
+    try {
+      const after = older.cursorId ? "&beforeId=" + encodeURIComponent(older.cursorId) : "";
+      const page = await adminRequest<Booking[]>(
+        `/api/bookings?before=${encodeURIComponent(older.cursor)}${after}&limit=${OLDER_PAGE}`,
+      );
+      setData(d => ({ ...d, bookings: withoutDuplicates([...d.bookings, ...page]) }));
+      const last = page.at(-1);
+      setOlder(o => ({
+        cursor: last?.createdAt ?? o.cursor,
+        cursorId: last?.id ?? o.cursorId,
+        more: page.length === OLDER_PAGE,
+      }));
+    } catch (e) {
+      notify(errorText(t, e), "error");
+    }
+  }, [older.cursor, older.cursorId, notify, t]);
+
+  /** A calendar month before the recent window: load every request with a stay in it, once. */
+  const loadMonth = useCallback(
+    async (month: string) => {
+      if (month + "-01" >= recentSince() || loadedMonths.current.has(month)) return;
+      loadedMonths.current.add(month);
+      const [year, mon] = month.split("-").map(Number);
+      const lastDay = new Date(Date.UTC(year, mon, 0)).toISOString().slice(0, 10);
+      try {
+        const stays = await adminRequest<Booking[]>(`/api/bookings?staysFrom=${month}-01&staysTo=${lastDay}`);
+        setData(d => ({ ...d, bookings: withoutDuplicates([...d.bookings, ...stays]) }));
+      } catch (e) {
+        loadedMonths.current.delete(month);
+        notify(errorText(t, e), "error");
+      }
+    },
+    [notify, t],
+  );
+
+  const loadDeleted = useCallback(async () => {
+    try {
+      const [bookings, enquiries] = await Promise.all([
+        adminRequest<Booking[]>("/api/bookings?deleted=1"),
+        adminRequest<Enquiry[]>("/api/enquiries?deleted=1"),
+      ]);
+      setDeleted({ bookings, enquiries });
+      setDeletedFailed(false);
+    } catch {
+      setDeletedFailed(true);
+    }
+  }, []);
+  const loadActivity = useCallback(async () => {
+    try {
+      setActivity(await adminRequest<AuditEntry[]>("/api/audit"));
+      setActivityFailed(false);
+    } catch {
+      setActivityFailed(true);
+    }
+  }, []);
+  // Each visit shows the current Deleted list and activity log.
+  useEffect(() => {
+    if (!ready) return;
+    if (place.section === "deleted") void loadDeleted();
+    if (place.section === "activity") void loadActivity();
+  }, [ready, place.section, loadDeleted, loadActivity]);
 
   // Nothing creates enquiries any more; the tab only appears while older ones are stored
   // (or when they could not be loaded, so the error stays visible). Links to it then land on Today.
@@ -220,12 +331,12 @@ function Dashboard() {
         }
         notify(fill(t("admin.statusChanged"), { name: row.name, status: t("admin.status." + status) }));
       } catch (e) {
-        notify(e instanceof Error ? e.message : String(e), "error");
+        notify(errorText(t, e), "error");
       }
     },
     [notify, t],
   );
-  /** Deletes after the server confirms; true when it was deleted. Callers decide where to go next. */
+  /** Moves a request to Deleted after the server confirms; true when it moved. Callers decide where to go next. */
   const deleteRequest = useCallback(
     async (row: RequestRow): Promise<boolean> => {
       const endpoint = row.kind === "booking" ? "/api/bookings" : "/api/enquiries";
@@ -236,11 +347,59 @@ function Dashboard() {
             ? { ...d, bookings: d.bookings.filter(b => b.id !== row.id) }
             : { ...d, enquiries: d.enquiries.filter(e => e.id !== row.id) },
         );
-        notify(t("admin.deleted"));
+        setDeleted(null);
+        notify(t("admin.movedToDeleted"));
         return true;
       } catch (e) {
-        notify(e instanceof Error ? e.message : String(e), "error");
+        notify(errorText(t, e), "error");
         return false;
+      }
+    },
+    [notify, t],
+  );
+  const restoreRequest = useCallback(
+    async (row: DeletedRow) => {
+      const endpoint = row.kind === "booking" ? "/api/bookings" : "/api/enquiries";
+      try {
+        await adminRequest(endpoint, "PATCH", { id: row.id, restore: true });
+        const booking = deleted?.bookings.find(b => b.id === row.id),
+          enquiry = deleted?.enquiries.find(e => e.id === row.id);
+        setData(d =>
+          booking
+            ? { ...d, bookings: withoutDuplicates([{ ...booking, deletedAt: undefined }, ...d.bookings]) }
+            : enquiry
+              ? { ...d, enquiries: withoutDuplicates([{ ...enquiry, deletedAt: undefined }, ...d.enquiries]) }
+              : d,
+        );
+        setDeleted(
+          d =>
+            d && {
+              bookings: d.bookings.filter(b => b.id !== row.id),
+              enquiries: d.enquiries.filter(e => e.id !== row.id),
+            },
+        );
+        notify(fill(t("admin.restored"), { name: row.name }));
+      } catch (e) {
+        notify(errorText(t, e), "error");
+      }
+    },
+    [deleted, notify, t],
+  );
+  const eraseRequest = useCallback(
+    async (row: DeletedRow) => {
+      const endpoint = row.kind === "booking" ? "/api/bookings" : "/api/enquiries";
+      try {
+        await adminRequest(endpoint + "?permanent=1&id=" + encodeURIComponent(row.id), "DELETE");
+        setDeleted(
+          d =>
+            d && {
+              bookings: d.bookings.filter(b => b.id !== row.id),
+              enquiries: d.enquiries.filter(e => e.id !== row.id),
+            },
+        );
+        notify(t("admin.erased"));
+      } catch (e) {
+        notify(errorText(t, e), "error");
       }
     },
     [notify, t],
@@ -304,7 +463,22 @@ function Dashboard() {
     enquiries = data.enquiries.map(enquiryRow);
   const pending = data.bookings.filter(b => b.bookingStatus === "pending").length;
   const newEnquiries = data.enquiries.filter(e => e.status === "new").length;
-  const checklist = loaded && !failed.has("rooms") ? launchItems(data.rooms).length : 0;
+  const launch =
+    loaded && !failed.has("rooms") && (settings || settingsFailed)
+      ? launchChecklist({
+          contact: SITE_CONFIG.contact,
+          settings: settings ?? DEFAULT_SETTINGS,
+          rooms: data.rooms.filter(r => !r.hidden),
+          offers: data.offers,
+          packages: data.banquet,
+          dining: data.dining,
+        })
+      : [];
+  const checklist = launch.length;
+  const deletedRows: DeletedRow[] | null = deleted && [
+    ...deleted.bookings.map(b => ({ ...bookingRow(b), deletedAt: b.deletedAt ?? "" })),
+    ...deleted.enquiries.map(e => ({ ...enquiryRow(e), deletedAt: e.deletedAt ?? "" })),
+  ];
   const deliveryProblem = notifications
     ? (!notifications.configured ? 1 : 0) + ((notifications.failed ?? 0) > 0 ? 1 : 0)
     : 0;
@@ -424,6 +598,9 @@ function Dashboard() {
                     if (await deleteRequest(row)) go("requests");
                   }}
                   onAdd={() => setAdding({})}
+                  exportHref="/api/bookings/export"
+                  onLoadOlder={loadOlder}
+                  hasOlder={older.more}
                 />
               )}
               {section === "enquiries" && (
@@ -439,10 +616,19 @@ function Dashboard() {
                   }}
                 />
               )}
+              {section === "deleted" && (
+                <DeletedView
+                  rows={deletedRows}
+                  failed={deletedFailed}
+                  onRestore={restoreRequest}
+                  onErase={eraseRequest}
+                />
+              )}
               {section === "calendar" && (
                 <CalendarView
                   bookings={data.bookings}
                   rooms={data.rooms}
+                  onMonth={loadMonth}
                   bookingRow={bookingRow}
                   onAdd={draft => setAdding(draft)}
                   onStatus={changeStatus}
@@ -485,9 +671,24 @@ function Dashboard() {
                 />
               )}
               {section === "analytics" && <Analytics bookings={data.bookings} rooms={data.rooms} />}
+              {section === "activity" && (
+                <ActivityView entries={activity} failed={activityFailed} onRefresh={() => void loadActivity()} />
+              )}
+              {section === "settings" &&
+                (settingsFailed ? (
+                  <p className="adm-alert" role="alert">
+                    {t("admin.unavailable")}
+                  </p>
+                ) : settings ? (
+                  <SettingsView settings={settings} onSaved={setSettings} />
+                ) : (
+                  <p className="adm-muted" role="status">
+                    {t("admin.loadingShort")}
+                  </p>
+                ))}
               {section === "setup" && (
                 <SetupView
-                  rooms={data.rooms}
+                  items={launch}
                   status={notifications}
                   statusError={notificationsFailed}
                   onRetry={retryNotifications}

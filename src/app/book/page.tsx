@@ -14,7 +14,16 @@ import ThemeToggle from "@/components/ThemeToggle";
 import ContactActions from "@/components/ContactActions";
 import { PHOTOS, SITE_CONFIG } from "@/lib/config";
 import { findRoom } from "@/lib/hotel-content";
-import { hotelToday, dateError, nightlyRate, phoneError, PHONE_MAX_LENGTH } from "@/lib/reservation";
+import {
+  addDaysISO,
+  hotelToday,
+  dateError,
+  MAX_DAYS_AHEAD,
+  MAX_NIGHTS,
+  nightlyRate,
+  phoneError,
+  PHONE_MAX_LENGTH,
+} from "@/lib/reservation";
 import type { Room, BanquetPackage } from "@/lib/types";
 import Icon from "@/components/Icon";
 
@@ -280,7 +289,7 @@ export default function BookPage() {
         specialRequests: note,
         hasEmail: !!String(values.get("email") || "").trim(),
         coupon: data.coupon
-          ? `${data.coupon.code} — ${data.coupon.title}${data.coupon.percent ? ` (${data.coupon.percent}% off)` : ""}, applied when the hotel confirms your rate`
+          ? `${data.coupon.code} — ${data.coupon.title}. The hotel checks the offer's terms and applies any discount when it confirms your rate.`
           : "",
       });
       setReference(data.reference);
@@ -350,6 +359,7 @@ export default function BookPage() {
                       id="arrival"
                       type="date"
                       min={hotelToday()}
+                      max={addDaysISO(hotelToday(), MAX_DAYS_AHEAD)}
                       required
                       aria-invalid={Boolean(dateProblem) || undefined}
                       aria-describedby={dateProblem ? "date-error" : undefined}
@@ -363,6 +373,7 @@ export default function BookPage() {
                       id="departure"
                       type="date"
                       min={checkin || hotelToday()}
+                      max={addDaysISO(checkin || hotelToday(), MAX_NIGHTS)}
                       required={type === "room"}
                       aria-invalid={Boolean(dateProblem) || undefined}
                       aria-describedby={dateProblem ? "date-error" : undefined}
@@ -393,7 +404,8 @@ export default function BookPage() {
                             onChange={() => choose(r.slug)}
                             required
                           />
-                          <Image src={r.image} alt="" width={96} height={96} sizes="72px" />
+                          {/* Eager: before a room is chosen, a thumbnail can be the largest image on the page. */}
+                          <Image src={r.image} alt="" width={96} height={96} sizes="72px" loading="eager" />
                           <span>
                             <strong>{r.name}</strong>
                             <small>{r.rate}</small>
@@ -574,8 +586,8 @@ export default function BookPage() {
                   )}
                   <div className="field-meta">
                     <small id="coupon-code-help">
-                      From a current offer on our home page. It is checked when you send your request, and the hotel
-                      applies the offer when it confirms your rate.
+                      From a current offer on our home page. We check its dates and conditions when you send your
+                      request; the hotel confirms the offer with your rate.
                     </small>
                   </div>
                 </div>

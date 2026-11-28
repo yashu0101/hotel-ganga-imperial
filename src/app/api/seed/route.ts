@@ -36,25 +36,26 @@ export async function POST() {
   // Seed rooms from the built-in content, so they get their web address, facts and inclusions.
   for (const room of SITE_CONFIG.rooms) await addRoom(room);
 
-  // Seed offers
-  await sql`INSERT INTO offers (id, title, description, discount, code, valid_from, valid_to, active, created_at) VALUES
-    ('offer-001', 'Early Bird Discount', 'Book 30 days in advance and get 20% off on all room types.', '20%', 'EARLY20', '2026-10-01', '2027-03-31', true, NOW()),
-    ('offer-002', 'Weekend Getaway', 'Special weekend rates - stay Friday to Sunday and save.', '15%', 'WEEKEND15', '2026-11-01', '2027-02-28', true, NOW()),
-    ('offer-003', 'Honeymoon Package', 'Suite with complimentary spa, breakfast and room decoration.', 'Complimentary extras', 'HONEYMOON', '2026-10-01', '2027-12-31', false, NOW())`;
+  // Everything below is sample content: offers start switched off, and every item is flagged as a sample so the
+  // admin launch checklist lists it until staff approve, change or remove it.
+  await sql`INSERT INTO offers (id, title, description, discount, code, valid_from, valid_to, active, min_advance_days, min_nights, sample, created_at) VALUES
+    ('offer-001', 'Early Bird Discount', 'Book 30 days in advance and get 20% off on all room types.', '20%', 'EARLY20', '2026-10-01', '2027-03-31', false, 30, 0, true, NOW()),
+    ('offer-002', 'Weekend Getaway', 'Special weekend rates - stay Friday to Sunday and save.', '15%', 'WEEKEND15', '2026-11-01', '2027-02-28', false, 0, 2, true, NOW()),
+    ('offer-003', 'Honeymoon Package', 'Suite with complimentary spa, breakfast and room decoration.', 'Complimentary extras', 'HONEYMOON', '2026-10-01', '2027-12-31', false, 0, 0, true, NOW())`;
 
   // Seed banquet packages
-  await sql`INSERT INTO banquet_packages (id, name, description, capacity, price, includes, active, created_at) VALUES
-    ('banq-001', 'Silver Package', 'Ideal for small gatherings and birthday parties. Includes basic hall decoration, sound system and standard catering.', 'Up to 100 guests', '₹75,000', '["Hall rental","Basic decoration","Sound system","Standard catering","Valet parking"]', true, NOW()),
-    ('banq-002', 'Gold Package', 'Perfect for wedding receptions and corporate events. Includes premium decoration, DJ, catering and photography.', 'Up to 200 guests', '₹1,50,000', '["Hall rental","Premium decoration","DJ & sound","Premium catering","Photography","Valet parking","Stage setup"]', true, NOW()),
-    ('banq-003', 'Platinum Package', 'The complete celebration experience. Everything in Gold plus luxury flower decoration, videography, live music and bridal suite.', 'Up to 300 guests', '₹2,50,000', '["Hall rental","Luxury decoration","Live music & DJ","Gourmet catering","Photography & videography","Bridal suite","Valet parking","Stage & lighting","Welcome drinks"]', true, NOW())`;
+  await sql`INSERT INTO banquet_packages (id, name, description, capacity, price, includes, active, sample, created_at) VALUES
+    ('banq-001', 'Silver Package', 'Ideal for small gatherings and birthday parties. Includes basic hall decoration, sound system and standard catering.', 'Up to 100 guests', '₹75,000', '["Hall rental","Basic decoration","Sound system","Standard catering","Valet parking"]', true, true, NOW()),
+    ('banq-002', 'Gold Package', 'Perfect for wedding receptions and corporate events. Includes premium decoration, DJ, catering and photography.', 'Up to 200 guests', '₹1,50,000', '["Hall rental","Premium decoration","DJ & sound","Premium catering","Photography","Valet parking","Stage setup"]', true, true, NOW()),
+    ('banq-003', 'Platinum Package', 'The complete celebration experience. Everything in Gold plus luxury flower decoration, videography, live music and bridal suite.', 'Up to 300 guests', '₹2,50,000', '["Hall rental","Luxury decoration","Live music & DJ","Gourmet catering","Photography & videography","Bridal suite","Valet parking","Stage & lighting","Welcome drinks"]', true, true, NOW())`;
 
   // Seed dining options
-  await sql`INSERT INTO dining_options (id, name, description, price, category, active, created_at) VALUES
-    ('din-001', 'Breakfast Buffet', 'A rich spread of Indian and continental options including fresh juices, eggs, parathas, cereals and more.', '₹500/person', 'breakfast', true, NOW()),
-    ('din-002', 'Lunch Thali', 'Traditional North Indian thali with dal, paneer, seasonal vegetables, rice, roti and dessert.', '₹600/person', 'lunch', true, NOW()),
-    ('din-003', 'Dinner - A La Carte', 'Evening dining with seasonal menus, local specialties and international cuisine in a candle-lit restaurant.', '₹800–1,500/person', 'dinner', true, NOW()),
-    ('din-004', 'Room Service', 'Full menu delivered to your room 24 hours a day. Order anything from snacks to full meals.', '₹300–1,200', 'room-service', true, NOW()),
-    ('din-005', 'Event Catering', 'Custom catering packages for banquet events, weddings and private parties. Veg and non-veg menus available.', '₹800/plate onwards', 'event-catering', true, NOW())`;
+  await sql`INSERT INTO dining_options (id, name, description, price, category, active, sample, created_at) VALUES
+    ('din-001', 'Breakfast Buffet', 'A rich spread of Indian and continental options including fresh juices, eggs, parathas, cereals and more.', '₹500/person', 'breakfast', true, true, NOW()),
+    ('din-002', 'Lunch Thali', 'Traditional North Indian thali with dal, paneer, seasonal vegetables, rice, roti and dessert.', '₹600/person', 'lunch', true, true, NOW()),
+    ('din-003', 'Dinner - A La Carte', 'Evening dining with seasonal menus, local specialties and international cuisine in a candle-lit restaurant.', '₹800–1,500/person', 'dinner', true, true, NOW()),
+    ('din-004', 'Room Service', 'Full menu delivered to your room 24 hours a day. Order anything from snacks to full meals.', '₹300–1,200', 'room-service', true, true, NOW()),
+    ('din-005', 'Event Catering', 'Custom catering packages for banquet events, weddings and private parties. Veg and non-veg menus available.', '₹800/plate onwards', 'event-catering', true, true, NOW())`;
 
   return NextResponse.json({ success: true, message: "Database seeded successfully" });
 }

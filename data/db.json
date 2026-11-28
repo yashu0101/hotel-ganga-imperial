@@ -10,8 +10,11 @@
       "code": "EARLY20",
       "validFrom": "2026-10-01",
       "validTo": "2027-03-31",
-      "active": true,
-      "createdAt": "2026-10-01T00:00:00Z"
+      "active": false,
+      "createdAt": "2026-10-01T00:00:00Z",
+      "minAdvanceDays": 30,
+      "minNights": 0,
+      "sample": true
     },
     {
       "id": "offer-002",
@@ -21,8 +24,11 @@
       "code": "WEEKEND15",
       "validFrom": "2026-11-01",
       "validTo": "2027-02-28",
-      "active": true,
-      "createdAt": "2026-10-15T00:00:00Z"
+      "active": false,
+      "createdAt": "2026-10-15T00:00:00Z",
+      "minAdvanceDays": 0,
+      "minNights": 2,
+      "sample": true
     },
     {
       "id": "offer-003",
@@ -33,7 +39,10 @@
       "validFrom": "2026-10-01",
       "validTo": "2027-12-31",
       "active": false,
-      "createdAt": "2026-10-20T00:00:00Z"
+      "createdAt": "2026-10-20T00:00:00Z",
+      "minAdvanceDays": 0,
+      "minNights": 0,
+      "sample": true
     }
   ],
   "banquetPackages": [
@@ -51,7 +60,8 @@
         "Valet parking"
       ],
       "active": true,
-      "createdAt": "2026-10-01T00:00:00Z"
+      "createdAt": "2026-10-01T00:00:00Z",
+      "sample": true
     },
     {
       "id": "banq-002",
@@ -69,7 +79,8 @@
         "Stage setup"
       ],
       "active": true,
-      "createdAt": "2026-10-01T00:00:00Z"
+      "createdAt": "2026-10-01T00:00:00Z",
+      "sample": true
     },
     {
       "id": "banq-003",
@@ -89,7 +100,8 @@
         "Welcome drinks"
       ],
       "active": true,
-      "createdAt": "2026-10-01T00:00:00Z"
+      "createdAt": "2026-10-01T00:00:00Z",
+      "sample": true
     }
   ],
   "diningOptions": [
@@ -100,7 +112,8 @@
       "price": "₹500/person",
       "category": "breakfast",
       "active": true,
-      "createdAt": "2026-10-01T00:00:00Z"
+      "createdAt": "2026-10-01T00:00:00Z",
+      "sample": true
     },
     {
       "id": "din-002",
@@ -109,7 +122,8 @@
       "price": "₹600/person",
       "category": "lunch",
       "active": true,
-      "createdAt": "2026-10-01T00:00:00Z"
+      "createdAt": "2026-10-01T00:00:00Z",
+      "sample": true
     },
     {
       "id": "din-003",
@@ -118,7 +132,8 @@
       "price": "₹800–1,500/person",
       "category": "dinner",
       "active": true,
-      "createdAt": "2026-10-01T00:00:00Z"
+      "createdAt": "2026-10-01T00:00:00Z",
+      "sample": true
     },
     {
       "id": "din-004",
@@ -127,7 +142,8 @@
       "price": "₹300–1,200",
       "category": "room-service",
       "active": true,
-      "createdAt": "2026-10-01T00:00:00Z"
+      "createdAt": "2026-10-01T00:00:00Z",
+      "sample": true
     },
     {
       "id": "din-005",
@@ -136,7 +152,8 @@
       "price": "₹800/plate onwards",
       "category": "event-catering",
       "active": true,
-      "createdAt": "2026-10-01T00:00:00Z"
+      "createdAt": "2026-10-01T00:00:00Z",
+      "sample": true
     }
   ],
   "config": {
@@ -173,7 +190,8 @@
         ],
         "services": [
           "Complimentary breakfast"
-        ]
+        ],
+        "sampleRate": true
       },
       {
         "id": "premium-room",
@@ -199,7 +217,8 @@
         ],
         "services": [
           "Complimentary breakfast"
-        ]
+        ],
+        "sampleRate": true
       },
       {
         "id": "suite",
@@ -224,7 +243,8 @@
           "Butler service",
           "Welcome drink",
           "Late checkout"
-        ]
+        ],
+        "sampleRate": true
       },
       {
         "id": "family-room",
@@ -248,7 +268,8 @@
         "services": [
           "Kids’ welcome kit",
           "Family breakfast"
-        ]
+        ],
+        "sampleRate": true
       }
     ],
     "venue": {

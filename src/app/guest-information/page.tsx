@@ -1,7 +1,8 @@
 import { canonical } from "@/lib/seo";
 import Link from "next/link";
 import InteriorShell from "@/components/InteriorShell";
-import { HOTEL_INFORMATION as info, GUEST_FAQS } from "@/lib/hotel-content";
+import { GUEST_FAQS } from "@/lib/hotel-content";
+import { getSettings } from "@/lib/db";
 import Icon from "@/components/Icon";
 export const metadata = {
   ...canonical("/guest-information"),
@@ -9,7 +10,11 @@ export const metadata = {
   description:
     "How reservation requests work at Hotel Ganga Imperial, plus cancellation, payment, children, identification and accessibility information.",
 };
-export default function Guide() {
+// Policies are edited under Admin → Settings: static, refreshed every 5 minutes and right after a change.
+export const revalidate = 300;
+
+export default async function Guide() {
+  const info = await getSettings();
   return (
     <InteriorShell>
       <div className="wrap guide-page">
