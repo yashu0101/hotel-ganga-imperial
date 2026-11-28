@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { verifySession } from "@/lib/auth";
-import { RoomAddressTakenError, StorageUnavailableError } from "@/lib/db";
+import { ConflictError, StorageUnavailableError } from "@/lib/db";
 import { parseInput, type Schema } from "@/lib/validation";
 import { logError } from "@/lib/log";
 
@@ -20,7 +20,7 @@ export async function readBody(req: NextRequest): Promise<unknown> {
 }
 export function serverError(error: unknown) {
   // A conflict staff can fix in the form, not a server fault.
-  if (error instanceof RoomAddressTakenError) return json({ error: error.message }, 409);
+  if (error instanceof ConflictError) return json({ error: error.message }, 409);
   logError("admin.request_failed", error);
   if (error instanceof StorageUnavailableError) return json({ error: error.message }, 503);
   return json({ error: "Server error" }, 500);

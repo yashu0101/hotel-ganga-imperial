@@ -66,6 +66,10 @@ export interface NotificationJob {
 export interface Booking {
   roomsRequested?: number;
   specialRequests?: string;
+  /** The offer code the guest entered (checked against an active offer when sent); "" or absent when none. */
+  couponCode?: string;
+  /** That offer's title when the request was sent, so staff see it even if the offer is renamed or removed. */
+  couponOffer?: string;
   id: string;
   name: string;
   mobile: string;

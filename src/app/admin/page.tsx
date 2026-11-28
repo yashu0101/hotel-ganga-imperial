@@ -60,6 +60,7 @@ const bookingRow = (b: Booking): RequestRow => ({
   what: b.roomType,
   rooms: b.roomsRequested,
   extra: b.specialRequests,
+  coupon: [b.couponCode, b.couponOffer].filter(Boolean).join(" · "),
   checkin: b.checkin,
   checkout: b.checkout,
   guests: b.guests,
@@ -493,6 +494,7 @@ function Dashboard() {
           <BookingForm
             rooms={data.rooms}
             packages={data.banquet}
+            offers={data.offers}
             initial={adding}
             onSaved={bookingAdded}
             onClose={() => setAdding(null)}

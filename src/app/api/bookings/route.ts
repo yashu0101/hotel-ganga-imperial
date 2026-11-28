@@ -1,6 +1,14 @@
 import { NextRequest } from "next/server";
-import { addBooking, getBanquetPackages, getBookings, getRooms, updateBooking, deleteBooking } from "@/lib/db";
-import { cleanText, contactError, resolveStay } from "@/lib/reservation";
+import {
+  addBooking,
+  getBanquetPackages,
+  getBookings,
+  getOffers,
+  getRooms,
+  updateBooking,
+  deleteBooking,
+} from "@/lib/db";
+import { cleanText, contactError, normalizeCoupon, resolveCoupon, resolveStay } from "@/lib/reservation";
 import { isAdmin, json, readBody, serverError, unauthorized } from "@/lib/admin-route";
 import { parseInput, BOOKING_UPDATE_SCHEMA } from "@/lib/validation";
 import type { Booking } from "@/lib/types";
@@ -27,6 +35,7 @@ const STAFF_BOOKING_FIELDS = new Set([
   "checkout",
   "guests",
   "specialRequests",
+  "couponCode",
   "bookingStatus",
 ]);
 
@@ -52,6 +61,10 @@ export async function POST(req: NextRequest) {
     const resolved = resolveStay(body, rooms, packages);
     if ("error" in resolved) return json({ error: resolved.error }, 400);
     const { stay } = resolved;
+    // An offer the guest quoted by phone follows the website's rule: an active offer that is valid today.
+    const couponCode = normalizeCoupon(body.couponCode);
+    const offer = couponCode ? resolveCoupon(await getOffers(), couponCode) : null;
+    if (offer && "error" in offer) return json({ error: offer.error }, 400);
     const item = await addBooking(
       {
         name,
@@ -67,6 +80,8 @@ export async function POST(req: NextRequest) {
         guests: stay.guests,
         roomsRequested: stay.roomsRequested,
         specialRequests: cleanText(body.specialRequests, 500),
+        couponCode: offer?.coupon.code ?? "",
+        couponOffer: offer?.coupon.title ?? "",
         amount: 0,
       },
       { status, source: "staff", notify: false },

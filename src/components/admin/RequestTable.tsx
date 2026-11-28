@@ -32,6 +32,8 @@ export interface RequestRow {
   rooms?: number;
   /** Special requests or the enquiry message. */
   extra?: string;
+  /** The offer code the guest entered, with the offer's title. */
+  coupon?: string;
   checkin: string;
   checkout: string;
   guests: number;
@@ -358,6 +360,7 @@ export function RequestDetail({
       </>,
     ],
     [t("admin.guests"), row.guests || "–"],
+    ...((row.coupon ? [[t("admin.offerCode"), row.coupon]] : []) as [string, string][]),
     ...((row.city || row.country ? [[t("admin.from"), [row.city, row.country].filter(Boolean).join(", ")]] : []) as [
       string,
       string,

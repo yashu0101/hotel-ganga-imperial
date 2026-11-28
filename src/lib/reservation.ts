@@ -80,6 +80,28 @@ export function couponPercent(offer: Pick<CouponOffer, "discount">) {
   const pct = Number(offer.discount.match(/(\d{1,2})\s*%/)?.[1] ?? 0);
   return pct > 0 && pct < 100 ? pct : 0;
 }
+export interface Coupon {
+  code: string;
+  /** The offer's title. */
+  title: string;
+  /** From the offer's badge; 0 when it is not a percentage. */
+  percent: number;
+}
+/**
+ * What an entered offer code means, for the website form and staff alike: null when none was entered, otherwise the
+ * matching current offer or an error to show.
+ */
+export function resolveCoupon(
+  offers: CouponOffer[],
+  entered: unknown,
+  today = hotelToday(),
+): null | { error: string } | { coupon: Coupon } {
+  const code = normalizeCoupon(entered);
+  if (!code) return null;
+  const offer = findCoupon(offers, code, today);
+  if (!offer) return { error: "That offer code is not valid or has expired." };
+  return { coupon: { code, title: offer.title, percent: couponPercent(offer) } };
+}
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** The guest's name, phone and optional email: "" when valid, otherwise the message to show. */

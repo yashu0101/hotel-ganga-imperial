@@ -26,6 +26,7 @@ const KINDS: { value: Kind; label: string; hint: string }[] = [
 const KIND_PHOTO = { banquet: PHOTOS.banquet, dining: PHOTOS.lounge } satisfies Record<Exclude<Kind, "room">, unknown>;
 const CONTACT_MESSAGE = "Hello, I would like to ask about a reservation at Hotel Ganga Imperial.";
 const SPECIAL_REQUESTS_MAX = 500;
+const COUPON_MAX = 30;
 const inr = (n: number) => n.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 
 type Selection = { type: Kind; choice: string };
@@ -44,13 +45,18 @@ function keepValid(wanted: Selection, rooms: Room[], packages: BanquetPackage[])
     wanted.type === "banquet" ? ["Banquet hall", ...packages.map(p => "Banquet - " + p.name)] : ["Dining enquiry"];
   return options.includes(wanted.choice) ? wanted : { type: wanted.type, choice: defaultChoice(wanted.type, rooms) };
 }
-/** What a link such as /book?type=banquet&package=… or /book?offer=… asks for. */
+/** What a link such as /book?type=banquet&package=… or /book?offer=…&code=… asks for. */
 function parseLink(search: string) {
   const q = new URLSearchParams(search);
   const linked = q.get("type");
   const type: Kind = linked === "banquet" || linked === "dining" ? linked : "room";
   const choice = (type === "room" ? q.get("room") : type === "banquet" ? q.get("package") : "") || "";
-  return { type, choice, offer: (q.get("offer") || "").trim().slice(0, 120) };
+  return {
+    type,
+    choice,
+    offer: (q.get("offer") || "").trim().slice(0, 120),
+    code: (q.get("code") || "").trim().toUpperCase().slice(0, COUPON_MAX),
+  };
 }
 // The query string, read without an effect. It is "" in the static HTML and during hydration.
 const subscribeToNothing = () => () => {};
@@ -148,7 +154,12 @@ export default function BookPage() {
   const guests = guestsPicked ?? (type === "banquet" ? 50 : 2);
   const [roomsRequested, setRoomsRequested] = useState(1);
   const [notePicked, setSpecialRequests] = useState<string | null>(null);
-  const specialRequests = notePicked ?? (link.offer ? "I would like to ask about the offer: " + link.offer : "");
+  // An offer with a code fills in the code; one without a code is mentioned in the note instead.
+  const specialRequests =
+    notePicked ?? (link.offer && !link.code ? "I would like to ask about the offer: " + link.offer : "");
+  const [codePicked, setCouponCode] = useState<string | null>(null);
+  const couponCode = codePicked ?? link.code;
+  const [couponProblem, setCouponProblem] = useState("");
   const [receipt, setReceipt] = useState<ReceiptDetails | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -241,7 +252,7 @@ export default function BookPage() {
           roomsRequested: type === "room" ? roomsRequested : 0,
           specialRequests: note,
           website: values.get("website"),
-          couponCode: String(values.get("couponCode") || "").trim(),
+          couponCode: couponCode.trim(),
         }),
       }).catch(() => null);
       if (!res) {
@@ -252,6 +263,10 @@ export default function BookPage() {
       if (!res.ok) {
         // Validation problems are fixable in the form; anything else gets a direct-contact fallback.
         setSendFailed(res.status !== 400);
+        if (res.status === 400 && data.field === "couponCode") {
+          setCouponProblem(data.error || "Check the offer code.");
+          document.getElementById("coupon-code")?.focus();
+        }
         throw Error(data.error || "Please try again.");
       }
       setReceipt({
@@ -542,14 +557,25 @@ export default function BookPage() {
                     autoComplete="off"
                     autoCapitalize="characters"
                     spellCheck={false}
-                    maxLength={30}
-                    aria-describedby="coupon-code-help"
-                    placeholder="EARLY20"
+                    maxLength={COUPON_MAX}
+                    aria-invalid={Boolean(couponProblem) || undefined}
+                    aria-describedby={couponProblem ? "coupon-code-error coupon-code-help" : "coupon-code-help"}
+                    value={couponCode}
+                    onChange={e => {
+                      setCouponCode(e.target.value.toUpperCase());
+                      setCouponProblem("");
+                    }}
                     style={{ textTransform: "uppercase" }}
                   />
+                  {couponProblem && (
+                    <small id="coupon-code-error" className="field-error" role="alert">
+                      {couponProblem}
+                    </small>
+                  )}
                   <div className="field-meta">
                     <small id="coupon-code-help">
-                      Checked when you send your request. The discount applies to the rate the hotel confirms.
+                      From a current offer on our home page. It is checked when you send your request, and the hotel
+                      applies the offer when it confirms your rate.
                     </small>
                   </div>
                 </div>

@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useApp } from "@/lib/context";
-import type { BanquetPackage, Booking, Room } from "@/lib/types";
+import type { BanquetPackage, Booking, Offer, Room } from "@/lib/types";
 import { adminRequest } from "./api";
 import { addDays, clampCount, counted, daysBetween, formatDay, hotelDay, localeFor } from "./format";
 import Icon from "./icons";
@@ -79,12 +79,15 @@ function Stepper({
 export default function BookingForm({
   rooms,
   packages,
+  offers = [],
   initial = {},
   onSaved,
   onClose,
 }: {
   rooms: Room[];
   packages: BanquetPackage[];
+  /** Offers with a code that are on the website today can be recorded, as a guest quoting one by phone. */
+  offers?: Offer[];
   initial?: BookingDraft;
   onSaved: (booking: Booking) => void;
   onClose: () => void;
@@ -94,7 +97,10 @@ export default function BookingForm({
   const { confirm } = useAdminUI();
   const today = hotelDay();
   const visibleRooms = rooms.filter(r => !r.hidden),
-    activePackages = packages.filter(p => p.active);
+    activePackages = packages.filter(p => p.active),
+    codedOffers = offers.filter(
+      o => o.active && o.code && (!o.validFrom || o.validFrom <= today) && (!o.validTo || today <= o.validTo),
+    );
   const firstDate = initial.date && initial.date >= today ? initial.date : today;
   const start = {
     type: initial.type || (visibleRooms[0] ? roomValue(visibleRooms[0]) : HALL),
@@ -107,6 +113,7 @@ export default function BookingForm({
     email: "",
     city: "",
     specialRequests: "",
+    couponCode: "",
     bookingStatus: "confirmed",
   };
   const [values, setValues] = useState(start);
@@ -162,6 +169,7 @@ export default function BookingForm({
       checkin: values.checkin,
       guests: clampCount(values.guests, guestMin, guestMax),
       specialRequests: values.specialRequests,
+      ...(values.couponCode ? { couponCode: values.couponCode } : {}),
       bookingStatus: values.bookingStatus,
     };
     try {
@@ -343,6 +351,27 @@ export default function BookingForm({
                   onChange={e => set("specialRequests", e.target.value)}
                 />
               </div>
+              {codedOffers.length > 0 && (
+                <div className="adm-field full">
+                  <label htmlFor="bk-offer">{t("admin.offerCode")}</label>
+                  <select
+                    id="bk-offer"
+                    aria-describedby="bk-offer-hint"
+                    value={values.couponCode}
+                    onChange={e => set("couponCode", e.target.value)}
+                  >
+                    <option value="">{t("admin.noOffer")}</option>
+                    {codedOffers.map(o => (
+                      <option key={o.id} value={o.code}>
+                        {[o.code, o.title, o.discount].filter(Boolean).join(" · ")}
+                      </option>
+                    ))}
+                  </select>
+                  <p id="bk-offer-hint" className="adm-hint">
+                    {t("admin.h.offerCode")}
+                  </p>
+                </div>
+              )}
             </div>
           </fieldset>
 

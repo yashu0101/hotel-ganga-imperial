@@ -1095,6 +1095,15 @@ footer a:not(.btn):hover {
   padding-top: 12px;
   border-top: 1px solid color-mix(in srgb, var(--brass) 15%, transparent);
 }
+.offer-card .offer-code {
+  font-size: 0.85rem;
+}
+.offer-code strong {
+  color: var(--brass);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
 
 /* Gallery */
 .gallery {

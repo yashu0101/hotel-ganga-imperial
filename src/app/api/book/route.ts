@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { addBooking, getRooms, getBanquetPackages, getOffers, StorageUnavailableError } from "@/lib/db";
 import { allowRequest, clientKey } from "@/lib/request-limit";
 import { logError } from "@/lib/log";
-import { cleanText, contactError, couponPercent, findCoupon, normalizeCoupon, resolveStay } from "@/lib/reservation";
+import { cleanText, contactError, normalizeCoupon, resolveCoupon, resolveStay } from "@/lib/reservation";
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,12 +32,13 @@ export async function POST(req: NextRequest) {
     const { stay } = resolved;
 
     // Coupons are optional. The hotel applies the offer when it confirms the final rate.
-    let coupon: { code: string; title: string; percent: number } | null = null;
-    if (couponCode) {
-      const offer = findCoupon(await getOffers(), couponCode);
-      if (!offer) return NextResponse.json({ error: "That coupon code is not valid or has expired." }, { status: 400 });
-      coupon = { code: couponCode, title: offer.title, percent: couponPercent(offer) };
-    }
+    const offer = couponCode ? resolveCoupon(await getOffers(), couponCode) : null;
+    if (offer && "error" in offer)
+      return NextResponse.json(
+        { error: offer.error + " Check it, or clear it to send your request without it.", field: "couponCode" },
+        { status: 400 },
+      );
+    const coupon = offer?.coupon ?? null;
 
     // A request does not reserve inventory. Availability is confirmed by the hotel.
     const booking = await addBooking({
@@ -53,9 +54,9 @@ export async function POST(req: NextRequest) {
       checkout: stay.checkout,
       guests: stay.guests,
       roomsRequested: stay.roomsRequested,
-      specialRequests: coupon
-        ? [`Coupon ${coupon.code} (${coupon.title})`, specialRequests].filter(Boolean).join(" · ")
-        : specialRequests,
+      specialRequests,
+      couponCode: coupon?.code ?? "",
+      couponOffer: coupon?.title ?? "",
       amount: 0,
     });
     try {

@@ -50,6 +50,7 @@ const db = {
     return { ...b, id: "request-reference" };
   },
 };
+const offersForTests = db.getOffers;
 const booking = load("src/app/api/book/route.ts", {
   "@/lib/notifications": { deliverNotifications: async () => ({ configured: false }) },
   "next/server": response,
@@ -121,13 +122,15 @@ test("accepts single-day event request and only exposes request reference", asyn
 // Admin routes: load a route with the real validation + admin-route modules and a fake db/session.
 const validation = load("src/lib/validation.ts");
 class StorageUnavailableError extends Error {}
-class RoomAddressTakenError extends Error {}
+class ConflictError extends Error {}
+class RoomAddressTakenError extends ConflictError {}
+class OfferCodeTakenError extends ConflictError {}
 function adminRoute(name, db, authenticated, revalidated = []) {
   const adminRouteModule = load("src/lib/admin-route.ts", {
     "next/server": response,
     "next/cache": { revalidatePath: (...a) => revalidated.push(a) },
     "@/lib/auth": { verifySession: async () => ({ authenticated }) },
-    "@/lib/db": { StorageUnavailableError, RoomAddressTakenError },
+    "@/lib/db": { StorageUnavailableError, ConflictError },
     "@/lib/validation": validation,
   });
   return load("src/app/api/" + name + "/route.ts", {
@@ -891,6 +894,8 @@ test("Postgres stores special requests and staff notifications include them", as
   await dbModule.addBooking({
     ...payload,
     specialRequests: "Cot for an infant",
+    couponCode: "EARLY20",
+    couponOffer: "Early Bird",
     roomsRequested: 1,
     gender: "other",
     country: "",
@@ -898,12 +903,20 @@ test("Postgres stores special requests and staff notifications include them", as
     amount: 0,
   });
   assert.match(transaction[0].query, /special_requests/);
+  assert.match(transaction[0].query, /coupon_code, coupon_offer/);
   assert.ok(transaction[0].values.includes("Cot for an infant"));
+  assert.ok(transaction[0].values.includes("EARLY20") && transaction[0].values.includes("Early Bird"));
   const secret = "test-secret-that-is-at-least-32-characters";
   let body;
   const mocks = {
     claimNotificationJobs: async () => [{ id: "event-2", bookingId: "booking-2", status: "pending" }],
-    getBooking: async id => ({ ...payload, id, specialRequests: "Cot for an infant" }),
+    getBooking: async id => ({
+      ...payload,
+      id,
+      specialRequests: "Cot for an infant",
+      couponCode: "EARLY20",
+      couponOffer: "Early Bird",
+    }),
     markNotification: async () => {},
   };
   const notifications = load(
@@ -924,6 +937,8 @@ test("Postgres stores special requests and staff notifications include them", as
   );
   await notifications.deliverNotifications();
   assert.equal(body.request.specialRequests, "Cot for an infant");
+  assert.equal(body.request.couponCode, "EARLY20");
+  assert.equal(body.request.couponOffer, "Early Bird");
 });
 
 test("hotel contact links are only built from usable numbers", () => {
@@ -994,22 +1009,14 @@ test("admin launch checklist lists every missing guest-facing detail", () => {
   const content = load("src/lib/hotel-content.ts");
   const empty = { phone: "", whatsapp: "", email: "", address: "", mapEmbedUrl: "" };
   const missing = content.missingLaunchDetails({ contact: empty, rooms: [{ name: "Suite", sample: true }] });
-  for (const item of [
-    "phone",
-    "WhatsApp",
-    "email",
-    "address",
-    "directions",
-    "check-in",
-    "Suite",
-    "legal business name",
-    "grievance officer",
-    "how long requests are kept",
-  ])
+  for (const item of ["phone", "WhatsApp", "email", "address", "directions", "check-in", "Suite", "last-reviewed date"])
     assert.ok(
       missing.some(m => m.toLowerCase().includes(item.toLowerCase())),
       "missing " + item,
     );
+  // Privacy facts the hotel has approved in hotel-content.ts are no longer listed.
+  for (const item of ["legal business name", "grievance officer", "how long requests are kept"])
+    assert.ok(!missing.some(m => m.toLowerCase().includes(item)), "still listed: " + item);
   const ready = content.missingLaunchDetails({
     contact: {
       phone: "+91 1",
@@ -1556,11 +1563,18 @@ test("a valid coupon is recorded on the request; an invalid one is rejected befo
   const before = records.length;
   const bad = await booking.POST(request({ ...payload, couponCode: "OLD10" }));
   assert.equal(bad.status, 400);
+  assert.equal((await bad.json()).field, "couponCode", "the form can point the guest at the code field");
   assert.equal(records.length, before);
   const ok = await booking.POST(request({ ...payload, couponCode: "early20", specialRequests: "Quiet room" }));
   assert.equal(ok.status, 201);
   assert.deepEqual((await ok.json()).coupon, { code: "EARLY20", title: "Early Bird", percent: 20 });
-  assert.equal(records.at(-1).specialRequests, "Coupon EARLY20 (Early Bird) · Quiet room");
+  assert.equal(records.at(-1).specialRequests, "Quiet room", "the guest's note is kept as written");
+  assert.equal(records.at(-1).couponCode, "EARLY20");
+  assert.equal(records.at(-1).couponOffer, "Early Bird");
+  await booking.POST(request({ ...payload, couponCode: "EARLY20", specialRequests: "x".repeat(500) }));
+  assert.equal(records.at(-1).specialRequests.length, 500, "a code never pushes the note past its limit");
+  await booking.POST(request({ ...payload }));
+  assert.equal(records.at(-1).couponCode, "", "no code, nothing recorded");
 });
 
 test("request tracking needs reference and email, and never returns contact details", async () => {
@@ -1708,7 +1722,7 @@ test("staff bookings are saved with their status and source and queue no notific
   const row = { id: "b", name: "n", created_at: new Date().toISOString(), checkin: future, checkout: "", guests: 1 };
   const sqlRows = [
     { ...row, source: "staff" },
-    { ...row, id: "c", source: "" },
+    { ...row, id: "c", source: "", coupon_code: "EARLY20", coupon_offer: "Early Bird" },
   ];
   const reader = load(
     "src/lib/db.ts",
@@ -1724,6 +1738,9 @@ test("staff bookings are saved with their status and source and queue no notific
   const [staff, website] = await reader.getBookings();
   assert.equal(staff.source, "staff");
   assert.equal(website.source, undefined);
+  assert.ok(!staff.couponCode, "older rows without the column read as no code");
+  assert.equal(website.couponCode, "EARLY20");
+  assert.equal(website.couponOffer, "Early Bird");
 });
 
 test("staff can add a confirmed booking without notifying the guest", async () => {
@@ -1731,6 +1748,7 @@ test("staff can add a confirmed booking without notifying the guest", async () =
   const db = {
     getRooms: async () => [{ id: "deluxe-room", name: "Deluxe Room", hidden: false }],
     getBanquetPackages: async () => [],
+    getOffers: offersForTests,
     addBooking: async (b, options) => (added.push({ b, options }), { ...b, id: "new", bookingStatus: options.status }),
   };
   const route = adminRoute("bookings", db, true);
@@ -1761,6 +1779,112 @@ test("staff can add a confirmed booking without notifying the guest", async () =
   assert.equal(defaulted.status, 201);
   assert.equal(added.at(-1).options.status, "confirmed");
   assert.equal(added.length, 2);
+  assert.equal(added[0].b.couponCode, "", "no code, nothing recorded");
+  const coded = await route.POST(jsonRequest("POST", { ...body, couponCode: "early20" }));
+  assert.equal(coded.status, 201);
+  assert.equal(added.at(-1).b.couponCode, "EARLY20");
+  assert.equal(added.at(-1).b.couponOffer, "Early Bird");
+  const expired = await route.POST(jsonRequest("POST", { ...body, couponCode: "OLD10" }));
+  assert.equal(expired.status, 400, "staff follow the same offer rules as the website");
+  assert.equal(added.length, 3);
+});
+
+test("offer codes resolve to the matching current offer, an error, or nothing when none was entered", () => {
+  const offers = [
+    { title: "Early Bird", discount: "20%", code: "EARLY20", validFrom: "", validTo: "", active: true },
+    { title: "Old", discount: "10%", code: "OLD10", validFrom: "", validTo: "2000-01-01", active: true },
+  ];
+  assert.equal(dates.resolveCoupon(offers, "  "), null);
+  assert.deepEqual(dates.resolveCoupon(offers, "early20"), {
+    coupon: { code: "EARLY20", title: "Early Bird", percent: 20 },
+  });
+  assert.match(dates.resolveCoupon(offers, "OLD10").error, /not valid or has expired/);
+});
+
+test("two offers can never share a code, and codes are saved in capitals", async () => {
+  const store = jsonStore({ bookings: [], config: { rooms: [] } });
+  const blank = { description: "", discount: "", validFrom: "", validTo: "", active: true };
+  const early = await store.db.addOffer({ ...blank, title: "Early", code: " early20 " });
+  assert.equal(early.code, "EARLY20");
+  await assert.rejects(
+    store.db.addOffer({ ...blank, title: "Copy", code: "Early20" }),
+    e => e.name === "OfferCodeTakenError" && /Early/.test(e.message),
+  );
+  const other = await store.db.addOffer({ ...blank, title: "Weekend", code: "WEEKEND15" });
+  await assert.rejects(store.db.updateOffer(other.id, { code: "early20" }), e => e.name === "OfferCodeTakenError");
+  assert.equal((await store.db.updateOffer(early.id, { code: "early20", title: "Early bird" })).code, "EARLY20");
+  await store.db.addOffer({ ...blank, title: "No code A", code: "" });
+  await store.db.addOffer({ ...blank, title: "No code B", code: "" });
+  assert.equal(store.saved().offers.length, 4, "offers without a code never clash");
+  const offers = adminRoute(
+    "offers",
+    {
+      addOffer: async () => {
+        throw new OfferCodeTakenError("The code is already used.");
+      },
+    },
+    true,
+  );
+  const res = await offers.POST(jsonRequest("POST", { title: "Copy", code: "EARLY20" }));
+  assert.equal(res.status, 409);
+});
+
+test("requests sent before offer codes had their own fields show the code there", async () => {
+  const legacy = {
+    id: "old",
+    name: "Asha",
+    createdAt: "2026-11-01T00:00:00Z",
+    specialRequests: "Coupon EARLY20 (Early Bird (rooms)) · Quiet room · high floor",
+  };
+  const store = jsonStore({
+    bookings: [
+      legacy,
+      { ...legacy, id: "old-plain", specialRequests: "Coupon codes? None, thanks" },
+      // Saved after the change: its note is the guest's own text, even if it looks like the old format.
+      { ...legacy, id: "new", couponCode: "", couponOffer: "", specialRequests: "Coupon FREE (fake)" },
+    ],
+    config: { rooms: [] },
+  });
+  const old = await store.db.getBooking("old");
+  assert.equal(old.couponCode, "EARLY20");
+  assert.equal(old.couponOffer, "Early Bird (rooms)");
+  assert.equal(old.specialRequests, "Quiet room · high floor");
+  assert.equal((await store.db.getBooking("old-plain")).specialRequests, "Coupon codes? None, thanks");
+  const fresh = await store.db.getBooking("new");
+  assert.equal(fresh.couponCode, "");
+  assert.equal(fresh.specialRequests, "Coupon FREE (fake)");
+  const only = jsonStore({
+    bookings: [{ ...legacy, specialRequests: "Coupon WEEKEND15 (Weekend)" }],
+    config: { rooms: [] },
+  });
+  const [onlyCode] = await only.db.getBookings();
+  assert.equal(onlyCode.couponCode, "WEEKEND15");
+  assert.equal(onlyCode.specialRequests, "");
+  const reader = load(
+    "src/lib/db.ts",
+    {
+      fs: { default: {} },
+      path: { default: path.posix },
+      "./validation": validation,
+      "./config": { SITE_CONFIG: { rooms: [] } },
+      "@neondatabase/serverless": {
+        neon: () =>
+          Object.assign(
+            () => [
+              { id: "a", created_at: "2026-11-01", special_requests: "Coupon EARLY20 (Early Bird)", coupon_code: null },
+              { id: "b", created_at: "2026-11-02", special_requests: "Coupon FREE (fake)", coupon_code: "" },
+            ],
+            { transaction: async () => [] },
+          ),
+      },
+    },
+    { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
+  );
+  const [a, b] = await reader.getBookings();
+  assert.equal(a.couponCode, "EARLY20");
+  assert.equal(a.specialRequests, "");
+  assert.equal(b.couponCode, "");
+  assert.equal(b.specialRequests, "Coupon FREE (fake)");
 });
 
 test("calendar weeks start on Monday and stays are split across weeks into lanes", () => {

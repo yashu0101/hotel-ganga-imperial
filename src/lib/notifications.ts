@@ -47,6 +47,8 @@ export async function deliverNotifications(bookingId?: string, { force = false }
         guests: booking.guests,
         roomsRequested: booking.roomsRequested ?? 1,
         specialRequests: booking.specialRequests ?? "",
+        couponCode: booking.couponCode ?? "",
+        couponOffer: booking.couponOffer ?? "",
         status: "pending",
       },
       instructions: {

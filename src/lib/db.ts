@@ -19,6 +19,8 @@ export class StorageUnavailableError extends Error {
     this.name = "StorageUnavailableError";
   }
 }
+/** A change that clashes with stored content, which staff can fix in the form. Admin routes answer 409. */
+export class ConflictError extends Error {}
 
 function getSQL() {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -66,6 +68,7 @@ function readDB(): DB {
   ] as const)
     data[key] ??= [];
   data.config ??= emptyDB().config;
+  data.bookings = data.bookings.map(withCouponFields);
   return normalizeRooms(data);
 }
 
@@ -267,9 +270,25 @@ export const getEnquiries = enquiries.list;
 export const addEnquiry = (e: Omit<Enquiry, "id" | "createdAt" | "status">) => enquiries.add({ ...e, status: "new" });
 export const updateEnquiryStatus = (id: string, status: Enquiry["status"]) => enquiries.update(id, { status });
 export const deleteEnquiry = enquiries.remove;
+/** Thrown when another offer already uses the code: guests could not tell which offer they were given. */
+export class OfferCodeTakenError extends ConflictError {
+  constructor(code: string, title: string) {
+    super(`The code "${code}" is already used by the offer “${title}”. Choose a different code.`);
+    this.name = "OfferCodeTakenError";
+  }
+}
+/** Codes are saved in capitals, as guests see them and as the booking form sends them. */
+const offerCode = (value: unknown) => (typeof value === "string" ? value.trim().toUpperCase() : "");
+async function withFreeCode<T extends Partial<Offer>>(changes: T, id?: string): Promise<T> {
+  if (changes.code === undefined) return changes;
+  const code = offerCode(changes.code);
+  const clash = code && (await offers.list()).find(o => o.id !== id && offerCode(o.code) === code);
+  if (clash) throw new OfferCodeTakenError(code, clash.title);
+  return { ...changes, code };
+}
 export const getOffers = offers.list,
-  addOffer = offers.add,
-  updateOffer = offers.update,
+  addOffer = async (offer: Omit<Offer, "id" | "createdAt">) => offers.add(await withFreeCode(offer)),
+  updateOffer = async (id: string, updates: Partial<Offer>) => offers.update(id, await withFreeCode(updates, id)),
   deleteOffer = offers.remove;
 export const getBanquetPackages = banquet.list,
   addBanquetPackage = banquet.add,
@@ -310,8 +329,8 @@ const ROOM_LISTS = new Set(["inRoom", "services", "previousSlugs"]);
 const roomColumn = (key: string) => ROOM_COLUMNS[key] ?? key;
 const encodeRoomValue = (key: string, value: unknown) => (ROOM_LISTS.has(key) ? JSON.stringify(value ?? []) : value);
 
-/** Thrown when a room's web address is already used by another room. Admin routes answer 409. */
-export class RoomAddressTakenError extends Error {
+/** Thrown when a room's web address is already used by another room. */
+export class RoomAddressTakenError extends ConflictError {
   constructor(slug: string) {
     super(`The web address "${slug}" is already used by another room. Choose a different one.`);
     this.name = "RoomAddressTakenError";
@@ -536,7 +555,7 @@ export interface NewBookingOptions {
   notify?: boolean;
 }
 function mapBookingRow(r: Record<string, unknown>): Booking {
-  return {
+  return withCouponFields({
     id: r.id,
     name: r.name,
     mobile: r.mobile,
@@ -556,8 +575,21 @@ function mapBookingRow(r: Record<string, unknown>): Booking {
     paymentId: r.payment_id,
     roomsRequested: Number(r.rooms_requested ?? 1),
     specialRequests: String(r.special_requests ?? ""),
+    // NULL only on requests saved before these columns existed; newer requests always store a value.
+    couponCode: r.coupon_code == null ? undefined : String(r.coupon_code),
+    couponOffer: r.coupon_offer == null ? undefined : String(r.coupon_offer),
     createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
-  } as Booking;
+  } as Booking);
+}
+/**
+ * Requests saved before offer codes had their own fields carry the code in the note as "Coupon CODE (Offer) · note".
+ * Only those (no coupon field at all) are read this way, so a guest typing that text today cannot fake a code.
+ */
+const LEGACY_COUPON = /^Coupon (\S{1,30}) \((.{1,100}?)\)(?: · ([\s\S]*))?$/;
+function withCouponFields(b: Booking): Booking {
+  if (b.couponCode !== undefined || !b.specialRequests) return b;
+  const match = LEGACY_COUPON.exec(b.specialRequests);
+  return match ? { ...b, couponCode: match[1], couponOffer: match[2], specialRequests: match[3] ?? "" } : b;
 }
 let bookingSetup: Promise<void> | undefined;
 async function prepareBookingExtensions() {
@@ -568,6 +600,8 @@ async function prepareBookingExtensions() {
     await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS special_requests TEXT DEFAULT ''`;
     await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS room_id TEXT DEFAULT ''`;
     await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS source TEXT DEFAULT ''`;
+    await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS coupon_code TEXT`;
+    await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS coupon_offer TEXT`;
     await sql`CREATE TABLE IF NOT EXISTS notification_outbox (id TEXT PRIMARY KEY, booking_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW())`;
     await sql`ALTER TABLE notification_outbox ADD COLUMN IF NOT EXISTS last_attempt_at TIMESTAMPTZ`;
   })().catch(error => {
@@ -686,7 +720,7 @@ export async function addBooking(b: NewBooking, options: NewBookingOptions = {})
     await prepareBookingExtensions();
     const insert = sql`INSERT INTO bookings (
         id, name, mobile, email, city, country, gender, room_type, checkin, checkout, guests, amount,
-        payment_status, booking_status, payment_id, created_at, rooms_requested, special_requests, room_id, source) VALUES (${id}, ${b.name}, ${b.mobile}, ${b.email}, ${b.city}, ${b.country}, ${b.gender}, ${b.roomType}, ${b.checkin}, ${b.checkout}, ${b.guests}, ${b.amount}, 'pending', ${status}, '', ${now}, ${b.roomsRequested ?? 1}, ${b.specialRequests ?? ""}, ${b.roomId ?? ""}, ${source ?? ""})`;
+        payment_status, booking_status, payment_id, created_at, rooms_requested, special_requests, room_id, source, coupon_code, coupon_offer) VALUES (${id}, ${b.name}, ${b.mobile}, ${b.email}, ${b.city}, ${b.country}, ${b.gender}, ${b.roomType}, ${b.checkin}, ${b.checkout}, ${b.guests}, ${b.amount}, 'pending', ${status}, '', ${now}, ${b.roomsRequested ?? 1}, ${b.specialRequests ?? ""}, ${b.roomId ?? ""}, ${source ?? ""}, ${b.couponCode ?? ""}, ${b.couponOffer ?? ""})`;
     // A website request and its notification event are saved together; a staff booking has no event.
     if (notify)
       await sql.transaction([
