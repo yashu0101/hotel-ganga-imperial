@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Icon from "@/components/Icon";
 
 // The welcome gates play once per browser session, on a guest's first homepage view.
 // The inline script in layout.tsx sets <html data-welcome-seen> before first paint for
@@ -75,7 +76,7 @@ export default function DoorIntro() {
         <i>A warmer welcome awaits</i>
       </div>
       <button type="button" className="gate-skip">
-        Skip intro <span aria-hidden="true">↗</span>
+        Skip intro <Icon name="arrow-right" position="end" />
       </button>
     </div>
   );

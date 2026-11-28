@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SITE_CONFIG } from "@/lib/config";
 import { telHref, whatsappHref } from "@/lib/contact";
+import Icon, { NewTabNote } from "@/components/Icon";
 
 // Call / WhatsApp the hotel directly. Falls back to the contact page when no number is configured.
 export default function ContactActions({
@@ -20,10 +21,17 @@ export default function ContactActions({
     );
   return (
     <div className={className}>
-      {tel && <a href={tel}>Call the hotel</a>}
+      {tel && (
+        <a href={tel}>
+          <Icon name="phone" position="start" />
+          Call the hotel
+        </a>
+      )}
       {whatsapp && (
         <a href={whatsapp} target="_blank" rel="noreferrer">
-          WhatsApp <span aria-hidden="true">↗</span>
+          <Icon name="chat" position="start" />
+          WhatsApp
+          <NewTabNote />
         </a>
       )}
     </div>

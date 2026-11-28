@@ -1,6 +1,5 @@
 import type { MetadataRoute } from "next";
 import { getRooms } from "@/lib/db";
-import { roomSlug } from "@/lib/hotel-content";
 export const dynamic = "force-dynamic";
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const site = process.env.NEXT_PUBLIC_SITE_URL;
@@ -14,6 +13,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/contact",
     "/track",
     "/privacy",
-    ...(await getRooms()).filter(r => !r.hidden).map(r => "/rooms/" + roomSlug(r.name)),
+    ...(await getRooms()).filter(r => !r.hidden).map(r => "/rooms/" + r.slug),
   ].map(route => ({ url: new URL(route, site).href }));
 }

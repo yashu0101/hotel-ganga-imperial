@@ -121,12 +121,13 @@ test("accepts single-day event request and only exposes request reference", asyn
 // Admin routes: load a route with the real validation + admin-route modules and a fake db/session.
 const validation = load("src/lib/validation.ts");
 class StorageUnavailableError extends Error {}
+class RoomAddressTakenError extends Error {}
 function adminRoute(name, db, authenticated, revalidated = []) {
   const adminRouteModule = load("src/lib/admin-route.ts", {
     "next/server": response,
     "next/cache": { revalidatePath: (...a) => revalidated.push(a) },
     "@/lib/auth": { verifySession: async () => ({ authenticated }) },
-    "@/lib/db": { StorageUnavailableError },
+    "@/lib/db": { StorageUnavailableError, RoomAddressTakenError },
     "@/lib/validation": validation,
   });
   return load("src/app/api/" + name + "/route.ts", {
@@ -134,6 +135,7 @@ function adminRoute(name, db, authenticated, revalidated = []) {
     "@/lib/admin-route": adminRouteModule,
     "@/lib/db": db,
     "@/lib/validation": validation,
+    "@/lib/reservation": dates,
   });
 }
 const jsonRequest = (method, body, query = "") =>
@@ -304,6 +306,36 @@ test("validates and persists requested room counts", async () => {
   assert.equal(records.at(-1).roomsRequested, 3);
 });
 
+test("requests are tied to the room's id, so a rename does not break or misfile them", async () => {
+  const saved = [];
+  const route = load("src/app/api/book/route.ts", {
+    "@/lib/notifications": { deliverNotifications: async () => ({ configured: false }) },
+    "next/server": response,
+    "@/lib/db": {
+      ...db,
+      getRooms: async () => [
+        { id: "7", name: "Deluxe King Room", hidden: false },
+        { id: "8", name: "Old Room", hidden: true },
+      ],
+      addBooking: async b => (saved.push(b), { ...b, id: "ref" }),
+    },
+    "@/lib/reservation": dates,
+    "@/lib/request-limit": { allowRequest: () => true, clientKey: () => "test" },
+  });
+  // The guest loaded the form before staff renamed "Deluxe Room" to "Deluxe King Room".
+  assert.equal((await route.POST(request({ ...payload, roomType: "Deluxe Room", roomId: "7" }))).status, 201);
+  assert.equal(saved.at(-1).roomId, "7");
+  assert.equal(saved.at(-1).roomType, "Deluxe King Room", "stored under the room's current name");
+  assert.equal((await route.POST(request({ ...payload, roomId: "8" }))).status, 400, "hidden rooms are refused");
+  assert.equal((await route.POST(request({ ...payload, roomId: "99" }))).status, 400, "unknown ids are refused");
+  assert.equal(
+    (await route.POST(request({ ...payload, roomType: "Deluxe King Room" }))).status,
+    201,
+    "pages without the id still match by name",
+  );
+  assert.equal(saved.at(-1).roomId, "7");
+});
+
 test("local booking and its notification event are persisted in one atomic file replacement", async () => {
   const files = new Map([["/virtual/data/db.json", JSON.stringify({ bookings: [], config: { rooms: [] } })]]);
   let renames = 0;
@@ -321,7 +353,12 @@ test("local booking and its notification event are persisted in one atomic file 
   };
   const dbModule = load(
     "src/lib/db.ts",
-    { fs: { default: fakeFs }, path: { default: path.posix }, "./config": { SITE_CONFIG: { rooms: [] } } },
+    {
+      fs: { default: fakeFs },
+      path: { default: path.posix },
+      "./validation": validation,
+      "./config": { SITE_CONFIG: { rooms: [] } },
+    },
     { process: { env: {}, cwd: () => "/virtual" } },
   );
   const saved = await dbModule.addBooking({
@@ -357,7 +394,12 @@ test("a notification that keeps failing is marked failed and can be requeued", a
   };
   const dbModule = load(
     "src/lib/db.ts",
-    { fs: { default: fakeFs }, path: { default: path.posix }, "./config": { SITE_CONFIG: { rooms: [] } } },
+    {
+      fs: { default: fakeFs },
+      path: { default: path.posix },
+      "./validation": validation,
+      "./config": { SITE_CONFIG: { rooms: [] } },
+    },
     { process: { env: {}, cwd: () => "/virtual" } },
   );
   const saved = await dbModule.addBooking({ ...payload, gender: "other", country: "", city: "", amount: 0 });
@@ -391,7 +433,12 @@ function jsonDb(initial) {
   };
   const dbModule = load(
     "src/lib/db.ts",
-    { fs: { default: fakeFs }, path: { default: path.posix }, "./config": { SITE_CONFIG: { rooms: [] } } },
+    {
+      fs: { default: fakeFs },
+      path: { default: path.posix },
+      "./validation": validation,
+      "./config": { SITE_CONFIG: { rooms: [] } },
+    },
     { process: { env: {}, cwd: () => "/virtual" } },
   );
   return { dbModule, stored: () => JSON.parse(files.get("/virtual/data/db.json")) };
@@ -651,6 +698,7 @@ test("sign-in works on a new Postgres database before /api/seed has created any 
     {
       fs: { default: {} },
       path: { default: path.posix },
+      "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
       "@neondatabase/serverless": { neon: () => sql },
     },
@@ -677,6 +725,7 @@ test("Postgres saves the booking and event in the same transaction", async () =>
     {
       fs: { default: {} },
       path: { default: path.posix },
+      "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
       "@neondatabase/serverless": { neon: () => sql },
     },
@@ -712,6 +761,7 @@ test("Postgres marks repeatedly failing notifications failed, requeues them and 
     {
       fs: { default: {} },
       path: { default: path.posix },
+      "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
       "@neondatabase/serverless": { neon: () => sql },
     },
@@ -832,6 +882,7 @@ test("Postgres stores special requests and staff notifications include them", as
     {
       fs: { default: {} },
       path: { default: path.posix },
+      "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
       "@neondatabase/serverless": { neon: () => sql },
     },
@@ -894,24 +945,49 @@ test("guests only see known room facts; unknown ones are hidden rather than show
     ["Bed configuration", "King bed"],
   ]);
   assert.deepEqual(content.roomFacts(undefined), []);
-  for (const spec of Object.values(content.ROOM_SPECIFICATIONS))
-    for (const value of Object.values(spec)) assert.doesNotMatch(value, /to be (updated|confirmed)/i);
+  assert.deepEqual(
+    content.roomFacts({ size: "", bed: "", occupancy: "", bathroom: "", location: "Floor 5", view: "" }),
+    [["Location in the hotel", "Floor 5"]],
+  );
   for (const value of Object.values(content.HOTEL_INFORMATION))
     assert.doesNotMatch(value, /to be (updated|confirmed)|not yet/i);
 });
 
-test("room inclusions belong to known room types and contain no placeholders", () => {
-  const content = load("src/lib/hotel-content.ts");
-  for (const [name, inclusions] of Object.entries(content.ROOM_INCLUSIONS)) {
-    assert.ok(content.ROOM_SPECIFICATIONS[name], "unknown room " + name);
-    for (const item of [...inclusions.inRoom, ...inclusions.services]) {
-      assert.ok(item.trim(), name + " has an empty inclusion");
-      assert.doesNotMatch(item, /to be (updated|confirmed)|tbd/i);
+test("built-in rooms have their own address, real images and no placeholder facts or inclusions", () => {
+  const { SITE_CONFIG } = load("src/lib/config.ts");
+  const stored = JSON.parse(fs.readFileSync("data/db.json", "utf8")).config.rooms;
+  for (const [source, rooms] of [
+    ["config.ts", SITE_CONFIG.rooms],
+    ["data/db.json", stored],
+  ]) {
+    assert.equal(new Set(rooms.map(r => r.slug)).size, rooms.length, source + ": slugs are unique");
+    for (const room of rooms) {
+      const where = source + " " + room.name;
+      assert.match(room.slug, /^[a-z0-9]+(-[a-z0-9]+)*$/, where + ": slug");
+      assert.ok(fs.existsSync("public" + room.image), where + ": image exists");
+      for (const key of ["size", "bed", "occupancy", "bathroom", "location", "view"]) {
+        assert.equal(typeof room[key], "string", where + ": " + key);
+        assert.doesNotMatch(room[key], /to be (updated|confirmed)|tbd/i, where + ": " + key);
+      }
+      for (const item of [...room.inRoom, ...room.services]) {
+        assert.ok(item.trim(), where + " has an empty inclusion");
+        assert.doesNotMatch(item, /to be (updated|confirmed)|tbd/i);
+      }
     }
   }
-  assert.deepEqual(content.roomFacts({ ...content.ROOM_SPECIFICATIONS.Suite, location: "Floor 5" }), [
-    ["Location in the hotel", "Floor 5"],
-  ]);
+});
+
+test("room links find the room by address, earlier address, then name", () => {
+  const { findRoom } = load("src/lib/hotel-content.ts");
+  const rooms = [
+    { slug: "deluxe-king", name: "Deluxe King Room", previousSlugs: ["deluxe-room"] },
+    { slug: "suite", name: "Suite" },
+  ];
+  assert.equal(findRoom(rooms, "deluxe-king").name, "Deluxe King Room");
+  assert.equal(findRoom(rooms, "deluxe-room").slug, "deluxe-king", "old addresses still resolve");
+  assert.equal(findRoom(rooms, "Suite").slug, "suite", "booking links that used the name still work");
+  assert.equal(findRoom(rooms, "nope"), undefined);
+  assert.equal(findRoom(rooms, ""), undefined);
 });
 
 test("admin launch checklist lists every missing guest-facing detail", () => {
@@ -945,6 +1021,18 @@ test("admin launch checklist lists every missing guest-facing detail", () => {
     rooms: [],
   });
   assert.ok(!ready.some(m => /phone|whatsapp|email|address|directions/i.test(m)));
+  // Room facts are checked for the rooms that actually exist, so a room added or renamed in the admin is covered.
+  const facts = { size: "28 m²", bed: "King", occupancy: "2", bathroom: "Shower", location: "Floor 2", view: "" };
+  const rooms = content.missingLaunchDetails({
+    contact: empty,
+    rooms: [
+      { name: "Garden Room", sample: false, ...facts },
+      { name: "Complete Room", sample: false, ...facts, view: "City" },
+    ],
+  });
+  assert.ok(rooms.some(m => m.startsWith("Garden Room: view")));
+  assert.ok(!rooms.some(m => m.startsWith("Complete Room")));
+  assert.ok(!rooms.some(m => /Deluxe Room|Premium Room|Family Room/.test(m)), "no rooms that are not on the site");
 });
 
 test("Hotel JSON-LD uses only known facts and is safe to embed in a script tag", () => {
@@ -1075,7 +1163,7 @@ test("login rejects bad credentials, limits repeated failures and sets a secure 
   );
 });
 
-function jsonStore(initial) {
+function jsonStore(initial, builtInRooms = [{ name: "Deluxe Room", text: "", image: "", rate: "", sample: true }]) {
   const files = new Map(initial === undefined ? [] : [["/virtual/data/db.json", JSON.stringify(initial)]]);
   let readOnly = false;
   const fakeFs = {
@@ -1100,7 +1188,8 @@ function jsonStore(initial) {
     {
       fs: { default: fakeFs },
       path: { default: path.posix },
-      "./config": { SITE_CONFIG: { rooms: [{ name: "Deluxe Room", text: "", image: "", rate: "", sample: true }] } },
+      "./validation": validation,
+      "./config": { SITE_CONFIG: { rooms: builtInRooms } },
     },
     { process: { env: {}, cwd: () => "/virtual" } },
   );
@@ -1141,6 +1230,159 @@ test("rooms are addressed by stable id, not list position", async () => {
     "the other Suite is untouched although a delete shifted positions",
   );
   assert.equal(await store.db.updateRoom("nope", { rate: "x" }), null);
+});
+
+test("renaming a room keeps its address; changing the address keeps the old one as a redirect", async () => {
+  const store = jsonStore({
+    bookings: [],
+    config: {
+      rooms: [
+        {
+          id: "deluxe-room",
+          slug: "deluxe-room",
+          name: "Deluxe Room",
+          text: "",
+          image: "",
+          rate: "",
+          sample: false,
+          inRoom: ["Wi-Fi"],
+          services: [],
+        },
+        {
+          id: "suite",
+          slug: "suite",
+          name: "Suite",
+          text: "",
+          image: "",
+          rate: "",
+          sample: false,
+          inRoom: [],
+          services: [],
+        },
+      ],
+    },
+  });
+  const renamed = await store.db.updateRoom("deluxe-room", { name: "Deluxe King Room", slug: "" });
+  assert.equal(renamed.slug, "deluxe-room", "a rename (and a blank address field) keeps the address");
+  assert.deepEqual(renamed.inRoom, ["Wi-Fi"], "content stays with the room, not its name");
+  const moved = await store.db.updateRoom("deluxe-room", { slug: "deluxe-king" });
+  assert.equal(moved.slug, "deluxe-king");
+  assert.deepEqual(moved.previousSlugs, ["deluxe-room"]);
+  const back = await store.db.updateRoom("deluxe-room", { slug: "deluxe-room" });
+  assert.deepEqual(back.previousSlugs, ["deluxe-king"], "the live address is never also an old one");
+  await assert.rejects(
+    () => store.db.updateRoom("suite", { slug: "deluxe-room" }),
+    e => e.name === "RoomAddressTakenError",
+  );
+  await assert.rejects(
+    () => store.db.addRoom({ name: "Another Suite", slug: "suite", text: "", image: "", rate: "", sample: false }),
+    e => e.name === "RoomAddressTakenError",
+  );
+  const added = await store.db.addRoom({ name: "Suite", text: "", image: "", rate: "", sample: false });
+  assert.equal(added.slug, "suite-2", "a blank address is made from the name and kept unique");
+  assert.deepEqual([added.inRoom, added.services, added.view], [[], [], ""]);
+  assert.equal(store.saved().config.rooms.find(r => r.id === "suite").slug, "suite", "other rooms untouched");
+});
+
+test("rooms saved before rooms had addresses keep their URL, inclusions and photo", async () => {
+  const store = jsonStore(
+    {
+      bookings: [],
+      config: {
+        rooms: [
+          { name: "Family Room", text: "", image: "/images/image-17.jpeg", rate: "", sample: true },
+          { name: "Garden Room", text: "", image: "/images/garden.jpeg", rate: "", sample: false },
+        ],
+      },
+    },
+    [{ name: "Family Room", inRoom: ["Twin beds"], services: ["Family breakfast"] }],
+  );
+  const [family, garden] = await store.db.getRooms();
+  assert.equal(family.slug, "family-room", "same address as before");
+  assert.deepEqual([family.inRoom, family.services], [["Twin beds"], ["Family breakfast"]]);
+  assert.equal(family.image, "/images/image-40.jpeg", "the picture guests were shown");
+  assert.equal(family.size, "");
+  assert.equal(garden.slug, "garden-room");
+  assert.deepEqual(garden.inRoom, []);
+  assert.equal(garden.image, "/images/garden.jpeg", "real photos are left alone");
+});
+
+test("room addresses are validated and normalised; conflicts reach staff as 409", async () => {
+  const ok = validation.parseInput(validation.ROOM_SCHEMA, { name: "Deluxe", slug: " Deluxe King Room! " });
+  assert.equal(ok.data.slug, "deluxe-king-room");
+  assert.deepEqual([ok.data.inRoom, ok.data.services, ok.data.view], [[], [], ""]);
+  assert.equal(validation.parseInput(validation.ROOM_SCHEMA, { name: "Deluxe", slug: "!!!" }).ok, false);
+  assert.equal(validation.parseInput(validation.ROOM_SCHEMA, { name: "D" }).data.slug, "", "blank means automatic");
+  assert.equal(validation.parseInput(validation.ROOM_SCHEMA, { name: "D", previousSlugs: ["x"] }).ok, false);
+  const rooms = adminRoute(
+    "rooms",
+    {
+      updateRoom: async (_, d) => {
+        throw new RoomAddressTakenError(`The web address "${d.slug}" is already used by another room.`);
+      },
+    },
+    true,
+  );
+  const res = await rooms.PATCH(jsonRequest("PATCH", { id: "1", slug: "suite" }));
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /already used/);
+});
+
+test("Postgres gives older rooms an address and their inclusions once, then keeps addresses unique", async () => {
+  const queries = [];
+  const rows = [
+    { idx: 1, name: "Suite", slug: null, in_room: null, sample: true, image: "/images/image-16.jpeg" },
+    { idx: 2, name: "Garden Room", slug: "garden-room", in_room: "[]", sample: false, image: "/images/g.jpeg" },
+  ];
+  const sql = async () => [];
+  sql.query = async (text, params = []) => {
+    queries.push({ text, params });
+    if (text.startsWith("SELECT * FROM rooms ORDER BY idx")) return rows;
+    if (text.startsWith("SELECT slug FROM rooms")) return rows.map(r => ({ slug: r.slug ?? "suite" }));
+    if (text.startsWith("INSERT INTO rooms")) return [{ idx: 3, ...Object.fromEntries(params.map((p, i) => [i, p])) }];
+    return [];
+  };
+  const db = load(
+    "src/lib/db.ts",
+    {
+      fs: { default: {} },
+      path: { default: path.posix },
+      "./validation": validation,
+      "./config": { SITE_CONFIG: { rooms: [{ name: "Suite", inRoom: ["King bed"], services: ["Butler service"] }] } },
+      "@neondatabase/serverless": { neon: () => sql },
+    },
+    { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
+  );
+  await db.getRooms();
+  const upgrade = queries.find(q => q.text.startsWith("UPDATE rooms SET"));
+  assert.match(
+    upgrade.text,
+    /^UPDATE rooms SET slug = \$1, in_room = \$2, services = \$3, image = \$4 WHERE idx = \$5$/,
+  );
+  assert.deepEqual(upgrade.params, ["suite", '["King bed"]', '["Butler service"]', "/images/image-17.jpeg", 1]);
+  assert.equal(queries.filter(q => q.text.startsWith("UPDATE rooms SET")).length, 1, "current rows are left alone");
+  assert.ok(queries.some(q => /CREATE UNIQUE INDEX IF NOT EXISTS rooms_slug_key ON rooms \(slug\)/.test(q.text)));
+  const before = queries.length;
+  await db.getRooms();
+  assert.ok(!queries.slice(before).some(q => /ALTER TABLE/.test(q.text)), "set-up runs once per process");
+  await assert.rejects(
+    () => db.addRoom({ name: "x", slug: "garden-room", text: "", image: "", rate: "", sample: false }),
+    e => e.name === "RoomAddressTakenError",
+  );
+  await db.addRoom({
+    name: "Garden Room",
+    text: "",
+    image: "/images/g.jpeg",
+    rate: "",
+    sample: false,
+    inRoom: ["Wi-Fi"],
+  });
+  const insert = queries.at(-1);
+  assert.match(insert.text, /^INSERT INTO rooms \(.*\) VALUES \(\$1, .*\) RETURNING \*$/);
+  for (const column of ["slug", "in_room", "services", "room_view"])
+    assert.match(insert.text, new RegExp(`\\b${column}\\b`));
+  assert.ok(insert.params.includes("garden-room-2"), "automatic address avoids the one in use");
+  assert.ok(insert.params.includes('["Wi-Fi"]'), "lists are stored as JSON");
 });
 
 test("JSON collections store only declared fields and order like Postgres", async () => {
@@ -1208,6 +1450,7 @@ test("Postgres collections use parameterised statements for only the changed col
     {
       fs: { default: {} },
       path: { default: path.posix },
+      "./validation": validation,
       "./config": { SITE_CONFIG: { rooms: [] } },
       "@neondatabase/serverless": { neon: () => sql },
     },
@@ -1354,4 +1597,240 @@ test("request tracking needs reference and email, and never returns contact deta
   const found = await (await post({ reference: "3f9a12bc", email: "a@b.in" })).json();
   assert.equal(found.reference, "3F9A12BC");
   for (const key of ["name", "mobile", "email", "id"]) assert.ok(!(key in found), key + " must not be returned");
+});
+
+test("stay rules are shared: rooms, events, dining, counts and dates", () => {
+  const rooms = [
+    { id: "deluxe-room", name: "Deluxe Room", hidden: false },
+    { id: "closed", name: "Closed Room", hidden: true },
+  ];
+  const packages = [
+    { name: "Gold", active: true },
+    { name: "Old", active: false },
+  ];
+  const stay = { checkin: future, checkout: "2099-01-12", guests: 2 };
+  const ok = dates.resolveStay(
+    { ...stay, roomId: "deluxe-room", roomType: "Renamed", roomsRequested: 2 },
+    rooms,
+    packages,
+  );
+  assert.deepEqual(ok.stay, {
+    roomType: "Deluxe Room",
+    roomId: "deluxe-room",
+    roomsRequested: 2,
+    checkin: future,
+    checkout: "2099-01-12",
+    guests: 2,
+    event: false,
+  });
+  const unknown = "Please choose an available room or enquiry type.";
+  assert.equal(dates.resolveStay({ ...stay, roomId: "closed" }, rooms, packages).error, unknown);
+  assert.equal(dates.resolveStay({ ...stay, roomType: "Banquet - Old" }, rooms, packages).error, unknown);
+  assert.equal(
+    dates.resolveStay({ ...stay, roomId: "deluxe-room", roomsRequested: 11 }, rooms, packages).error,
+    "Request between 1 and 10 rooms.",
+  );
+  const event = dates.resolveStay({ roomType: "Banquet - Gold", checkin: future, guests: 250 }, rooms, packages);
+  assert.equal(event.stay.event, true);
+  assert.equal(event.stay.roomsRequested, 0);
+  assert.equal(
+    dates.resolveStay({ roomType: "Dining enquiry", checkin: future, guests: 4 }, rooms, packages).stay.event,
+    false,
+  );
+  assert.ok(dates.resolveStay({ ...stay, roomId: "deluxe-room", guests: 25 }, rooms, packages).error);
+  assert.ok(dates.resolveStay({ roomId: "deluxe-room", checkin: future, guests: 2 }, rooms, packages).error);
+  assert.equal(dates.contactError({ name: "", mobile: "+919999999999", email: "" }), "Enter your full name.");
+  assert.equal(dates.contactError({ name: "A", mobile: "123", email: "" }), dates.phoneError("123"));
+  assert.equal(
+    dates.contactError({ name: "A", mobile: "+919999999999", email: "nope" }),
+    "Enter a valid email address, or leave it blank.",
+  );
+  assert.equal(dates.contactError({ name: "A", mobile: "+919999999999", email: "" }), "");
+});
+
+test("staff bookings are saved with their status and source and queue no notification", async () => {
+  const staffBooking = { ...payload, roomsRequested: 1, gender: "other", country: "", city: "Pune", amount: 0 };
+  const files = new Map([["/virtual/data/db.json", JSON.stringify({ bookings: [], config: { rooms: [] } })]]);
+  const fakeFs = {
+    readFileSync: p => files.get(p),
+    writeFileSync: (p, v) => files.set(p, v),
+    existsSync: p => files.has(p) || p === "/virtual/data",
+    mkdirSync: () => {},
+    renameSync: (a, b) => {
+      files.set(b, files.get(a));
+      files.delete(a);
+    },
+    unlinkSync: p => files.delete(p),
+  };
+  const local = load(
+    "src/lib/db.ts",
+    {
+      fs: { default: fakeFs },
+      path: { default: path.posix },
+      "./validation": validation,
+      "./config": { SITE_CONFIG: { rooms: [] } },
+    },
+    { process: { env: {}, cwd: () => "/virtual" } },
+  );
+  const saved = await local.addBooking(staffBooking, { status: "confirmed", source: "staff", notify: false });
+  const stored = JSON.parse(files.get("/virtual/data/db.json"));
+  assert.equal(saved.bookingStatus, "confirmed");
+  assert.equal(stored.bookings[0].source, "staff");
+  assert.equal(stored.bookings[0].bookingStatus, "confirmed");
+  assert.deepEqual(stored.notificationJobs ?? [], []);
+
+  const queries = [];
+  const sql = (strings, ...values) => {
+    const q = { query: strings.join("?"), values };
+    queries.push(q);
+    return [];
+  };
+  sql.transaction = async list => {
+    queries.push(...list);
+    return list.map(() => []);
+  };
+  const pg = load(
+    "src/lib/db.ts",
+    {
+      fs: { default: {} },
+      path: { default: path.posix },
+      "./validation": validation,
+      "./config": { SITE_CONFIG: { rooms: [] } },
+      "@neondatabase/serverless": { neon: () => sql },
+    },
+    { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
+  );
+  await pg.addBooking(staffBooking, { status: "confirmed", source: "staff", notify: false });
+  assert.ok(!queries.some(q => /notification_outbox \(/.test(q.query) && /INSERT/.test(q.query)));
+  const insert = queries.find(q => /INSERT INTO bookings/.test(q.query));
+  assert.ok(insert.values.includes("staff"));
+  assert.ok(insert.values.includes("confirmed"));
+  const row = { id: "b", name: "n", created_at: new Date().toISOString(), checkin: future, checkout: "", guests: 1 };
+  const sqlRows = [
+    { ...row, source: "staff" },
+    { ...row, id: "c", source: "" },
+  ];
+  const reader = load(
+    "src/lib/db.ts",
+    {
+      fs: { default: {} },
+      path: { default: path.posix },
+      "./validation": validation,
+      "./config": { SITE_CONFIG: { rooms: [] } },
+      "@neondatabase/serverless": { neon: () => Object.assign(() => sqlRows, { transaction: async () => [] }) },
+    },
+    { process: { env: { DATABASE_URL: "test-only" }, cwd: () => "/virtual" } },
+  );
+  const [staff, website] = await reader.getBookings();
+  assert.equal(staff.source, "staff");
+  assert.equal(website.source, undefined);
+});
+
+test("staff can add a confirmed booking without notifying the guest", async () => {
+  const added = [];
+  const db = {
+    getRooms: async () => [{ id: "deluxe-room", name: "Deluxe Room", hidden: false }],
+    getBanquetPackages: async () => [],
+    addBooking: async (b, options) => (added.push({ b, options }), { ...b, id: "new", bookingStatus: options.status }),
+  };
+  const route = adminRoute("bookings", db, true);
+  const body = {
+    name: "Walk-in Guest",
+    mobile: "+919999999999",
+    city: "Pune",
+    roomType: "Deluxe Room",
+    roomId: "deluxe-room",
+    roomsRequested: 1,
+    checkin: future,
+    checkout: "2099-01-12",
+    guests: 2,
+    bookingStatus: "confirmed",
+  };
+  const res = await route.POST(jsonRequest("POST", body));
+  assert.equal(res.status, 201);
+  assert.equal((await res.json()).item.id, "new");
+  assert.equal(added[0].b.city, "Pune");
+  assert.equal(added[0].b.roomType, "Deluxe Room");
+  assert.deepEqual(added[0].options, { status: "confirmed", source: "staff", notify: false });
+  assert.equal((await route.POST(jsonRequest("POST", { ...body, bookingStatus: "checked-in" }))).status, 400);
+  assert.equal((await route.POST(jsonRequest("POST", { ...body, paymentStatus: "paid" }))).status, 400);
+  const past = await route.POST(jsonRequest("POST", { ...body, checkin: "2000-01-01", checkout: "2000-01-02" }));
+  assert.equal(past.status, 400);
+  assert.equal((await past.json()).error, dates.dateError("2000-01-01", "2000-01-02", true));
+  const defaulted = await route.POST(jsonRequest("POST", { ...body, bookingStatus: undefined }));
+  assert.equal(defaulted.status, 201);
+  assert.equal(added.at(-1).options.status, "confirmed");
+  assert.equal(added.length, 2);
+});
+
+test("calendar weeks start on Monday and stays are split across weeks into lanes", () => {
+  const cal = load("src/components/admin/calendar-layout.ts");
+  const weeks = cal.monthWeeks("2026-11");
+  assert.equal(weeks.length, 6);
+  assert.equal(weeks[0][0], "2026-10-26");
+  assert.equal(weeks.at(-1)[6], "2026-12-06");
+  assert.ok(weeks.every(w => w.length === 7));
+  const stay = [{ id: "s", start: "2026-11-28", end: "2026-11-30" }];
+  const week5 = cal.layoutWeek(weeks[4], stay, 3);
+  assert.deepEqual(week5.segments, [
+    { id: "s", lane: 0, from: 5, to: 6, continuesBefore: false, continuesAfter: true },
+  ]);
+  const week6 = cal.layoutWeek(weeks[5], stay, 3);
+  assert.deepEqual(week6.segments, [
+    { id: "s", lane: 0, from: 0, to: 0, continuesBefore: true, continuesAfter: false },
+  ]);
+  const crowd = ["a", "b", "c", "d"].map(id => ({ id, start: "2026-11-04", end: "2026-11-04" }));
+  const busy = cal.layoutWeek(weeks[1], crowd, 3);
+  assert.equal(busy.segments.length, 3);
+  assert.equal(busy.hidden[2], 1);
+  assert.equal(busy.hidden[0], 0);
+  // A longer stay starting the same day takes the first lane; a later one reuses a free lane.
+  const mixed = cal.layoutWeek(
+    weeks[1],
+    [
+      { id: "short", start: "2026-11-02", end: "2026-11-02" },
+      { id: "long", start: "2026-11-02", end: "2026-11-05" },
+      { id: "after", start: "2026-11-03", end: "2026-11-03" },
+    ],
+    3,
+  );
+  const lane = id => mixed.segments.find(s => s.id === id).lane;
+  assert.equal(lane("long"), 0);
+  assert.equal(lane("short"), 1);
+  assert.equal(lane("after"), 1);
+});
+
+test("a room request can't borrow the event guest limit by also naming an event", () => {
+  const rooms = [{ id: "deluxe-room", name: "Deluxe Room", hidden: false }];
+  const mixed = dates.resolveStay(
+    { roomId: "deluxe-room", roomType: "Banquet hall", checkin: future, checkout: "2099-01-12", guests: 300 },
+    rooms,
+    [],
+  );
+  assert.equal(mixed.error, "Enter a guest count between 1 and 20.");
+});
+
+test("calendar places hidden-room stays under their room and shows every day of a multi-day event", () => {
+  const cal = load("src/components/admin/calendar-layout.ts");
+  const rooms = [
+    { id: "suite", name: "Suite", hidden: true },
+    { id: "deluxe-room", name: "Deluxe Room" },
+  ];
+  assert.equal(cal.roomFor({ roomId: "suite", roomType: "Suite" }, rooms)?.id, "suite");
+  assert.equal(cal.roomFor({ roomType: "Deluxe Room" }, rooms)?.id, "deluxe-room");
+  assert.equal(cal.roomFor({ roomType: "Banquet hall" }, rooms), undefined);
+  // Room stays end the night before check-out; events include their end date; single days are one day.
+  assert.equal(cal.lastDay({ checkin: "2026-12-05", checkout: "2026-12-07" }, true), "2026-12-06");
+  assert.equal(cal.lastDay({ checkin: "2026-12-05", checkout: "2026-12-06" }, false), "2026-12-06");
+  assert.equal(cal.lastDay({ checkin: "2026-12-05", checkout: "" }, false), "2026-12-05");
+  assert.equal(cal.lastDay({ checkin: "2026-12-05", checkout: "2026-12-05" }, true), "2026-12-05");
+});
+
+test("booking steppers stay within the server's limits", () => {
+  const format = load("src/components/admin/format.ts");
+  assert.equal(format.clampCount("0", 1, 10), 1);
+  assert.equal(format.clampCount(11, 1, 10), 10);
+  assert.equal(format.clampCount("abc", 1, 20), 1);
+  assert.equal(format.clampCount("2.7", 1, 20), 2);
+  assert.equal(format.clampCount(250, 1, 20), 20);
 });

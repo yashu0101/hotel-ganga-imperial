@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { SITE_CONFIG } from "@/lib/config";
 import { telHref, whatsappHref } from "@/lib/contact";
+import Icon, { NewTabNote } from "@/components/Icon";
 
 const NAME = "Ganga Imperial";
 
@@ -76,14 +77,16 @@ export default function Footer() {
             {whatsapp && (
               <li>
                 <a className="footer-link" href={whatsapp} target="_blank" rel="noreferrer">
-                  Chat on WhatsApp
+                  Chat on WhatsApp <Icon name="external" position="end" />
+                  <NewTabNote />
                 </a>
               </li>
             )}
             {c.mapEmbedUrl && (
               <li>
                 <a className="footer-link" href={c.mapEmbedUrl} target="_blank" rel="noreferrer">
-                  Get directions
+                  Get directions <Icon name="external" position="end" />
+                  <NewTabNote />
                 </a>
               </li>
             )}

@@ -1,4 +1,14 @@
-import { SiteConfig } from "./types";
+import type { RoomSpecification, SiteConfig } from "./types";
+
+/** Room facts the hotel has not approved yet ("" is hidden from guests and listed in the launch checklist). */
+export const unknownFacts = (): RoomSpecification => ({
+  size: "",
+  bed: "",
+  occupancy: "",
+  bathroom: "",
+  location: "",
+  view: "",
+});
 
 export const SITE_CONFIG: SiteConfig = {
   hotelName: "Hotel Ganga Imperial",
@@ -14,34 +24,52 @@ export const SITE_CONFIG: SiteConfig = {
       process.env.NEXT_PUBLIC_HOTEL_MAP_URL ||
       "https://www.google.com/maps/search/?api=1&query=Hotel+Ganga+Imperial+Tilamapur+Varanasi",
   },
+  // Built-in rooms: used when storage is empty or read-only, and by /api/seed. Staff edit the stored copies in the
+  // admin. Room facts stay "" until the hotel approves them; inclusions list only what the description promises.
   rooms: [
     {
+      slug: "deluxe-room",
       name: "Deluxe Room",
       text: "A warm, cove-lit room with an upholstered headboard, work desk and city view. Includes AC, Wi-Fi, TV, mini-bar and complimentary breakfast.",
       image: "/images/image-49.jpeg",
       rate: "\u20B93,000/night",
       sample: true,
+      ...unknownFacts(),
+      inRoom: ["Air conditioning", "Wi-Fi", "Television", "Mini-bar", "Work desk", "City view"],
+      services: ["Complimentary breakfast"],
     },
     {
+      slug: "premium-room",
       name: "Premium Room",
       text: "Extra space, brass accents and a sitting area for a more relaxed stay. Includes all Deluxe amenities plus a lounge area and premium toiletries.",
-      image: "/images/image-15.jpeg",
+      image: "/images/image-49.jpeg",
       rate: "\u20B94,500/night",
       sample: true,
+      ...unknownFacts(),
+      inRoom: ["Air conditioning", "Wi-Fi", "Television", "Mini-bar", "Sitting & lounge area", "Premium toiletries"],
+      services: ["Complimentary breakfast"],
     },
     {
+      slug: "suite",
       name: "Suite",
       text: "A separate living room, king bed and premium bath amenities for longer visits. Includes butler service, welcome drink and late checkout.",
-      image: "/images/image-16.jpeg",
+      image: "/images/image-17.jpeg",
       rate: "\u20B98,000/night",
       sample: true,
+      ...unknownFacts(),
+      inRoom: ["Separate living room", "King bed", "Premium bath amenities"],
+      services: ["Butler service", "Welcome drink", "Late checkout"],
     },
     {
+      slug: "family-room",
       name: "Family Room",
       text: "Twin beds, extra floor space and everything a family needs under one roof. Includes kids' welcome kit, extra bedding and family breakfast.",
-      image: "/images/image-17.jpeg",
+      image: "/images/image-40.jpeg",
       rate: "\u20B95,500/night",
       sample: true,
+      ...unknownFacts(),
+      inRoom: ["Twin beds", "Extra floor space", "Extra bedding"],
+      services: ["Kids\u2019 welcome kit", "Family breakfast"],
     },
   ],
   venue: {
@@ -83,6 +111,9 @@ export const PHOTOS = {
   gym: { src: "/images/image-53.jpeg", caption: "Fitness room", sample: true },
   tableTennis: { src: "/images/image-54.jpeg", caption: "Table tennis", sample: true },
 } satisfies Record<string, Photo>;
+
+/** Images that are drawings rather than photographs, so their disclosure says "illustration". */
+export const ILLUSTRATION_IMAGES: readonly string[] = ["/images/image-40.jpeg"];
 
 export const GALLERY_IMAGES: Photo[] = [
   PHOTOS.exterior,

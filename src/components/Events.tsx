@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { PHOTOS } from "@/lib/config";
 import type { BanquetPackage } from "@/lib/types";
+import Icon from "@/components/Icon";
 
 const photo = PHOTOS.banquet;
 
@@ -30,7 +31,7 @@ export default function Events({ packages = [], preview = false }: { packages?: 
       {preview && (
         <div className="wrap section-action">
           <a className="text-action" href="/celebrations">
-            Explore celebration packages <span aria-hidden="true">↗</span>
+            Explore celebration packages <Icon name="arrow-right" position="end" />
           </a>
         </div>
       )}

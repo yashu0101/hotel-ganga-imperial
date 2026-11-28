@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { PHOTOS } from "@/lib/config";
 import type { DiningOption } from "@/lib/types";
+import Icon from "@/components/Icon";
 
 const photo = PHOTOS.lounge;
 
@@ -32,7 +33,7 @@ export default function Dining({ options = [], preview = false }: { options?: Di
       {preview && (
         <div className="wrap section-action">
           <a className="text-action" href="/dining">
-            Explore dining & menu <span aria-hidden="true">↗</span>
+            Explore dining & menu <Icon name="arrow-right" position="end" />
           </a>
         </div>
       )}

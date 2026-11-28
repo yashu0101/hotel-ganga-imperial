@@ -3,6 +3,7 @@ import Link from "next/link";
 import InteriorShell from "@/components/InteriorShell";
 import { SITE_CONFIG } from "@/lib/config";
 import { PRIVACY_INFORMATION } from "@/lib/hotel-content";
+import Icon from "@/components/Icon";
 
 export const metadata = {
   ...canonical("/privacy"),
@@ -20,7 +21,8 @@ export default function Privacy() {
     <InteriorShell>
       <div className="wrap privacy-page">
         <Link className="back-inline" href="/">
-          ← The hotel
+          <Icon name="arrow-left" position="start" />
+          The hotel
         </Link>
         <h1>Privacy notice</h1>
         {lastUpdated && <p className="privacy-updated">Last updated {lastUpdated}.</p>}

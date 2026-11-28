@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, FormEvent } from "react";
+import Icon from "@/components/Icon";
 
 interface Result {
   reference: string;
@@ -85,6 +86,7 @@ export default function TrackRequest() {
             autoComplete="email"
             maxLength={150}
             required
+            placeholder="you@example.com"
           />
         </div>
         {error && (
@@ -93,7 +95,8 @@ export default function TrackRequest() {
           </div>
         )}
         <button className="btn btn-solid" type="submit" disabled={busy}>
-          {busy ? "Checking…" : "Check status ↗"}
+          {busy ? "Checking…" : "Check status"}
+          {!busy && <Icon name="arrow-right" />}
         </button>
       </form>
       {result && (

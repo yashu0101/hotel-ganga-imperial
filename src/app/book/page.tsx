@@ -13,9 +13,10 @@ import RequestReceipt, {
 import ThemeToggle from "@/components/ThemeToggle";
 import ContactActions from "@/components/ContactActions";
 import { PHOTOS, SITE_CONFIG } from "@/lib/config";
-import { roomPhoto } from "@/lib/hotel-content";
+import { findRoom } from "@/lib/hotel-content";
 import { hotelToday, dateError, nightlyRate, phoneError, PHONE_MAX_LENGTH } from "@/lib/reservation";
 import type { Room, BanquetPackage } from "@/lib/types";
+import Icon from "@/components/Icon";
 
 const KINDS: { value: Kind; label: string; hint: string }[] = [
   { value: "room", label: "A room", hint: "Stay one night or more" },
@@ -29,15 +30,18 @@ const inr = (n: number) => n.toLocaleString("en-IN", { style: "currency", curren
 
 type Selection = { type: Kind; choice: string };
 const defaultChoice = (type: Kind, rooms: Room[]) =>
-  type === "room" ? rooms[0]?.name || "" : type === "banquet" ? "Banquet hall" : "Dining enquiry";
-/** Falls back to the default choice when the wanted one is not (or no longer) on offer. */
+  type === "room" ? rooms[0]?.slug || "" : type === "banquet" ? "Banquet hall" : "Dining enquiry";
+/**
+ * Falls back to the default choice when the wanted one is not (or no longer) on offer. Rooms are chosen by slug;
+ * a link with an older slug or a room name (links made before rooms had their own address) still finds the room.
+ */
 function keepValid(wanted: Selection, rooms: Room[], packages: BanquetPackage[]): Selection {
+  if (wanted.type === "room") {
+    const room = findRoom(rooms, wanted.choice);
+    return { type: "room", choice: room ? room.slug : defaultChoice("room", rooms) };
+  }
   const options =
-    wanted.type === "room"
-      ? rooms.map(r => r.name)
-      : wanted.type === "banquet"
-        ? ["Banquet hall", ...packages.map(p => "Banquet - " + p.name)]
-        : ["Dining enquiry"];
+    wanted.type === "banquet" ? ["Banquet hall", ...packages.map(p => "Banquet - " + p.name)] : ["Dining enquiry"];
   return options.includes(wanted.choice) ? wanted : { type: wanted.type, choice: defaultChoice(wanted.type, rooms) };
 }
 /** What a link such as /book?type=banquet&package=… or /book?offer=… asks for. */
@@ -88,7 +92,7 @@ function Stepper({
       <div className="stepper">
         {/* aria-disabled rather than disabled, so keyboard focus stays on the button at the limit. */}
         <button type="button" aria-label={"Fewer: " + label} aria-disabled={value <= min} onClick={() => step(-1)}>
-          −
+          <Icon name="minus" />
         </button>
         <input
           id={id}
@@ -114,7 +118,7 @@ function Stepper({
           }}
         />
         <button type="button" aria-label={"More: " + label} aria-disabled={value >= max} onClick={() => step(1)}>
-          +
+          <Icon name="plus" />
         </button>
       </div>
       {outOfRange && (
@@ -172,15 +176,15 @@ export default function BookPage() {
     loadOptions();
   }, [loadOptions]);
 
-  const room = type === "room" ? rooms.find(r => r.name === choice) : undefined;
+  const room = type === "room" ? rooms.find(r => r.slug === choice) : undefined;
   const nightly = room ? nightlyRate(room.rate) || 0 : 0;
   const nights = nightsBetween(checkin, checkout);
   const photo = room
-    ? { src: roomPhoto(room), alt: room.name, sample: room.sample }
+    ? { src: room.image, alt: room.name, sample: room.sample }
     : type === "room"
       ? null
       : { src: KIND_PHOTO[type].src, alt: KIND_PHOTO[type].caption, sample: KIND_PHOTO[type].sample };
-  const choiceLabel = type === "dining" ? "Dining at the hotel" : choice.replace(/^Banquet - /, "");
+  const choiceLabel = room ? room.name : type === "dining" ? "Dining at the hotel" : choice.replace(/^Banquet - /, "");
   const dateText = !checkin
     ? "Choose your dates"
     : whenText(type, checkin, checkout) + (type === "room" && !checkout ? ", check-out to choose" : "");
@@ -228,7 +232,9 @@ export default function BookPage() {
           name: values.get("name"),
           mobile,
           email: values.get("email"),
-          roomType: choice,
+          // The id ties the request to the room even if staff rename it; the name records what the guest saw.
+          roomType: room ? room.name : choice,
+          roomId: room?.id,
           checkin,
           checkout,
           guests,
@@ -276,7 +282,8 @@ export default function BookPage() {
       <header className="reservation-header">
         <div className="booking-header-start">
           <Link className="booking-back" href="/">
-            <span aria-hidden="true">←</span> Back to hotel
+            <Icon name="arrow-left" position="start" />
+            Back to hotel
           </Link>
           <Link className="wordmark" href="/">
             <small>Hotel</small>Ganga Imperial
@@ -362,13 +369,13 @@ export default function BookPage() {
                     </p>
                     <div className="room-choices">
                       {rooms.map(r => (
-                        <label key={r.id || r.name} className="room-choice">
+                        <label key={r.slug} className="room-choice">
                           <input
                             type="radio"
                             name="roomChoice"
-                            value={r.name}
-                            checked={choice === r.name}
-                            onChange={() => choose(r.name)}
+                            value={r.slug}
+                            checked={choice === r.slug}
+                            onChange={() => choose(r.slug)}
                             required
                           />
                           <Image src={r.image} alt="" width={96} height={96} sizes="72px" />
@@ -442,7 +449,14 @@ export default function BookPage() {
                 </legend>
                 <div className="field">
                   <label htmlFor="name">Full name</label>
-                  <input id="name" name="name" autoComplete="name" maxLength={100} required />
+                  <input
+                    id="name"
+                    name="name"
+                    autoComplete="name"
+                    maxLength={100}
+                    required
+                    placeholder="As it should appear on the reservation"
+                  />
                 </div>
                 <div className="reservation-fields">
                   <div className="field">
@@ -471,7 +485,14 @@ export default function BookPage() {
                     <label htmlFor="email">
                       Email <span className="optional">optional</span>
                     </label>
-                    <input id="email" name="email" type="email" autoComplete="email" maxLength={150} />
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      autoComplete="email"
+                      maxLength={150}
+                      placeholder="you@example.com"
+                    />
                   </div>
                 </div>
               </fieldset>
@@ -523,6 +544,7 @@ export default function BookPage() {
                     spellCheck={false}
                     maxLength={30}
                     aria-describedby="coupon-code-help"
+                    placeholder="EARLY20"
                     style={{ textTransform: "uppercase" }}
                   />
                   <div className="field-meta">
