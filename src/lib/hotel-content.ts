@@ -36,7 +36,7 @@ export const PRIVACY_INFORMATION = {
     // e.g. "Resend (email notifications)" or "Make.com (staff alerts)"
   ],
   /** Date the notice was last reviewed, e.g. "1 December 2026". */
-  lastUpdated: "",
+  lastUpdated: "28 November 2026",
 };
 
 // Room facts and inclusions are stored with each room and edited in the admin (Room Types).

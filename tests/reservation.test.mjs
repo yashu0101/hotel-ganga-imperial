@@ -1009,13 +1009,13 @@ test("admin launch checklist lists every missing guest-facing detail", () => {
   const content = load("src/lib/hotel-content.ts");
   const empty = { phone: "", whatsapp: "", email: "", address: "", mapEmbedUrl: "" };
   const missing = content.missingLaunchDetails({ contact: empty, rooms: [{ name: "Suite", sample: true }] });
-  for (const item of ["phone", "WhatsApp", "email", "address", "directions", "check-in", "Suite", "last-reviewed date"])
+  for (const item of ["phone", "WhatsApp", "email", "address", "directions", "check-in", "Suite"])
     assert.ok(
       missing.some(m => m.toLowerCase().includes(item.toLowerCase())),
       "missing " + item,
     );
   // Privacy facts the hotel has approved in hotel-content.ts are no longer listed.
-  for (const item of ["legal business name", "grievance officer", "how long requests are kept"])
+  for (const item of ["legal business name", "grievance officer", "how long requests are kept", "last-reviewed date"])
     assert.ok(!missing.some(m => m.toLowerCase().includes(item)), "still listed: " + item);
   const ready = content.missingLaunchDetails({
     contact: {
