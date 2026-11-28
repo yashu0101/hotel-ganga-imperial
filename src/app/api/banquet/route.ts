@@ -5,6 +5,7 @@ import type { BanquetPackage } from "@/lib/types";
 
 // Guests (the booking form) only receive active packages.
 export const { GET, POST, PATCH, DELETE } = adminCollectionRoute<BanquetPackage>({
+  name: "banquet",
   schema: BANQUET_SCHEMA,
   list: getBanquetPackages,
   add: addBanquetPackage,

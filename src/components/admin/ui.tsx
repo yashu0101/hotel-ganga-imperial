@@ -63,6 +63,19 @@ export function AdminUIProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<{ message: string; kind: "ok" | "error"; key: number } | null>(null);
   const timer = useRef(0);
   const [pending, setPending] = useState<(ConfirmOptions & { resolve: (ok: boolean) => void }) | null>(null);
+  // The toast region is a manual popover, shown again for every toast, so it sits in the top layer above any open
+  // modal <dialog> (drawers, the confirm dialog). Otherwise an error raised from a drawer would be hidden behind it.
+  const region = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = region.current;
+    if (!el?.showPopover) return;
+    try {
+      if (el.matches(":popover-open")) el.hidePopover();
+      if (toast) el.showPopover();
+    } catch {
+      // Not connected yet, or popovers unsupported: the region still shows in normal page flow.
+    }
+  }, [toast]);
 
   const notify = useCallback<Notify>((message, kind = "ok") => {
     window.clearTimeout(timer.current);
@@ -103,9 +116,17 @@ export function AdminUIProvider({ children }: { children: ReactNode }) {
           </div>
         </Modal>
       )}
-      <div className="adm-toast-region" aria-live="polite">
+      {/* Screen readers hear toasts from these regions, which are always in the page. The visible toast below is a
+          popover (shown only while there is one), and live regions that appear with their content often go unread. */}
+      <div className="sr-only" role="status">
+        {toast?.kind === "ok" ? toast.message : ""}
+      </div>
+      <div className="sr-only" role="alert">
+        {toast?.kind === "error" ? toast.message : ""}
+      </div>
+      <div ref={region} popover="manual" className="adm-toast-region">
         {toast && (
-          <div key={toast.key} className={"adm-toast " + toast.kind} role={toast.kind === "error" ? "alert" : "status"}>
+          <div key={toast.key} className={"adm-toast " + toast.kind}>
             <Icon name={toast.kind === "error" ? "alert" : "check"} />
             <span>{toast.message}</span>
             {toast.kind === "error" && (

@@ -1,7 +1,7 @@
 "use client";
 import { useState, type ReactNode } from "react";
 import { useApp } from "@/lib/context";
-import { adminRequest } from "./api";
+import { adminRequest, errorText } from "./api";
 import Icon from "./icons";
 import { fill } from "./format";
 import { Modal, useAdminUI } from "./ui";
@@ -234,7 +234,7 @@ export default function CollectionEditor<T extends Item>({
   const { notify, confirm } = useAdminUI();
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const fail = (e: unknown) => notify(e instanceof Error ? e.message : String(e), "error");
+  const fail = (e: unknown) => notify(errorText(t, e), "error");
   const current = editing && editing !== "new" ? items.find(i => i.id === editing) : undefined;
 
   async function create(payload: Record<string, unknown>) {

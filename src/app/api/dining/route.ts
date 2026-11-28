@@ -5,6 +5,7 @@ import type { DiningOption } from "@/lib/types";
 
 // Admin only: guests see the menu on the server-rendered /dining page.
 export const { GET, POST, PATCH, DELETE } = adminCollectionRoute<DiningOption>({
+  name: "dining",
   schema: DINING_SCHEMA,
   list: getDiningOptions,
   add: addDiningOption,

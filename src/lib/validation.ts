@@ -2,7 +2,7 @@
 // limits; anything else in a request body is rejected, so the admin API cannot write
 // arbitrary fields (ids, timestamps, unknown keys) into storage.
 export type Rule =
-  | { type: "string"; max: number; required?: boolean; default?: string }
+  | { type: "string"; max: number; required?: boolean; default?: string; email?: boolean }
   | { type: "boolean"; default: boolean }
   | { type: "int"; min: number; max: number; default: number }
   | { type: "date" }
@@ -29,6 +29,7 @@ function check(key: string, rule: Rule, value: unknown): { value: unknown } | { 
       if (typeof value !== "string") return { error: `${key} must be text` };
       const v = value.trim();
       if (rule.required && !v) return { error: `${key} is required` };
+      if (rule.email && v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return { error: `${key} must be an email address` };
       return v.length > rule.max ? { error: `${key} must be ${rule.max} characters or fewer` } : { value: v };
     }
     case "boolean":
@@ -104,6 +105,8 @@ export const ROOM_SCHEMA: Schema = {
   text: { type: "string", max: 600 },
   image: { type: "imagePath", default: "/images/image-49.jpeg" },
   rate: { type: "string", max: 40 },
+  /** The rate is sample content (listed in the launch checklist until staff untick it). */
+  sampleRate: { type: "boolean", default: false },
   sample: { type: "boolean", default: false },
   hidden: { type: "boolean", default: false },
   size: { type: "string", max: 80 },
@@ -123,6 +126,9 @@ export const OFFER_SCHEMA: Schema = {
   validFrom: { type: "date" },
   validTo: { type: "date" },
   active: { type: "boolean", default: true },
+  minAdvanceDays: { type: "int", min: 0, max: 365, default: 0 },
+  minNights: { type: "int", min: 0, max: 30, default: 0 },
+  sample: { type: "boolean", default: false },
 };
 export const BANQUET_SCHEMA: Schema = {
   name: { type: "string", max: 100, required: true },
@@ -131,6 +137,7 @@ export const BANQUET_SCHEMA: Schema = {
   price: { type: "string", max: 40 },
   includes: { type: "list", maxItems: 20, itemMax: 80 },
   active: { type: "boolean", default: true },
+  sample: { type: "boolean", default: false },
 };
 export const DINING_CATEGORIES = ["breakfast", "lunch", "dinner", "room-service", "event-catering"] as const;
 export const DINING_SCHEMA: Schema = {
@@ -139,6 +146,24 @@ export const DINING_SCHEMA: Schema = {
   price: { type: "string", max: 40 },
   category: { type: "enum", values: DINING_CATEGORIES, default: "dinner" },
   active: { type: "boolean", default: true },
+  sample: { type: "boolean", default: false },
+};
+/** Hotel policies and privacy facts (Admin → Settings). Always saved as partial updates. */
+export const SETTINGS_SCHEMA: Schema = {
+  checkIn: { type: "string", max: 40 },
+  checkOut: { type: "string", max: 40 },
+  cancellation: { type: "string", max: 400 },
+  deposits: { type: "string", max: 400 },
+  children: { type: "string", max: 400 },
+  identification: { type: "string", max: 400 },
+  accessibility: { type: "string", max: 400 },
+  responseTime: { type: "string", max: 80 },
+  legalEntity: { type: "string", max: 150 },
+  privacyContactName: { type: "string", max: 100 },
+  privacyContactEmail: { type: "string", max: 150, email: true },
+  retentionMonths: { type: "int", min: 0, max: 120, default: 0 },
+  providers: { type: "list", maxItems: 10, itemMax: 120 },
+  privacyLastUpdated: { type: "string", max: 40 },
 };
 export const REVIEW_SCHEMA: Schema = {
   name: { type: "string", max: 80, required: true },

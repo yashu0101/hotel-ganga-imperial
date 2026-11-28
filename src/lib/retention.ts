@@ -1,5 +1,7 @@
-import { purgeRequestsBefore } from "@/lib/db";
-import { PRIVACY_INFORMATION } from "@/lib/hotel-content";
+import { getSettings, purgeDeletedBefore, purgeRequestsBefore } from "@/lib/db";
+
+/** Days a request stays in Deleted (restorable) before it is erased. */
+export const DELETED_KEPT_DAYS = 30;
 
 /**
  * The moment `months` months before `now` (UTC). A day the target month doesn't have becomes its last day
@@ -16,11 +18,13 @@ export function retentionCutoff(months: number, now = new Date()) {
 }
 
 /**
- * Delete requests older than the retention period published in the privacy notice. Does nothing until
- * PRIVACY_INFORMATION.retentionMonths is set, so no data is removed before the hotel decides the period.
+ * Delete requests older than the retention period published in the privacy notice. Does nothing until the period is
+ * set (Admin → Settings), so no data is removed before the hotel decides it.
  */
 export async function purgeExpiredRequests(now = new Date()) {
-  const months = PRIVACY_INFORMATION.retentionMonths;
-  if (!(months > 0)) return { configured: false, deleted: 0 };
-  return { configured: true, deleted: await purgeRequestsBefore(retentionCutoff(months, now)) };
+  // Deleted requests are erased after 30 days whatever the retention period, as the dashboard promises.
+  const erasedFromDeleted = await purgeDeletedBefore(new Date(now.getTime() - DELETED_KEPT_DAYS * 86_400_000));
+  const months = (await getSettings()).retentionMonths;
+  if (!(months > 0)) return { configured: false, deleted: 0, erasedFromDeleted };
+  return { configured: true, deleted: await purgeRequestsBefore(retentionCutoff(months, now)), erasedFromDeleted };
 }

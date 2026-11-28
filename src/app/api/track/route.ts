@@ -3,12 +3,15 @@ import { getBookingByIdAndEmail, StorageUnavailableError } from "@/lib/db";
 import { allowRequest, clientKey } from "@/lib/request-limit";
 import { cleanText } from "@/lib/reservation";
 import { logError } from "@/lib/log";
+import { readJsonObject } from "@/lib/json-body";
 
 export async function POST(req: NextRequest) {
   try {
     if (!allowRequest("track:" + clientKey(req.headers), 20))
       return NextResponse.json({ error: "Too many attempts. Please try again later." }, { status: 429 });
-    const b = await req.json();
+    const read = await readJsonObject(req, 2000);
+    if (!read.ok) return NextResponse.json({ error: read.error }, { status: read.status });
+    const b = read.body;
     const reference = cleanText(b.reference, 64),
       email = cleanText(b.email, 150);
     if (reference.length < 8 || !email)
@@ -31,7 +34,7 @@ export async function POST(req: NextRequest) {
       createdAt: booking.createdAt,
     });
   } catch (error) {
-    if (!(error instanceof SyntaxError)) logError("track.lookup_failed", error);
+    logError("track.lookup_failed", error);
     if (error instanceof StorageUnavailableError)
       return NextResponse.json({ error: "Request tracking is temporarily unavailable." }, { status: 503 });
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });

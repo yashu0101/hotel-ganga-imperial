@@ -4,12 +4,13 @@ import { addBooking, getRooms, getBanquetPackages, getOffers, StorageUnavailable
 import { allowRequest, clientKey } from "@/lib/request-limit";
 import { logError } from "@/lib/log";
 import { cleanText, contactError, normalizeCoupon, resolveCoupon, resolveStay } from "@/lib/reservation";
+import { readJsonObject } from "@/lib/json-body";
 
 export async function POST(req: NextRequest) {
   try {
-    if (Number(req.headers.get("content-length")) > 12000)
-      return NextResponse.json({ error: "Request too large." }, { status: 413 });
-    const b = await req.json();
+    const read = await readJsonObject(req, 12000);
+    if (!read.ok) return NextResponse.json({ error: read.error }, { status: read.status });
+    const b = read.body;
     // Honeypot: guests never see the "website" field, so a value means an automated submission.
     // Answer like a success so the bot learns nothing, but save and notify nothing.
     if (cleanText(b.website, 200))
@@ -31,8 +32,8 @@ export async function POST(req: NextRequest) {
     if ("error" in resolved) return NextResponse.json({ error: resolved.error }, { status: 400 });
     const { stay } = resolved;
 
-    // Coupons are optional. The hotel applies the offer when it confirms the final rate.
-    const offer = couponCode ? resolveCoupon(await getOffers(), couponCode) : null;
+    // Coupons are optional and must suit the requested dates. The hotel applies the offer when it confirms the rate.
+    const offer = couponCode ? resolveCoupon(await getOffers(), couponCode, undefined, stay) : null;
     if (offer && "error" in offer)
       return NextResponse.json(
         { error: offer.error + " Check it, or clear it to send your request without it.", field: "couponCode" },

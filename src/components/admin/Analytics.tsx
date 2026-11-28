@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useApp } from "@/lib/context";
 import type { Booking, Room } from "@/lib/types";
 import { BOOKING_STATUSES } from "@/lib/validation";
-import { addDays, counted, daysBetween, fill, formatDay, hotelDay, localeFor } from "./format";
+import { addDays, counted, daysBetween, fill, formatDay, hotelDay, localeFor, roomsRequested } from "./format";
 import { toneOf } from "./status";
 
 // Request volume only: no payments are taken on this site, so there is no revenue to chart.
@@ -98,7 +98,7 @@ export default function Analytics({ bookings, rooms }: { bookings: Booking[]; ro
     [t("admin.kpi.received"), number(total)],
     [t("admin.kpi.confirmed"), total ? pct(stayed) + "%" : "–", counted(t, "admin.kpi.ofReceived", stayed)],
     [t("admin.kpi.cancelled"), total ? pct(cancelled) + "%" : "–", counted(t, "admin.kpi.ofReceived", cancelled)],
-    [t("admin.kpi.rooms"), number(inRange.reduce((s, b) => s + (b.roomsRequested || 1), 0))],
+    [t("admin.kpi.rooms"), number(roomsRequested(inRange))],
     [t("admin.kpi.avgStay"), avgStay ? fill(t("admin.nights"), { n: number(avgStay, 1) }) : "–"],
   ];
 

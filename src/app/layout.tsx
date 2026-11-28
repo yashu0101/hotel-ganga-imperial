@@ -53,7 +53,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-theme="dark" className={`${display.variable} ${body.variable}`} suppressHydrationWarning>
+    // data-scroll-behavior: globals.css scrolls smoothly; this lets Next.js switch that off during route changes.
+    <html
+      lang="en"
+      data-theme="dark"
+      data-scroll-behavior="smooth"
+      className={`${display.variable} ${body.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         <script
           dangerouslySetInnerHTML={{

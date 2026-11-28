@@ -5,6 +5,7 @@ import type { Room } from "@/lib/types";
 
 // Rooms are addressed by id. Guests (the booking form) only receive visible rooms.
 export const { GET, POST, PATCH, DELETE } = adminCollectionRoute<Room>({
+  name: "rooms",
   schema: ROOM_SCHEMA,
   list: getRooms,
   add: addRoom,

@@ -4,6 +4,14 @@ const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kol
 const formatDate = (value: string) =>
   new Date(value).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
+/** The offer's conditions in words, e.g. "Arrive at least 30 days after booking · Stay at least 2 nights". */
+export function offerConditions(o: Pick<Offer, "minAdvanceDays" | "minNights">) {
+  return [
+    o.minAdvanceDays ? `Arrive at least ${o.minAdvanceDays} days after booking` : "",
+    o.minNights ? `Stay at least ${o.minNights} nights` : "",
+  ].filter(Boolean);
+}
+
 /** Offers that are switched on and valid today in hotel time. */
 export function currentOffers(offers: Offer[]) {
   const now = today();
@@ -35,6 +43,7 @@ export default function Offers({ offers }: { offers: Offer[] }) {
                       : `Until ${formatDate(o.validTo)}`}
                 </div>
               )}
+              {offerConditions(o).length > 0 && <p className="offer-valid">{offerConditions(o).join(" · ")}</p>}
               {o.code && (
                 <p className="offer-code">
                   Use code <strong>{o.code}</strong> when you send your request

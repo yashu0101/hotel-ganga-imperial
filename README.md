@@ -37,6 +37,14 @@ npm test
 npm run build
 ```
 
+End-to-end tests (Playwright, Chromium) start their own `next dev` on port 3100 with a throwaway copy of
+`data/db.json` (`e2e/.data/`), so they can run beside `npm run dev` and never write guest data to the committed file:
+
+```sh
+npx playwright install chromium   # once
+npm run test:e2e
+```
+
 ## Configuration
 
 All variables are listed in `.env.example`.
@@ -61,16 +69,17 @@ All variables are listed in `.env.example`.
    database role that cannot alter tables fails here rather than on a guest's request. Set `ALLOW_DATABASE_SEED`
    back to `false` and redeploy.
 3. Turn on Neon point-in-time restore for backups.
-4. Add Vercel Firewall rate-limit rules for `/api/book`, `/api/track` and `/api/auth/login`. The app's own limiter
-   is per server instance only.
+4. **Required before launch:** add Vercel Firewall rate-limit rules (Project → Firewall → Configure → Rate Limiting)
+   for `/api/book` (e.g. 10 requests per minute per IP), `/api/track` (20/min) and `/api/auth/login` (10/min). The
+   app's own limiter counts per server instance, so on its own it does not stop abuse spread across instances.
 5. Add the repository secrets `SITE_URL` and `CRON_SECRET` so `.github/workflows/scheduled-jobs.yml` runs the
    scheduled job every 10 minutes (Vercel Hobby cron only runs daily). On Vercel Pro you can instead change the
    schedule in `vercel.json` to `*/10 * * * *`.
 6. Monitoring: add an uptime check (e.g. Better Stack or UptimeRobot) on `/` and `/api/rooms`, and an alert on log
    lines containing `"level":"error"` (Vercel log drain or log alerts). Server errors are logged as one JSON line
    each (`src/instrumentation.ts`, `src/lib/log.ts`).
-7. Work through the admin dashboard's launch checklist (contact details, check-in/out times, room facts, privacy
-   notice facts, real photography). Only then set `SITE_READY_FOR_INDEXING=true` and submit the sitemap.
+7. Work through the admin dashboard's launch checklist (contact details, check-in/out times and privacy notice facts
+   under Settings, room facts and rates, real photography, and every sample offer, package and dining option). Only then set `SITE_READY_FOR_INDEXING=true` and submit the sitemap.
 
 ## Content
 

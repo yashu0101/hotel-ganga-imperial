@@ -5,7 +5,17 @@ import type { Booking, Offer } from "@/lib/types";
 import Icon from "./icons";
 import { ContactLinks, type RequestRow } from "./RequestTable";
 import { useNow } from "./ui";
-import { counted, elapsed, fill, formatDay, hotelDay, LATE_AFTER_MINUTES, localeFor, requestType } from "./format";
+import {
+  counted,
+  dueToLeave,
+  elapsed,
+  fill,
+  formatDay,
+  hotelDay,
+  LATE_AFTER_MINUTES,
+  localeFor,
+  requestType,
+} from "./format";
 import type { Section } from "./Sidebar";
 
 // The first screen staff see: who is waiting for a reply (oldest first), who arrives and
@@ -40,7 +50,7 @@ export default function Overview({ bookings, requests, enquiries, offers, notice
     (a, b) => a.createdAt.localeCompare(b.createdAt),
   );
   const arriving = (day: string) => bookings.filter(b => b.bookingStatus === "confirmed" && b.checkin === day);
-  const leaving = bookings.filter(b => b.bookingStatus === "checked-in" && b.checkout && b.checkout <= today);
+  const leaving = bookings.filter(b => dueToLeave(b, today));
   const inHouse = bookings.filter(b => b.bookingStatus === "checked-in");
   const upcoming = bookings.filter(b => b.bookingStatus === "confirmed" && b.checkin >= today);
 

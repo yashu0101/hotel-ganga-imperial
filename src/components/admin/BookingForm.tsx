@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useApp } from "@/lib/context";
 import type { BanquetPackage, Booking, Offer, Room } from "@/lib/types";
-import { adminRequest } from "./api";
+import { adminRequest, errorText } from "./api";
 import {
   addDays,
   clampCount,
@@ -14,6 +14,7 @@ import {
   hotelDay,
   localeFor,
   PACKAGE_PREFIX,
+  roomValue,
 } from "./format";
 import Icon from "./icons";
 import { StatusBadge } from "./status";
@@ -29,7 +30,6 @@ export interface BookingDraft {
   type?: string;
 }
 
-const roomValue = (r: Room) => "room:" + (r.id || r.name);
 const LIMITS = { rooms: [1, 10], guests: [1, 20], eventGuests: [1, 300] } as const;
 
 function Stepper({
@@ -186,7 +186,7 @@ export default function BookingForm({
       onSaved(item);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorText(t, err));
     } finally {
       setBusy(false);
     }

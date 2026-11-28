@@ -57,7 +57,15 @@ interface Props {
   onDelete: (row: RequestRow) => Promise<void>;
   /** Shows a "New booking" button (requests only). */
   onAdd?: () => void;
+  /** Where the CSV export downloads from (requests only). */
+  exportHref?: string;
+  /** Older requests are loaded on demand: shown while there may be more. */
+  onLoadOlder?: () => Promise<void>;
+  hasOlder?: boolean;
 }
+
+/** Rows per page: long lists stay quick to scroll and render. */
+export const PAGE_SIZE = 50;
 
 type Sort = "received" | "checkin";
 
@@ -97,14 +105,42 @@ export function ContactLinks({ row, compact = false }: { row: RequestRow; compac
   );
 }
 
-export default function RequestTable({ kind, rows, statuses, selectedId, onSelect, onStatus, onDelete, onAdd }: Props) {
+export default function RequestTable({
+  kind,
+  rows,
+  statuses,
+  selectedId,
+  onSelect,
+  onStatus,
+  onDelete,
+  onAdd,
+  exportHref,
+  onLoadOlder,
+  hasOlder = false,
+}: Props) {
   const { t, lang } = useApp();
   const locale = localeFor(lang);
   const enquiries = kind === "enquiry";
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [sort, setSort] = useState<Sort>("received");
+  const [page, setPage] = useState(0);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const now = useNow();
+  // A new search, filter or sort starts again from the first page.
+  const filter = (apply: () => void) => {
+    apply();
+    setPage(0);
+  };
+  async function loadOlder() {
+    if (!onLoadOlder) return;
+    setLoadingOlder(true);
+    try {
+      await onLoadOlder();
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
 
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
@@ -128,6 +164,9 @@ export default function RequestTable({ kind, rows, statuses, selectedId, onSelec
       : [...found].sort((a, b) => (a.checkin || "9999").localeCompare(b.checkin || "9999"));
   }, [rows, query, status, sort, t]);
   const selected = rows.find(r => r.id === selectedId) ?? null;
+  const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const current = Math.min(page, pages - 1);
+  const shown = visible.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
 
   return (
     <div className={"adm-split" + (selected ? " has-detail" : "")}>
@@ -139,7 +178,7 @@ export default function RequestTable({ kind, rows, statuses, selectedId, onSelec
               type="button"
               className="adm-chip"
               aria-pressed={status === s}
-              onClick={() => setStatus(s)}
+              onClick={() => filter(() => setStatus(s))}
             >
               {s ? t("admin.status." + s) : t("admin.all")}
               <span className="n">{s ? counts[s] || 0 : rows.length}</span>
@@ -153,13 +192,13 @@ export default function RequestTable({ kind, rows, statuses, selectedId, onSelec
             <input
               type="search"
               value={query}
-              onChange={e => setQuery(e.target.value)}
+              onChange={e => filter(() => setQuery(e.target.value))}
               placeholder={t("admin.search")}
             />
           </label>
           <label className="adm-inline-select">
             <span>{t("admin.sortBy")}</span>
-            <select value={sort} onChange={e => setSort(e.target.value as Sort)}>
+            <select value={sort} onChange={e => filter(() => setSort(e.target.value as Sort))}>
               <option value="received">{t("admin.sort.received")}</option>
               <option value="checkin">{t("admin.sort.checkin")}</option>
             </select>
@@ -167,6 +206,12 @@ export default function RequestTable({ kind, rows, statuses, selectedId, onSelec
           <span className="adm-meta" aria-live="polite">
             {fill(t("admin.showingCount"), { shown: visible.length, total: rows.length })}
           </span>
+          {exportHref && (
+            <a className="adm-btn" href={exportHref} download title={t("admin.exportHint")}>
+              <Icon name="download" />
+              {t("admin.exportCsv")}
+            </a>
+          )}
           {onAdd && (
             <button type="button" className="adm-btn primary" onClick={onAdd}>
               <Icon name="plus" />
@@ -193,7 +238,7 @@ export default function RequestTable({ kind, rows, statuses, selectedId, onSelec
                 </tr>
               </thead>
               <tbody>
-                {visible.map(r => {
+                {shown.map(r => {
                   const nights = daysBetween(r.checkin, r.checkout);
                   const late = WAITING.has(r.status) && now - Date.parse(r.createdAt) > LATE_AFTER_MINUTES * 60_000;
                   return (
@@ -257,6 +302,29 @@ export default function RequestTable({ kind, rows, statuses, selectedId, onSelec
                 })}
               </tbody>
             </table>
+            {pages > 1 && (
+              <nav className="adm-pager" aria-label={t("admin.pages")}>
+                <button
+                  type="button"
+                  className="adm-btn small"
+                  disabled={current === 0}
+                  onClick={() => setPage(current - 1)}
+                >
+                  <Icon name="left" size={16} />
+                  {t("admin.previous")}
+                </button>
+                <span aria-live="polite">{fill(t("admin.pageOf"), { page: current + 1, pages })}</span>
+                <button
+                  type="button"
+                  className="adm-btn small"
+                  disabled={current >= pages - 1}
+                  onClick={() => setPage(current + 1)}
+                >
+                  {t("admin.next")}
+                  <Icon name="right" size={16} />
+                </button>
+              </nav>
+            )}
           </div>
         ) : (
           <div className="adm-empty boxed">
@@ -268,14 +336,24 @@ export default function RequestTable({ kind, rows, statuses, selectedId, onSelec
               <button
                 type="button"
                 className="adm-btn"
-                onClick={() => {
-                  setQuery("");
-                  setStatus("");
-                }}
+                onClick={() =>
+                  filter(() => {
+                    setQuery("");
+                    setStatus("");
+                  })
+                }
               >
                 {t("admin.clearFilters")}
               </button>
             )}
+          </div>
+        )}
+        {hasOlder && onLoadOlder && (
+          <div className="adm-older">
+            <p className="adm-hint">{t("admin.olderHint")}</p>
+            <button type="button" className="adm-btn" disabled={loadingOlder} onClick={loadOlder}>
+              {loadingOlder ? t("admin.loadingShort") : t("admin.loadOlder")}
+            </button>
           </div>
         )}
       </div>

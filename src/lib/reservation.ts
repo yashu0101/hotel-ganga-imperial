@@ -14,11 +14,24 @@ export function validDate(value: unknown): value is string {
     new Date(value).toISOString().slice(0, 10) === value
   );
 }
+/** Requests can be made up to two years ahead, for at most 90 nights. */
+export const MAX_DAYS_AHEAD = 730,
+  MAX_NIGHTS = 90;
+/** The ISO date `days` after an ISO date; "" when the input isn't one (e.g. a date still being typed). */
+export function addDaysISO(iso: string, days: number) {
+  if (!validDate(iso)) return "";
+  return new Date(Date.parse(iso + "T00:00:00Z") + days * 86_400_000).toISOString().slice(0, 10);
+}
 export function dateError(checkin: unknown, checkout: unknown, overnight: boolean) {
-  if (!validDate(checkin) || checkin < hotelToday()) return "Choose a valid arrival or event date today or later.";
+  const today = hotelToday();
+  if (!validDate(checkin) || checkin < today) return "Choose a valid arrival or event date today or later.";
+  if (checkin > addDaysISO(today, MAX_DAYS_AHEAD))
+    return "Requests can be made up to two years ahead. Please choose an earlier date.";
   if (overnight && !checkout) return "Choose a check-out date.";
   if (checkout && (!validDate(checkout) || checkout <= checkin))
     return "The end date must be after the arrival or event date.";
+  if (checkout && checkout > addDaysISO(checkin, MAX_NIGHTS))
+    return `Requests can cover up to ${MAX_NIGHTS} nights. For a longer stay, please contact the hotel.`;
   return "";
 }
 /** Same rule in the browser and on the server: 10–15 digits, with only + space ( ) - as separators. */
@@ -59,7 +72,23 @@ type CouponOffer = {
   validFrom: string;
   validTo: string;
   active: boolean;
+  /** Days between today and arrival the offer needs (0 or absent: none). */
+  minAdvanceDays?: number;
+  /** Nights the stay must cover (0 or absent: none). */
+  minNights?: number;
 };
+const nightsBetween = (checkin: string, checkout: string) =>
+  Math.round((Date.parse(checkout + "T00:00:00Z") - Date.parse(checkin + "T00:00:00Z")) / 86_400_000);
+/** Why the requested dates don't meet the offer's conditions, or "" when they do. */
+export function offerConditionError(offer: CouponOffer, stay: { checkin: string; checkout: string }, today: string) {
+  const notice = offer.minAdvanceDays ?? 0;
+  if (notice > 0 && stay.checkin < addDaysISO(today, notice))
+    return `The ${offer.title} offer needs your arrival to be at least ${notice} days from today.`;
+  const nights = offer.minNights ?? 0;
+  if (nights > 0 && (!stay.checkout || nightsBetween(stay.checkin, stay.checkout) < nights))
+    return `The ${offer.title} offer needs a stay of at least ${nights} nights.`;
+  return "";
+}
 export const normalizeCoupon = (value: unknown) => cleanText(value, 30).toUpperCase();
 /** An active offer whose code matches (case-insensitive) and whose validity window includes `today`. */
 export function findCoupon<T extends CouponOffer>(offers: T[], code: string, today = hotelToday()): T | null {
@@ -89,17 +118,20 @@ export interface Coupon {
 }
 /**
  * What an entered offer code means, for the website form and staff alike: null when none was entered, otherwise the
- * matching current offer or an error to show.
+ * matching current offer or an error to show. With the requested dates, the offer's conditions are checked too.
  */
 export function resolveCoupon(
   offers: CouponOffer[],
   entered: unknown,
   today = hotelToday(),
+  stay?: { checkin: string; checkout: string },
 ): null | { error: string } | { coupon: Coupon } {
   const code = normalizeCoupon(entered);
   if (!code) return null;
   const offer = findCoupon(offers, code, today);
   if (!offer) return { error: "That offer code is not valid or has expired." };
+  const condition = stay ? offerConditionError(offer, stay, today) : "";
+  if (condition) return { error: condition };
   return { coupon: { code, title: offer.title, percent: couponPercent(offer) } };
 }
 

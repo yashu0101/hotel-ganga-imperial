@@ -1,7 +1,6 @@
 // schema.org Hotel structured data for the homepage. Only facts the site actually knows are
 // included: unset contact details and unapproved times are omitted, never guessed.
 import { nightlyRate } from "@/lib/reservation";
-import { HOTEL_INFORMATION } from "@/lib/hotel-content";
 
 const AMENITIES = [
   "Rooftop swimming pool",
@@ -20,13 +19,17 @@ export function hotelJsonLd({
   rooms,
   contact,
   siteUrl,
+  times = { checkIn: "", checkOut: "" },
 }: {
-  rooms: { name: string; rate: string; hidden?: boolean }[];
+  rooms: { name: string; rate: string; hidden?: boolean; sampleRate?: boolean }[];
   contact: { phone: string; email: string; address: string; mapEmbedUrl: string };
   siteUrl: string;
+  /** Approved check-in/check-out times (Admin → Settings); "" leaves them out. */
+  times?: { checkIn: string; checkOut: string };
 }) {
+  // Sample rates the hotel has not approved never reach search engines.
   const rates = rooms
-    .filter(r => !r.hidden)
+    .filter(r => !r.hidden && !r.sampleRate)
     .map(r => nightlyRate(r.rate))
     .filter((n): n is number => n !== null);
   const site = siteUrl.replace(/\/$/, "");
@@ -40,8 +43,8 @@ export function hotelJsonLd({
     ...(contact.email ? { email: contact.email } : {}),
     ...(contact.address ? { address: contact.address } : {}),
     ...(contact.mapEmbedUrl ? { hasMap: contact.mapEmbedUrl } : {}),
-    ...(HOTEL_INFORMATION.checkIn ? { checkinTime: HOTEL_INFORMATION.checkIn } : {}),
-    ...(HOTEL_INFORMATION.checkOut ? { checkoutTime: HOTEL_INFORMATION.checkOut } : {}),
+    ...(times.checkIn ? { checkinTime: times.checkIn } : {}),
+    ...(times.checkOut ? { checkoutTime: times.checkOut } : {}),
     ...(rates.length ? { priceRange: `${rupees(Math.min(...rates))}–${rupees(Math.max(...rates))} per night` } : {}),
     amenityFeature: AMENITIES.map(name => ({ "@type": "LocationFeatureSpecification", name, value: true })),
   };

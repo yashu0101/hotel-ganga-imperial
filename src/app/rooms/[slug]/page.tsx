@@ -5,9 +5,9 @@ import { notFound, permanentRedirect } from "next/navigation";
 import InteriorShell from "@/components/InteriorShell";
 import ContactActions from "@/components/ContactActions";
 import { AMENITY_LIST } from "@/components/Amenities";
-import { getRooms } from "@/lib/db";
+import { getRooms, getSettings } from "@/lib/db";
 import { PHOTOS } from "@/lib/config";
-import { HOTEL_INFORMATION as info, roomFacts } from "@/lib/hotel-content";
+import { roomFacts } from "@/lib/hotel-content";
 import Icon from "@/components/Icon";
 
 export const revalidate = 300;
@@ -62,6 +62,7 @@ export default async function RoomDetail({ params }: { params: Promise<{ slug: s
   if (!room) notFound();
   // An address the room had before staff changed it: send guests (and search engines) to the current one.
   if (room.slug !== slug) permanentRedirect("/rooms/" + room.slug);
+  const info = await getSettings();
   const facts = roomFacts(room);
   const inclusions = room.inRoom.length || room.services.length ? room : null;
   const highlights = inclusions ? [...inclusions.inRoom, ...inclusions.services].slice(0, 4) : [];
