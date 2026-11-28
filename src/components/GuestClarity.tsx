@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Icon from "@/components/Icon";
 export default function GuestClarity() {
   return (
     <section className="clarity-section">
@@ -10,7 +11,7 @@ export default function GuestClarity() {
             <br />A straightforward request.
           </h2>
           <Link className="text-action" href="/guest-information">
-            Guest guide & FAQs <span aria-hidden="true">↗</span>
+            Guest guide & FAQs <Icon name="arrow-right" position="end" />
           </Link>
         </div>
         <div className="clarity-grid">

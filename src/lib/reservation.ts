@@ -80,3 +80,89 @@ export function couponPercent(offer: Pick<CouponOffer, "discount">) {
   const pct = Number(offer.discount.match(/(\d{1,2})\s*%/)?.[1] ?? 0);
   return pct > 0 && pct < 100 ? pct : 0;
 }
+export interface Coupon {
+  code: string;
+  /** The offer's title. */
+  title: string;
+  /** From the offer's badge; 0 when it is not a percentage. */
+  percent: number;
+}
+/**
+ * What an entered offer code means, for the website form and staff alike: null when none was entered, otherwise the
+ * matching current offer or an error to show.
+ */
+export function resolveCoupon(
+  offers: CouponOffer[],
+  entered: unknown,
+  today = hotelToday(),
+): null | { error: string } | { coupon: Coupon } {
+  const code = normalizeCoupon(entered);
+  if (!code) return null;
+  const offer = findCoupon(offers, code, today);
+  if (!offer) return { error: "That offer code is not valid or has expired." };
+  return { coupon: { code, title: offer.title, percent: couponPercent(offer) } };
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** The guest's name, phone and optional email: "" when valid, otherwise the message to show. */
+export function contactError({ name, mobile, email }: { name: string; mobile: string; email: string }) {
+  if (!name) return "Enter your full name.";
+  const phone = phoneError(mobile);
+  if (phone) return phone;
+  if (email && !EMAIL.test(email)) return "Enter a valid email address, or leave it blank.";
+  return "";
+}
+
+export type StayRoom = { id?: string; name: string; hidden?: boolean };
+export type StayPackage = { name: string; active: boolean };
+export interface Stay {
+  /** The room's current name, or the event / dining choice. */
+  roomType: string;
+  roomId?: string;
+  /** 0 for events and dining. */
+  roomsRequested: number;
+  checkin: string;
+  checkout: string;
+  guests: number;
+  event: boolean;
+}
+/**
+ * What is being requested and when, with the website's rules: a visible room (by id, else by name), the banquet hall,
+ * an active banquet package or a dining enquiry; 1–10 rooms; valid dates from today; 1–20 guests (1–300 for events).
+ * Used by the public form and by staff adding a booking, so both follow the same rules.
+ */
+export function resolveStay(
+  b: Record<string, unknown>,
+  rooms: StayRoom[],
+  packages: StayPackage[],
+): { error: string } | { stay: Stay } {
+  const roomType = cleanText(b.roomType, 150),
+    roomId = cleanText(b.roomId, 80);
+  // Rooms are matched by id (the form sends it), so a rename between loading the form and sending it is harmless.
+  const room = rooms.find(r => !r.hidden && (roomId ? r.id === roomId : r.name === roomType));
+  const pkg = packages.find(p => p.active && "Banquet - " + p.name === roomType);
+  // A matched room is a room stay, whatever else the request names, so it keeps the room guest limit.
+  const event = !room && (roomType === "Banquet hall" || !!pkg);
+  if (!room && !event && roomType !== "Dining enquiry")
+    return { error: "Please choose an available room or enquiry type." };
+  const roomsRequested = room ? Number(b.roomsRequested ?? 1) : 0;
+  if (room && (!Number.isInteger(roomsRequested) || roomsRequested < 1 || roomsRequested > 10))
+    return { error: "Request between 1 and 10 rooms." };
+  const error = dateError(b.checkin, b.checkout, !!room);
+  if (error) return { error };
+  const guests = Number(b.guests),
+    maximum = event ? 300 : 20;
+  if (!Number.isInteger(guests) || guests < 1 || guests > maximum)
+    return { error: "Enter a guest count between 1 and " + maximum + "." };
+  return {
+    stay: {
+      roomType: room ? room.name : roomType,
+      ...(room?.id ? { roomId: room.id } : {}),
+      roomsRequested,
+      checkin: b.checkin as string,
+      checkout: typeof b.checkout === "string" ? b.checkout : "",
+      guests,
+      event,
+    },
+  };
+}

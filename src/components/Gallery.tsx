@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { GALLERY_IMAGES } from "@/lib/config";
+import Icon from "@/components/Icon";
 export default function Gallery() {
   const [current, setCurrent] = useState<number | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -65,7 +66,7 @@ export default function Gallery() {
           }}
         >
           <button className="photo-close" type="button" onClick={close} aria-label="Close photo viewer">
-            ✕
+            <Icon name="close" />
           </button>
           <Image
             src={GALLERY_IMAGES[current].src}
@@ -75,14 +76,14 @@ export default function Gallery() {
             sizes="90vw"
           />
           <div className="photo-controls">
-            <button onClick={() => move(-1)} aria-label="Previous photo">
-              ←
+            <button type="button" onClick={() => move(-1)} aria-label="Previous photo">
+              <Icon name="chevron-left" />
             </button>
             <p aria-live="polite">
               {GALLERY_IMAGES[current].caption} · {current + 1} / {GALLERY_IMAGES.length}
             </p>
-            <button onClick={() => move(1)} aria-label="Next photo">
-              →
+            <button type="button" onClick={() => move(1)} aria-label="Next photo">
+              <Icon name="chevron-right" />
             </button>
           </div>
         </dialog>

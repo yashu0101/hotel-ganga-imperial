@@ -63,7 +63,7 @@ export default function LoginPage() {
             type="email"
             value={email}
             onChange={e => setEmail(e.target.value)}
-            placeholder="admin@gangaimperial.com"
+            placeholder="you@example.com"
             required
             aria-invalid={!!error || undefined}
             aria-describedby={error ? "login-error" : undefined}
@@ -75,7 +75,7 @@ export default function LoginPage() {
             type="password"
             value={password}
             onChange={e => setPassword(e.target.value)}
-            placeholder="Enter password"
+            placeholder="Your password"
             required
             aria-invalid={!!error || undefined}
             aria-describedby={error ? "login-error" : undefined}

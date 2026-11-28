@@ -1,12 +1,30 @@
-export interface Room {
+/** Approved facts about a room type. "" means not approved yet: hidden from guests, listed in the launch checklist. */
+export interface RoomSpecification {
+  size: string;
+  bed: string;
+  occupancy: string;
+  bathroom: string;
+  /** Where rooms of this type are, e.g. "Floors 2–4, city-facing wing". */
+  location: string;
+  view: string;
+}
+
+export interface Room extends RoomSpecification {
   /** Stable identifier used by the admin API. Absent only on the built-in defaults in config.ts. */
   id?: string;
+  /** The room's web address, /rooms/<slug>. Kept when the room is renamed; staff can change it on purpose. */
+  slug: string;
+  /** Addresses the room had before its slug was changed. They redirect to the current one. */
+  previousSlugs?: string[];
   name: string;
   text: string;
   image: string;
   rate: string;
   sample: boolean;
   hidden?: boolean;
+  /** What comes with the room, shown on its detail page. Only list what the description promises. */
+  inRoom: string[];
+  services: string[];
 }
 
 export interface Offer {
@@ -48,6 +66,10 @@ export interface NotificationJob {
 export interface Booking {
   roomsRequested?: number;
   specialRequests?: string;
+  /** The offer code the guest entered (checked against an active offer when sent); "" or absent when none. */
+  couponCode?: string;
+  /** That offer's title when the request was sent, so staff see it even if the offer is renamed or removed. */
+  couponOffer?: string;
   id: string;
   name: string;
   mobile: string;
@@ -55,7 +77,12 @@ export interface Booking {
   city: string;
   country: string;
   gender: "male" | "female" | "other";
+  /** The room's name when the request was sent (or the event/dining choice). */
   roomType: string;
+  /** The requested room's stable id, so the request still matches the room after a rename. Absent on older requests. */
+  roomId?: string;
+  /** "staff" when staff added it from the dashboard (no guest notification); absent for website requests. */
+  source?: "staff";
   checkin: string;
   checkout: string;
   guests: number;

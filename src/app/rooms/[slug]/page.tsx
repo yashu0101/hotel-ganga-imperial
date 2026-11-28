@@ -1,34 +1,35 @@
 import { canonical } from "@/lib/seo";
 import Image from "next/image";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import InteriorShell from "@/components/InteriorShell";
 import ContactActions from "@/components/ContactActions";
 import { AMENITY_LIST } from "@/components/Amenities";
 import { getRooms } from "@/lib/db";
 import { PHOTOS } from "@/lib/config";
-import {
-  HOTEL_INFORMATION as info,
-  ROOM_INCLUSIONS,
-  ROOM_SPECIFICATIONS,
-  roomFacts,
-  roomSlug,
-  roomPhoto,
-} from "@/lib/hotel-content";
+import { HOTEL_INFORMATION as info, roomFacts } from "@/lib/hotel-content";
+import Icon from "@/components/Icon";
 
 export const revalidate = 300;
 
 export async function generateStaticParams() {
-  return (await getRooms()).filter(r => !r.hidden).map(r => ({ slug: roomSlug(r.name) }));
+  return (await getRooms()).filter(r => !r.hidden).map(r => ({ slug: r.slug }));
+}
+
+/** Visible rooms, and the one at this address: its current slug, or one it had before staff changed it. */
+async function roomFor(slug: string) {
+  const rooms = (await getRooms()).filter(r => !r.hidden);
+  const room = rooms.find(r => r.slug === slug) ?? rooms.find(r => r.previousSlugs?.includes(slug));
+  return { rooms, room };
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const room = (await getRooms()).find(r => !r.hidden && roomSlug(r.name) === slug);
+  const { room } = await roomFor(slug);
   return {
     title: (room?.name || "Room") + " | Hotel Ganga Imperial",
     description: room?.text,
-    ...canonical("/rooms/" + slug),
+    ...canonical("/rooms/" + (room?.slug || slug)),
   };
 }
 
@@ -57,14 +58,15 @@ const FACILITIES = AMENITY_LIST.filter(a => a.label !== "Premium rooms");
 
 export default async function RoomDetail({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const rooms = (await getRooms()).filter(r => !r.hidden);
-  const room = rooms.find(r => roomSlug(r.name) === slug);
+  const { rooms, room } = await roomFor(slug);
   if (!room) notFound();
-  const facts = roomFacts(ROOM_SPECIFICATIONS[room.name]);
-  const inclusions = ROOM_INCLUSIONS[room.name];
+  // An address the room had before staff changed it: send guests (and search engines) to the current one.
+  if (room.slug !== slug) permanentRedirect("/rooms/" + room.slug);
+  const facts = roomFacts(room);
+  const inclusions = room.inRoom.length || room.services.length ? room : null;
   const highlights = inclusions ? [...inclusions.inRoom, ...inclusions.services].slice(0, 4) : [];
-  const others = rooms.filter(r => r.name !== room.name).slice(0, 3);
-  const bookHref = "/book?room=" + encodeURIComponent(room.name);
+  const others = rooms.filter(r => r.slug !== room.slug).slice(0, 3);
+  const bookHref = "/book?room=" + encodeURIComponent(room.slug);
   const policies = (
     [
       ["Check-in", info.checkIn],
@@ -93,7 +95,7 @@ export default async function RoomDetail({ params }: { params: Promise<{ slug: s
         <div className="room-detail-grid">
           <figure className="detail-photograph">
             <Image
-              src={roomPhoto(room)}
+              src={room.image}
               alt={room.sample ? "Representative imagery for " + room.name : room.name}
               width={1000}
               height={750}
@@ -121,7 +123,7 @@ export default async function RoomDetail({ params }: { params: Promise<{ slug: s
               <strong>{room.rate || "On request"}</strong>
             </div>
             <Link className="btn btn-solid" href={bookHref} data-reserve-cta>
-              Request this room <span aria-hidden="true">↗</span>
+              Request this room <Icon name="arrow-right" position="end" />
             </Link>
             <ContactActions message={`Hello, I'd like to ask about the ${room.name}.`} />
             <p className="small-note">
@@ -231,7 +233,7 @@ export default async function RoomDetail({ params }: { params: Promise<{ slug: s
               ))}
             </dl>
             <Link className="text-action" href="/guest-information">
-              Read the full guest guide <span aria-hidden="true">↗</span>
+              Read the full guest guide <Icon name="arrow-right" position="end" />
             </Link>
           </section>
         )}
@@ -242,7 +244,7 @@ export default async function RoomDetail({ params }: { params: Promise<{ slug: s
           <div>
             {/* Not the hero photo again: show interiors the page has not used yet. */}
             {[PHOTOS.roomDetail, PHOTOS.lobby]
-              .filter(photo => photo.src !== roomPhoto(room))
+              .filter(photo => photo.src !== room.image)
               .map(photo => (
                 <Image
                   key={photo.src}
@@ -265,10 +267,10 @@ export default async function RoomDetail({ params }: { params: Promise<{ slug: s
             <h2 id="others-heading">Other rooms</h2>
             <ul className="other-rooms">
               {others.map(r => (
-                <li key={r.name}>
-                  <Link href={"/rooms/" + roomSlug(r.name)}>
+                <li key={r.slug}>
+                  <Link href={"/rooms/" + r.slug}>
                     <Image
-                      src={roomPhoto(r)}
+                      src={r.image}
                       alt={r.sample ? "Representative imagery for " + r.name : r.name}
                       width={480}
                       height={340}
@@ -281,7 +283,7 @@ export default async function RoomDetail({ params }: { params: Promise<{ slug: s
               ))}
             </ul>
             <Link className="text-action" href="/rooms">
-              Compare all rooms <span aria-hidden="true">↗</span>
+              Compare all rooms <Icon name="arrow-right" position="end" />
             </Link>
           </section>
         )}
@@ -290,7 +292,7 @@ export default async function RoomDetail({ params }: { params: Promise<{ slug: s
           <h2 id="cta-heading">Like the look of the {room.name}?</h2>
           <p>Send your dates and the hotel will reply with availability and a quote. No payment is taken online.</p>
           <Link className="btn btn-solid" href={bookHref}>
-            Request this room <span aria-hidden="true">↗</span>
+            Request this room <Icon name="arrow-right" position="end" />
           </Link>
         </section>
       </div>

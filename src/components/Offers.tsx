@@ -35,7 +35,17 @@ export default function Offers({ offers }: { offers: Offer[] }) {
                       : `Until ${formatDate(o.validTo)}`}
                 </div>
               )}
-              <a className="btn btn-solid" href={"/book?offer=" + encodeURIComponent(o.title)}>
+              {o.code && (
+                <p className="offer-code">
+                  Use code <strong>{o.code}</strong> when you send your request
+                </p>
+              )}
+              <a
+                className="btn btn-solid"
+                href={
+                  "/book?offer=" + encodeURIComponent(o.title) + (o.code ? "&code=" + encodeURIComponent(o.code) : "")
+                }
+              >
                 Request this offer
               </a>
             </div>

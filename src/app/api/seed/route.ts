@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { initDB } from "@/lib/db-schema";
-import { prepareStorage } from "@/lib/db";
+import { addRoom, prepareStorage } from "@/lib/db";
+import { SITE_CONFIG } from "@/lib/config";
 import { neon } from "@neondatabase/serverless";
 import { verifySession } from "@/lib/auth";
 
@@ -32,12 +33,8 @@ export async function POST() {
     return NextResponse.json({ message: "Database already seeded." });
   }
 
-  // Seed rooms
-  await sql`INSERT INTO rooms (name, text, image, rate, sample, hidden) VALUES
-    ('Deluxe Room', 'A warm, cove-lit room with an upholstered headboard, work desk and city view. Includes AC, Wi-Fi, TV, mini-bar and complimentary breakfast.', '/images/image-49.jpeg', '₹3,000/night', true, false),
-    ('Premium Room', 'Extra space, brass accents and a sitting area for a more relaxed stay. Includes all Deluxe amenities plus a lounge area and premium toiletries.', '/images/image-15.jpeg', '₹4,500/night', true, false),
-    ('Suite', 'A separate living room, king bed and premium bath amenities for longer visits. Includes butler service, welcome drink and late checkout.', '/images/image-16.jpeg', '₹8,000/night', true, false),
-    ('Family Room', 'Twin beds, extra floor space and everything a family needs under one roof. Includes kids welcome kit, extra bedding and family breakfast.', '/images/image-17.jpeg', '₹5,500/night', true, false)`;
+  // Seed rooms from the built-in content, so they get their web address, facts and inclusions.
+  for (const room of SITE_CONFIG.rooms) await addRoom(room);
 
   // Seed offers
   await sql`INSERT INTO offers (id, title, description, discount, code, valid_from, valid_to, active, created_at) VALUES

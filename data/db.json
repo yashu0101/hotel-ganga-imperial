@@ -7,6 +7,7 @@
       "title": "Early Bird Discount",
       "description": "Book 30 days in advance and get 20% off on all room types.",
       "discount": "20%",
+      "code": "EARLY20",
       "validFrom": "2026-10-01",
       "validTo": "2027-03-31",
       "active": true,
@@ -17,6 +18,7 @@
       "title": "Weekend Getaway",
       "description": "Special weekend rates - stay Friday to Sunday and save.",
       "discount": "15%",
+      "code": "WEEKEND15",
       "validFrom": "2026-11-01",
       "validTo": "2027-02-28",
       "active": true,
@@ -27,6 +29,7 @@
       "title": "Honeymoon Package",
       "description": "Suite with complimentary spa, breakfast and room decoration.",
       "discount": "Complimentary extras",
+      "code": "HONEYMOON",
       "validFrom": "2026-10-01",
       "validTo": "2027-12-31",
       "active": false,
@@ -147,32 +150,105 @@
     },
     "rooms": [
       {
+        "id": "deluxe-room",
+        "slug": "deluxe-room",
         "name": "Deluxe Room",
         "text": "A warm, cove-lit room with an upholstered headboard, work desk and city view. Includes AC, Wi-Fi, TV, mini-bar and complimentary breakfast.",
         "image": "/images/image-49.jpeg",
         "rate": "₹3,000/night",
-        "sample": true
+        "sample": true,
+        "size": "",
+        "bed": "",
+        "occupancy": "",
+        "bathroom": "",
+        "location": "",
+        "view": "",
+        "inRoom": [
+          "Air conditioning",
+          "Wi-Fi",
+          "Television",
+          "Mini-bar",
+          "Work desk",
+          "City view"
+        ],
+        "services": [
+          "Complimentary breakfast"
+        ]
       },
       {
+        "id": "premium-room",
+        "slug": "premium-room",
         "name": "Premium Room",
         "text": "Extra space, brass accents and a sitting area for a more relaxed stay. Includes all Deluxe amenities plus a lounge area and premium toiletries.",
-        "image": "/images/image-15.jpeg",
+        "image": "/images/image-49.jpeg",
         "rate": "₹4,500/night",
-        "sample": true
+        "sample": true,
+        "size": "",
+        "bed": "",
+        "occupancy": "",
+        "bathroom": "",
+        "location": "",
+        "view": "",
+        "inRoom": [
+          "Air conditioning",
+          "Wi-Fi",
+          "Television",
+          "Mini-bar",
+          "Sitting & lounge area",
+          "Premium toiletries"
+        ],
+        "services": [
+          "Complimentary breakfast"
+        ]
       },
       {
+        "id": "suite",
+        "slug": "suite",
         "name": "Suite",
         "text": "A separate living room, king bed and premium bath amenities for longer visits. Includes butler service, welcome drink and late checkout.",
-        "image": "/images/image-16.jpeg",
+        "image": "/images/image-17.jpeg",
         "rate": "₹8,000/night",
-        "sample": true
+        "sample": true,
+        "size": "",
+        "bed": "",
+        "occupancy": "",
+        "bathroom": "",
+        "location": "",
+        "view": "",
+        "inRoom": [
+          "Separate living room",
+          "King bed",
+          "Premium bath amenities"
+        ],
+        "services": [
+          "Butler service",
+          "Welcome drink",
+          "Late checkout"
+        ]
       },
       {
+        "id": "family-room",
+        "slug": "family-room",
         "name": "Family Room",
         "text": "Twin beds, extra floor space and everything a family needs under one roof. Includes kids' welcome kit, extra bedding and family breakfast.",
-        "image": "/images/image-17.jpeg",
+        "image": "/images/image-40.jpeg",
         "rate": "₹5,500/night",
-        "sample": true
+        "sample": true,
+        "size": "",
+        "bed": "",
+        "occupancy": "",
+        "bathroom": "",
+        "location": "",
+        "view": "",
+        "inRoom": [
+          "Twin beds",
+          "Extra floor space",
+          "Extra bedding"
+        ],
+        "services": [
+          "Kids’ welcome kit",
+          "Family breakfast"
+        ]
       }
     ],
     "venue": {

@@ -3,6 +3,7 @@ import { useRef, useEffect, useState } from "react";
 import Link from "next/link";
 import ContactActions from "@/components/ContactActions";
 import { displayDate } from "@/lib/reservation";
+import Icon from "@/components/Icon";
 
 export type RequestKind = "room" | "banquet" | "dining";
 /** Row labels shared by the booking form's summary slip and the receipt, so both read the same. */
@@ -91,7 +92,8 @@ export default function RequestReceipt({ reference, details }: { reference: stri
       </p>
       <div className="receipt-actions">
         <button type="button" onClick={download}>
-          Save request summary ↓
+          <Icon name="download" position="start" />
+          Save request summary
         </button>
         <button
           type="button"
@@ -104,9 +106,11 @@ export default function RequestReceipt({ reference, details }: { reference: stri
             }
           }}
         >
+          <Icon name="copy" position="start" />
           Copy reference
         </button>
         <button type="button" onClick={() => window.print()}>
+          <Icon name="print" position="start" />
           Print summary
         </button>
       </div>
@@ -114,7 +118,7 @@ export default function RequestReceipt({ reference, details }: { reference: stri
         {copied}
       </p>
       <Link className="btn btn-solid" href="/">
-        Explore the hotel <span aria-hidden="true">↗</span>
+        Explore the hotel <Icon name="arrow-right" position="end" />
       </Link>
       <p className="small-note">
         Need to talk before the hotel replies? Quote reference {reference.slice(0, 8).toUpperCase()}.{" "}

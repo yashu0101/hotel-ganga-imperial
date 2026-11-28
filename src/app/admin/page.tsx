@@ -1,42 +1,23 @@
 "use client";
-import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "@/lib/context";
-import NotificationPanel from "@/components/NotificationPanel";
-import LaunchChecklist from "@/components/LaunchChecklist";
 import Analytics from "@/components/admin/Analytics";
+import BookingForm, { type BookingDraft } from "@/components/admin/BookingForm";
 import CalendarView from "@/components/admin/CalendarView";
 import CollectionEditor from "@/components/admin/CollectionEditor";
+import Icon from "@/components/admin/icons";
+import Overview from "@/components/admin/Overview";
 import RequestTable, { type RequestRow } from "@/components/admin/RequestTable";
+import SetupView, { launchItems, type NotificationStatus } from "@/components/admin/SetupView";
+import Sidebar, { SECTIONS, type Badges, type Section } from "@/components/admin/Sidebar";
 import { adminRequest, SESSION_EXPIRED } from "@/components/admin/api";
 import { COLLECTIONS } from "@/components/admin/collections";
+import { fill, formatDay, hotelDay, localeFor } from "@/components/admin/format";
+import { AdminUIProvider, useAdminUI } from "@/components/admin/ui";
 import { BOOKING_STATUSES, ENQUIRY_STATUSES } from "@/lib/validation";
 import type { Booking, Enquiry, Room, Offer, BanquetPackage, DiningOption, Review } from "@/lib/types";
 
-type Tab =
-  | "dashboard"
-  | "bookings"
-  | "enquiries"
-  | "rooms"
-  | "banquet"
-  | "dining"
-  | "offers"
-  | "reviews"
-  | "analytics"
-  | "calendar";
-const TABS: Tab[] = [
-  "dashboard",
-  "bookings",
-  "enquiries",
-  "rooms",
-  "banquet",
-  "dining",
-  "offers",
-  "reviews",
-  "analytics",
-  "calendar",
-];
 interface Data {
   bookings: Booking[];
   enquiries: Enquiry[];
@@ -47,36 +28,51 @@ interface Data {
   reviews: Review[];
 }
 const EMPTY: Data = { bookings: [], enquiries: [], rooms: [], offers: [], banquet: [], dining: [], reviews: [] };
+const ENDPOINTS: [keyof Data, string][] = [
+  ["bookings", "/api/bookings"],
+  ["enquiries", "/api/enquiries"],
+  ["rooms", "/api/rooms"],
+  ["offers", "/api/offers"],
+  ["banquet", "/api/banquet"],
+  ["dining", "/api/dining"],
+  ["reviews", "/api/reviews"],
+];
+/** The lists each section needs; a section whose list failed to load says so instead of looking empty. */
+const NEEDS: Partial<Record<Section, (keyof Data)[]>> = {
+  today: ["bookings"],
+  requests: ["bookings"],
+  enquiries: ["enquiries"],
+  calendar: ["bookings", "rooms"],
+  rooms: ["rooms"],
+  offers: ["offers"],
+  banquet: ["banquet"],
+  dining: ["dining"],
+  reviews: ["reviews"],
+  analytics: ["bookings"],
+};
 
 const bookingRow = (b: Booking): RequestRow => ({
   id: b.id,
+  kind: "booking",
   name: b.name,
   phone: b.mobile,
   email: b.email,
-  what: b.roomType + ((b.roomsRequested || 1) > 1 ? ` × ${b.roomsRequested}` : ""),
+  what: b.roomType,
+  rooms: b.roomsRequested,
   extra: b.specialRequests,
+  coupon: [b.couponCode, b.couponOffer].filter(Boolean).join(" · "),
   checkin: b.checkin,
   checkout: b.checkout,
   guests: b.guests,
   status: b.bookingStatus,
   createdAt: b.createdAt,
+  city: b.city,
+  country: b.country,
+  staff: b.source === "staff",
 });
-/** Merge a table's edits back: rows shown in the table but no longer returned were deleted. */
-function applyRows<T extends { id: string }>(
-  all: T[],
-  shown: RequestRow[],
-  rows: RequestRow[],
-  status: (item: T, value: string) => T,
-) {
-  const kept = new Map(rows.map(r => [r.id, r.status]));
-  return all
-    .filter(item => !shown.some(r => r.id === item.id) || kept.has(item.id))
-    .map(item => (kept.has(item.id) ? status(item, kept.get(item.id)!) : item));
-}
-const withBookingStatus = (b: Booking, value: string) => ({ ...b, bookingStatus: value as Booking["bookingStatus"] });
-const withEnquiryStatus = (e: Enquiry, value: string) => ({ ...e, status: value as Enquiry["status"] });
 const enquiryRow = (e: Enquiry): RequestRow => ({
   id: e.id,
+  kind: "enquiry",
   name: e.name,
   phone: e.phone,
   email: e.email,
@@ -89,49 +85,59 @@ const enquiryRow = (e: Enquiry): RequestRow => ({
   createdAt: e.createdAt,
 });
 
+/** "#requests/<id>" → section and the open item. Unknown hashes land on Today. */
+function readHash(): { section: Section; id: string | null } {
+  const [section, id] = window.location.hash.slice(1).split("/");
+  return SECTIONS.includes(section as Section)
+    ? { section: section as Section, id: id ? decodeURIComponent(id) : null }
+    : { section: "today", id: null };
+}
+
 export default function AdminPage() {
+  return (
+    <div className="adm">
+      <AdminUIProvider>
+        <Dashboard />
+      </AdminUIProvider>
+    </div>
+  );
+}
+
+function Dashboard() {
   const router = useRouter();
-  const { t, lang, setLang } = useApp();
+  const { t, lang, setLang, theme, setTheme } = useApp();
+  const { notify } = useAdminUI();
+  const locale = localeFor(lang);
   // "checking" until /api/auth/me answers; "offline" when it could not be reached at all.
   const [session, setSession] = useState<"checking" | "ok" | "offline">("checking");
   const ready = session === "ok";
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const [place, setPlace] = useState<{ section: Section; id: string | null }>({ section: "today", id: null });
   const [data, setData] = useState<Data>(EMPTY);
-  // Until the first load finishes, lists and counters show a loading state instead of looking empty.
+  // Until the first load finishes, views show a loading state instead of looking empty.
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState<ReadonlySet<keyof Data>>(new Set());
-  const [toast, setToast] = useState<{ message: string; kind: "ok" | "error" } | null>(null);
-  const toastTimer = useRef(0);
-  // Confirmations fade on their own; errors stay until dismissed so they cannot be missed.
-  const notify = useCallback((message: string, kind: "ok" | "error" = "ok") => {
-    window.clearTimeout(toastTimer.current);
-    setToast({ message, kind });
-    if (kind === "ok") toastTimer.current = window.setTimeout(() => setToast(null), 2500);
-  }, []);
-  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
-  // Tabs follow the ARIA tabs pattern: one tab stop, arrow keys/Home/End move between tabs and select them.
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const onTabKey = (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    const last = TABS.length - 1;
-    const next =
-      e.key === "ArrowRight"
-        ? (index + 1) % TABS.length
-        : e.key === "ArrowLeft"
-          ? (index - 1 + TABS.length) % TABS.length
-          : e.key === "Home"
-            ? 0
-            : e.key === "End"
-              ? last
-              : -1;
-    if (next < 0) return;
-    e.preventDefault();
-    setTab(TABS[next]);
-    tabRefs.current[next]?.focus();
-  };
+  const [notifications, setNotifications] = useState<NotificationStatus | null>(null);
+  const [notificationsFailed, setNotificationsFailed] = useState(false);
+  // The add-booking drawer, opened from Requests or a calendar day.
+  const [adding, setAdding] = useState<BookingDraft | null>(null);
   const set =
     <K extends keyof Data>(key: K) =>
     (items: Data[K]) =>
       setData(d => ({ ...d, [key]: items }));
+
+  // Sections live in the URL hash, so back/forward and refresh keep the place.
+  useEffect(() => {
+    const sync = () => setPlace(readHash());
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+  const go = useCallback((section: Section, id?: string | null) => {
+    window.location.hash = id ? `${section}/${encodeURIComponent(id)}` : section;
+  }, []);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [place.section]);
 
   // The public site is English; the dashboard follows the admin's language choice.
   useEffect(() => {
@@ -161,29 +167,103 @@ export default function AdminPage() {
     checkSession();
   }, [checkSession]);
 
+  const loadNotifications = useCallback(async () => {
+    try {
+      setNotifications(await adminRequest<NotificationStatus>("/api/notifications"));
+      setNotificationsFailed(false);
+    } catch {
+      setNotificationsFailed(true);
+    }
+  }, []);
+
   useEffect(() => {
     if (!ready) return;
-    const endpoints: [keyof Data, string][] = [
-      ["bookings", "/api/bookings"],
-      ["enquiries", "/api/enquiries"],
-      ["rooms", "/api/rooms"],
-      ["offers", "/api/offers"],
-      ["banquet", "/api/banquet"],
-      ["dining", "/api/dining"],
-      ["reviews", "/api/reviews"],
-    ];
-    Promise.allSettled(endpoints.map(([, url]) => adminRequest<unknown[]>(url))).then(results => {
+    void loadNotifications();
+    Promise.allSettled(ENDPOINTS.map(([, url]) => adminRequest<unknown[]>(url))).then(results => {
       const next = { ...EMPTY };
       const missing = new Set<keyof Data>();
       results.forEach((r, i) => {
-        if (r.status === "fulfilled" && Array.isArray(r.value)) (next[endpoints[i][0]] as unknown[]) = r.value;
-        else missing.add(endpoints[i][0]);
+        if (r.status === "fulfilled" && Array.isArray(r.value)) (next[ENDPOINTS[i][0]] as unknown[]) = r.value;
+        else missing.add(ENDPOINTS[i][0]);
       });
       setFailed(missing);
       setData(next);
       setLoaded(true);
     });
-  }, [ready]);
+  }, [ready, loadNotifications]);
+
+  // Nothing creates enquiries any more; the tab only appears while older ones are stored
+  // (or when they could not be loaded, so the error stays visible). Links to it then land on Today.
+  const showEnquiries = loaded && (data.enquiries.length > 0 || failed.has("enquiries"));
+  useEffect(() => {
+    if (loaded && !showEnquiries && place.section === "enquiries") window.location.replace("#today");
+  }, [loaded, showEnquiries, place.section]);
+
+  // Status changes and deletes apply to the screen only after the server confirms them.
+  const changeStatus = useCallback(
+    async (row: RequestRow, status: string) => {
+      try {
+        if (row.kind === "booking") {
+          await adminRequest("/api/bookings", "PATCH", { id: row.id, bookingStatus: status });
+          setData(d => ({
+            ...d,
+            bookings: d.bookings.map(b =>
+              b.id === row.id ? { ...b, bookingStatus: status as Booking["bookingStatus"] } : b,
+            ),
+          }));
+        } else {
+          await adminRequest("/api/enquiries", "PATCH", { id: row.id, status });
+          setData(d => ({
+            ...d,
+            enquiries: d.enquiries.map(e => (e.id === row.id ? { ...e, status: status as Enquiry["status"] } : e)),
+          }));
+        }
+        notify(fill(t("admin.statusChanged"), { name: row.name, status: t("admin.status." + status) }));
+      } catch (e) {
+        notify(e instanceof Error ? e.message : String(e), "error");
+      }
+    },
+    [notify, t],
+  );
+  /** Deletes after the server confirms; true when it was deleted. Callers decide where to go next. */
+  const deleteRequest = useCallback(
+    async (row: RequestRow): Promise<boolean> => {
+      const endpoint = row.kind === "booking" ? "/api/bookings" : "/api/enquiries";
+      try {
+        await adminRequest(endpoint + "?id=" + encodeURIComponent(row.id), "DELETE");
+        setData(d =>
+          row.kind === "booking"
+            ? { ...d, bookings: d.bookings.filter(b => b.id !== row.id) }
+            : { ...d, enquiries: d.enquiries.filter(e => e.id !== row.id) },
+        );
+        notify(t("admin.deleted"));
+        return true;
+      } catch (e) {
+        notify(e instanceof Error ? e.message : String(e), "error");
+        return false;
+      }
+    },
+    [notify, t],
+  );
+  const bookingAdded = useCallback(
+    (booking: Booking) => {
+      setData(d => ({ ...d, bookings: [booking, ...d.bookings] }));
+      notify(fill(t("admin.bookingAdded"), { name: booking.name }));
+    },
+    [notify, t],
+  );
+  const retryNotifications = useCallback(
+    async (requeue: boolean) => {
+      try {
+        await adminRequest("/api/notifications", "POST", requeue ? { action: "requeue" } : {});
+        notify(t("admin.retried"));
+      } catch {
+        notify(t("admin.retryFailedMessage"), "error");
+      }
+      await loadNotifications();
+    },
+    [loadNotifications, notify, t],
+  );
 
   const logout = async () => {
     const result = await fetch("/api/auth/logout", { method: "POST" })
@@ -193,14 +273,16 @@ export default function AdminPage() {
     if (result.revoked === false) window.alert(t("admin.logoutPartial"));
     router.push("/login");
   };
+
   if (!ready)
     return (
-      <div className="adm" style={{ display: "grid", placeItems: "center" }}>
+      <div className="adm-gate">
+        <p className="adm-brand-gate">Ganga Imperial</p>
         {session === "offline" ? (
-          <div role="alert" style={{ textAlign: "center" }}>
+          <div role="alert">
             <p>{t("admin.sessionError")}</p>
             <button
-              className="adm-btn"
+              className="adm-btn primary"
               onClick={() => {
                 setSession("checking");
                 checkSession();
@@ -210,228 +292,222 @@ export default function AdminPage() {
             </button>
           </div>
         ) : (
-          <p role="status">Loading…</p>
+          <p role="status" className="adm-muted">
+            {t("admin.checkingSession")}
+          </p>
         )}
       </div>
     );
 
+  const { section, id } = place;
+  const requests = data.bookings.map(bookingRow),
+    enquiries = data.enquiries.map(enquiryRow);
   const pending = data.bookings.filter(b => b.bookingStatus === "pending").length;
-  // A counter is only meaningful once its list has loaded; otherwise show a dash rather than a misleading 0.
-  const count = (key: keyof Data, n: number) => (loaded && !failed.has(key) ? n : "–");
-  const unavailable = (key: keyof Data) =>
-    failed.has(key) && (
-      <p className="adm-alert error" role="alert">
-        {t("admin.unavailable")}
-      </p>
-    );
-  const view = loaded ? tab : null;
-  const labels = {
-    save: t("admin.save"),
-    saving: t("admin.saving"),
-    cancel: t("admin.cancel"),
-    edit: t("admin.edit"),
-    delete: t("admin.delete"),
-    confirmDelete: t("admin.confirmDelete"),
-    empty: t("admin.empty"),
-    saved: t("admin.saved"),
-    deleted: t("admin.deleted"),
-  };
-  const collections = COLLECTIONS(t);
-  const allBookings = data.bookings.map(bookingRow),
-    recent = allBookings.slice(0, 5),
-    allEnquiries = data.enquiries.map(enquiryRow);
+  const newEnquiries = data.enquiries.filter(e => e.status === "new").length;
+  const checklist = loaded && !failed.has("rooms") ? launchItems(data.rooms).length : 0;
+  const deliveryProblem = notifications
+    ? (!notifications.configured ? 1 : 0) + ((notifications.failed ?? 0) > 0 ? 1 : 0)
+    : 0;
+  const badges: Badges = loaded
+    ? {
+        requests: { n: pending, attention: true, label: t("admin.badge.pending") },
+        enquiries: { n: newEnquiries, attention: true, label: t("admin.badge.new") },
+        setup: { n: checklist + deliveryProblem, attention: deliveryProblem > 0, label: t("admin.badge.setup") },
+      }
+    : {};
+  const collections = COLLECTIONS(t, locale);
+  const unavailable = (NEEDS[section] ?? []).filter(k => failed.has(k));
+
+  const notices: { id: string; text: string; action?: { label: string; section: Section } }[] = [];
+  if (notifications && !notifications.configured)
+    notices.push({
+      id: "delivery",
+      text: t("admin.notice.delivery"),
+      action: { label: t("admin.openSetup"), section: "setup" },
+    });
+  if ((notifications?.failed ?? 0) > 0)
+    notices.push({
+      id: "failed",
+      text: fill(t("admin.notice.failed"), { n: notifications!.failed! }),
+      action: { label: t("admin.openSetup"), section: "setup" },
+    });
+  if (checklist > 0)
+    notices.push({
+      id: "launch",
+      text: fill(t("admin.notice.launch"), { n: checklist }),
+      action: { label: t("admin.openChecklist"), section: "setup" },
+    });
+
+  const subtitle =
+    section === "today"
+      ? formatDay(hotelDay(), locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+      : t("admin.intro." + section);
 
   return (
-    <div className="adm">
-      <header className="adm-header">
-        <h1>{t("admin.title")}</h1>
-        <nav aria-label="Account">
-          <button
-            className="adm-btn"
-            onClick={() => setLang(lang === "en" ? "hi" : "en")}
-            aria-label={lang === "en" ? "हिंदी में देखें" : "View in English"}
-          >
-            {lang === "en" ? "हि" : "EN"}
-          </button>
-          <Link href="/">{t("admin.viewSite")}</Link>
-          <button className="adm-btn" onClick={logout}>
-            {t("admin.logout")}
-          </button>
-        </nav>
-      </header>
-      <div className="adm-tabs" role="tablist">
-        {TABS.map((k, i) => (
-          <button
-            key={k}
-            ref={el => {
-              tabRefs.current[i] = el;
-            }}
-            id={"adm-tab-" + k}
-            role="tab"
-            type="button"
-            aria-selected={tab === k}
-            aria-controls="adm-panel"
-            tabIndex={tab === k ? 0 : -1}
-            className="adm-tab"
-            onClick={() => setTab(k)}
-            onKeyDown={e => onTabKey(e, i)}
-          >
-            {t("admin." + k)}
-            {k === "bookings" && loaded && pending > 0 && <span className="count">{pending}</span>}
-          </button>
-        ))}
-      </div>
-      <main className="adm-body" id="adm-panel" role="tabpanel" aria-labelledby={"adm-tab-" + tab} tabIndex={0}>
-        {!loaded && (
-          <p className="adm-loading" role="status">
-            {t("admin.loading")}
-          </p>
-        )}
-        {failed.size > 0 && (
-          <p className="adm-alert error" role="alert">
-            {t("admin.loadError")}
-          </p>
-        )}
-        {view === "dashboard" && (
-          <>
-            <NotificationPanel />
-            <LaunchChecklist rooms={data.rooms} />
-            <div className="stat-grid">
-              <div className="stat-card">
-                <div className="num">{count("bookings", pending)}</div>
-                <div className="lbl">{t("admin.pendingRequests")}</div>
-              </div>
-              <div className="stat-card">
-                <div className="num">
-                  {count("bookings", data.bookings.filter(b => b.bookingStatus === "confirmed").length)}
-                </div>
-                <div className="lbl">{t("admin.confirmedRequests")}</div>
-              </div>
-              <div className="stat-card">
-                <div className="num">{count("bookings", data.bookings.length)}</div>
-                <div className="lbl">{t("admin.totalBookings")}</div>
-              </div>
-              <div className="stat-card">
-                <div className="num">{count("enquiries", data.enquiries.filter(e => e.status === "new").length)}</div>
-                <div className="lbl">{t("admin.newEnquiries")}</div>
-              </div>
-              <div className="stat-card">
-                <div className="num">{count("offers", data.offers.filter(o => o.active).length)}</div>
-                <div className="lbl">{t("admin.activeOffers")}</div>
-              </div>
-            </div>
-            <h2>{t("admin.recentBookings")}</h2>
-            {unavailable("bookings") || (
-              <RequestTable
-                rows={recent}
-                statuses={BOOKING_STATUSES}
-                endpoint="/api/bookings"
-                statusField="bookingStatus"
-                notify={notify}
-                t={t}
-                onChange={rows => set("bookings")(applyRows(data.bookings, recent, rows, withBookingStatus))}
-              />
-            )}
-          </>
-        )}
-        {view === "bookings" && (
-          <>
-            <h2>{t("admin.bookings")}</h2>
-            {unavailable("bookings") || (
-              <RequestTable
-                rows={allBookings}
-                statuses={BOOKING_STATUSES}
-                endpoint="/api/bookings"
-                statusField="bookingStatus"
-                notify={notify}
-                t={t}
-                onChange={rows => set("bookings")(applyRows(data.bookings, allBookings, rows, withBookingStatus))}
-              />
-            )}
-          </>
-        )}
-        {view === "enquiries" && (
-          <>
-            <h2>{t("admin.enquiries")}</h2>
-            {unavailable("enquiries") || (
-              <RequestTable
-                rows={allEnquiries}
-                statuses={ENQUIRY_STATUSES}
-                endpoint="/api/enquiries"
-                statusField="status"
-                notify={notify}
-                t={t}
-                onChange={rows => set("enquiries")(applyRows(data.enquiries, allEnquiries, rows, withEnquiryStatus))}
-              />
-            )}
-          </>
-        )}
-        {view === "rooms" &&
-          (unavailable("rooms") || (
-            <CollectionEditor
-              config={collections.rooms}
-              items={data.rooms as never[]}
-              setItems={set("rooms") as never}
-              labels={labels}
-              notify={notify}
-            />
-          ))}
-        {view === "offers" &&
-          (unavailable("offers") || (
-            <CollectionEditor
-              config={collections.offers}
-              items={data.offers as never[]}
-              setItems={set("offers") as never}
-              labels={labels}
-              notify={notify}
-            />
-          ))}
-        {view === "banquet" &&
-          (unavailable("banquet") || (
-            <CollectionEditor
-              config={collections.banquet}
-              items={data.banquet as never[]}
-              setItems={set("banquet") as never}
-              labels={labels}
-              notify={notify}
-            />
-          ))}
-        {view === "dining" &&
-          (unavailable("dining") || (
-            <CollectionEditor
-              config={collections.dining}
-              items={data.dining as never[]}
-              setItems={set("dining") as never}
-              labels={labels}
-              notify={notify}
-            />
-          ))}
-        {view === "reviews" &&
-          (unavailable("reviews") || (
-            <CollectionEditor
-              config={collections.reviews}
-              items={data.reviews as never[]}
-              setItems={set("reviews") as never}
-              labels={labels}
-              notify={notify}
-            />
-          ))}
-        {view === "analytics" && (unavailable("bookings") || <Analytics bookings={data.bookings} t={t} />)}
-        {view === "calendar" &&
-          (unavailable("bookings") || unavailable("rooms") || (
-            <CalendarView bookings={data.bookings} rooms={data.rooms} />
-          ))}
-      </main>
-      {toast && (
-        <div className={"adm-toast " + toast.kind} role={toast.kind === "error" ? "alert" : "status"}>
-          <span>{toast.message}</span>
-          {toast.kind === "error" && (
-            <button type="button" className="adm-toast-close" onClick={() => setToast(null)}>
-              {t("admin.dismiss")}
+    <div className="adm-layout">
+      <a className="adm-skip" href="#adm-main">
+        {t("admin.skipToContent")}
+      </a>
+      <Sidebar current={section} badges={badges} hidden={showEnquiries ? [] : ["enquiries"]} />
+      <div className="adm-workspace">
+        <header className="adm-topbar">
+          <div className="adm-title">
+            <h1>{t("admin.nav." + section)}</h1>
+            <p>{subtitle}</p>
+          </div>
+          <div className="adm-account">
+            <button
+              type="button"
+              className="adm-icon-btn"
+              onClick={() => setLang(lang === "en" ? "hi" : "en")}
+              aria-label={lang === "en" ? "हिंदी में देखें" : "View in English"}
+              title={lang === "en" ? "हिंदी" : "English"}
+            >
+              <span className="adm-lang">{lang === "en" ? "हि" : "EN"}</span>
             </button>
+            <button
+              type="button"
+              className="adm-icon-btn"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              aria-label={theme === "dark" ? t("admin.lightMode") : t("admin.darkMode")}
+              title={theme === "dark" ? t("admin.lightMode") : t("admin.darkMode")}
+            >
+              <Icon name={theme === "dark" ? "sun" : "moon"} />
+            </button>
+            <button type="button" className="adm-btn" onClick={logout}>
+              <Icon name="signout" />
+              {t("admin.logout")}
+            </button>
+          </div>
+        </header>
+
+        <main className="adm-main" id="adm-main" tabIndex={-1}>
+          {failed.size > 0 && unavailable.length === 0 && (
+            <p className="adm-alert" role="alert">
+              {t("admin.loadError")}
+            </p>
           )}
-        </div>
-      )}
+          {!loaded ? (
+            <div className="adm-skeleton" role="status" aria-label={t("admin.loading")}>
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
+          ) : unavailable.length > 0 ? (
+            <p className="adm-alert" role="alert">
+              {t("admin.unavailable")}
+            </p>
+          ) : (
+            <>
+              {section === "today" && (
+                <Overview
+                  bookings={data.bookings}
+                  requests={requests}
+                  enquiries={enquiries}
+                  offers={data.offers}
+                  notices={notices}
+                  go={go}
+                  onStatus={changeStatus}
+                  bookingRow={bookingRow}
+                />
+              )}
+              {section === "requests" && (
+                <RequestTable
+                  kind="booking"
+                  rows={requests}
+                  statuses={BOOKING_STATUSES}
+                  selectedId={id}
+                  onSelect={next => go("requests", next)}
+                  onStatus={changeStatus}
+                  onDelete={async row => {
+                    if (await deleteRequest(row)) go("requests");
+                  }}
+                  onAdd={() => setAdding({})}
+                />
+              )}
+              {section === "enquiries" && (
+                <RequestTable
+                  kind="enquiry"
+                  rows={enquiries}
+                  statuses={ENQUIRY_STATUSES}
+                  selectedId={id}
+                  onSelect={next => go("enquiries", next)}
+                  onStatus={changeStatus}
+                  onDelete={async row => {
+                    if (await deleteRequest(row)) go("enquiries");
+                  }}
+                />
+              )}
+              {section === "calendar" && (
+                <CalendarView
+                  bookings={data.bookings}
+                  rooms={data.rooms}
+                  bookingRow={bookingRow}
+                  onAdd={draft => setAdding(draft)}
+                  onStatus={changeStatus}
+                  onDelete={deleteRequest}
+                />
+              )}
+              {section === "rooms" && (
+                <CollectionEditor
+                  config={collections.rooms}
+                  items={data.rooms as never[]}
+                  setItems={set("rooms") as never}
+                />
+              )}
+              {section === "offers" && (
+                <CollectionEditor
+                  config={collections.offers}
+                  items={data.offers as never[]}
+                  setItems={set("offers") as never}
+                />
+              )}
+              {section === "banquet" && (
+                <CollectionEditor
+                  config={collections.banquet}
+                  items={data.banquet as never[]}
+                  setItems={set("banquet") as never}
+                />
+              )}
+              {section === "dining" && (
+                <CollectionEditor
+                  config={collections.dining}
+                  items={data.dining as never[]}
+                  setItems={set("dining") as never}
+                />
+              )}
+              {section === "reviews" && (
+                <CollectionEditor
+                  config={collections.reviews}
+                  items={data.reviews as never[]}
+                  setItems={set("reviews") as never}
+                />
+              )}
+              {section === "analytics" && <Analytics bookings={data.bookings} rooms={data.rooms} />}
+              {section === "setup" && (
+                <SetupView
+                  rooms={data.rooms}
+                  status={notifications}
+                  statusError={notificationsFailed}
+                  onRetry={retryNotifications}
+                  go={go}
+                />
+              )}
+            </>
+          )}
+        </main>
+        {adding && (
+          <BookingForm
+            rooms={data.rooms}
+            packages={data.banquet}
+            offers={data.offers}
+            initial={adding}
+            onSaved={bookingAdded}
+            onClose={() => setAdding(null)}
+          />
+        )}
+      </div>
     </div>
   );
 }

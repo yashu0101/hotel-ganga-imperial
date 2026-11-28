@@ -592,8 +592,9 @@
   flex-direction: column;
   justify-content: center;
 }
-.location-card > span {
-  font: 80px var(--display);
+.location-card > .location-mark {
+  width: 48px;
+  height: 48px;
   color: var(--brass);
 }
 .location-card p:not(.small-note) {
@@ -608,6 +609,7 @@
 }
 .location-card .btn {
   align-self: start;
+  margin-bottom: 32px;
 }
 /* /book header: back link at the far left, then the wordmark; theme toggle on the right. */
 .booking-header-start {

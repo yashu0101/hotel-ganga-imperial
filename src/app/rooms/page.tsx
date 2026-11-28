@@ -4,7 +4,8 @@ import Link from "next/link";
 import InteriorShell from "@/components/InteriorShell";
 import Rooms from "@/components/Rooms";
 import { getRooms } from "@/lib/db";
-import { ROOM_SPECIFICATIONS, roomSlug, roomPhoto } from "@/lib/hotel-content";
+import Icon from "@/components/Icon";
+
 export const revalidate = 300;
 export const metadata = {
   ...canonical("/rooms"),
@@ -19,12 +20,13 @@ const COMPARE_COLUMNS = [
 ] as const;
 export default async function RoomsPage() {
   const rooms = (await getRooms()).filter(r => !r.hidden);
-  const columns = COMPARE_COLUMNS.filter(([key]) => rooms.some(r => ROOM_SPECIFICATIONS[r.name]?.[key]?.trim()));
+  const columns = COMPARE_COLUMNS.filter(([key]) => rooms.some(r => r[key]?.trim()));
   return (
     <InteriorShell>
       <div className="page-intro wrap">
         <Link className="back-inline" href="/">
-          ← The hotel
+          <Icon name="arrow-left" position="start" />
+          The hotel
         </Link>
         <span className="eyebrow">A SPACE OF YOUR OWN</span>
         <h1>Choose your kind of comfort.</h1>
@@ -57,26 +59,23 @@ export default async function RoomsPage() {
               </tr>
             </thead>
             <tbody>
-              {rooms.map(r => {
-                const spec = ROOM_SPECIFICATIONS[r.name];
-                return (
-                  <tr key={r.name}>
-                    <th scope="row">
-                      <Image src={roomPhoto(r)} alt="" width={80} height={60} />
-                      {r.name}
-                    </th>
-                    <td>{r.rate || "On request"}</td>
-                    {columns.map(([key]) => (
-                      <td key={key}>{spec?.[key]?.trim() || "On request"}</td>
-                    ))}
-                    <td>
-                      <Link href={"/rooms/" + roomSlug(r.name)}>
-                        View details <span aria-hidden="true">↗</span>
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
+              {rooms.map(r => (
+                <tr key={r.slug}>
+                  <th scope="row">
+                    <Image src={r.image} alt="" width={80} height={60} />
+                    {r.name}
+                  </th>
+                  <td>{r.rate || "On request"}</td>
+                  {columns.map(([key]) => (
+                    <td key={key}>{r[key]?.trim() || "On request"}</td>
+                  ))}
+                  <td>
+                    <Link href={"/rooms/" + r.slug}>
+                      View details <Icon name="arrow-right" position="end" />
+                    </Link>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

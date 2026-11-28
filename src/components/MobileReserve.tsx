@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Icon from "@/components/Icon";
 
 /**
  * The floating "Request a reservation" bar on phones (shown by CSS at ≤900px).
@@ -30,7 +31,7 @@ export default function MobileReserve() {
       aria-hidden={hidden || undefined}
       tabIndex={hidden ? -1 : undefined}
     >
-      Request a reservation <span aria-hidden="true">↗</span>
+      Request a reservation <Icon name="arrow-right" position="end" />
     </Link>
   );
 }

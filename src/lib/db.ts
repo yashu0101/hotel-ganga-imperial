@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import type { NotificationJob, Enquiry, Booking, Offer, Room, BanquetPackage, DiningOption, Review, DB } from "./types";
 import { SITE_CONFIG } from "./config";
+import { slugify } from "./validation";
 
 // Storage has two interchangeable backends with identical behaviour:
 //   - Postgres (Neon) when DATABASE_URL is set, e.g. on Vercel;
@@ -18,6 +19,8 @@ export class StorageUnavailableError extends Error {
     this.name = "StorageUnavailableError";
   }
 }
+/** A change that clashes with stored content, which staff can fix in the form. Admin routes answer 409. */
+export class ConflictError extends Error {}
 
 function getSQL() {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -52,7 +55,7 @@ function readDB(): DB {
     } catch (e) {
       if (!(e instanceof StorageUnavailableError)) throw e;
     }
-    return withRoomIds(data);
+    return normalizeRooms(data);
   }
   for (const key of [
     "enquiries",
@@ -65,7 +68,8 @@ function readDB(): DB {
   ] as const)
     data[key] ??= [];
   data.config ??= emptyDB().config;
-  return withRoomIds(data);
+  data.bookings = data.bookings.map(withCouponFields);
+  return normalizeRooms(data);
 }
 
 function writeDB(data: DB): void {
@@ -266,9 +270,25 @@ export const getEnquiries = enquiries.list;
 export const addEnquiry = (e: Omit<Enquiry, "id" | "createdAt" | "status">) => enquiries.add({ ...e, status: "new" });
 export const updateEnquiryStatus = (id: string, status: Enquiry["status"]) => enquiries.update(id, { status });
 export const deleteEnquiry = enquiries.remove;
+/** Thrown when another offer already uses the code: guests could not tell which offer they were given. */
+export class OfferCodeTakenError extends ConflictError {
+  constructor(code: string, title: string) {
+    super(`The code "${code}" is already used by the offer “${title}”. Choose a different code.`);
+    this.name = "OfferCodeTakenError";
+  }
+}
+/** Codes are saved in capitals, as guests see them and as the booking form sends them. */
+const offerCode = (value: unknown) => (typeof value === "string" ? value.trim().toUpperCase() : "");
+async function withFreeCode<T extends Partial<Offer>>(changes: T, id?: string): Promise<T> {
+  if (changes.code === undefined) return changes;
+  const code = offerCode(changes.code);
+  const clash = code && (await offers.list()).find(o => o.id !== id && offerCode(o.code) === code);
+  if (clash) throw new OfferCodeTakenError(code, clash.title);
+  return { ...changes, code };
+}
 export const getOffers = offers.list,
-  addOffer = offers.add,
-  updateOffer = offers.update,
+  addOffer = async (offer: Omit<Offer, "id" | "createdAt">) => offers.add(await withFreeCode(offer)),
+  updateOffer = async (id: string, updates: Partial<Offer>) => offers.update(id, await withFreeCode(updates, id)),
   deleteOffer = offers.remove;
 export const getBanquetPackages = banquet.list,
   addBanquetPackage = banquet.add,
@@ -284,79 +304,227 @@ export const getReviews = reviews.list,
   deleteReview = reviews.remove;
 
 // ============================================================
-// Rooms: addressed by a stable id, never by list position.
+// Rooms: addressed by a stable id, never by list position or name.
 // Postgres uses the serial `idx` key; JSON rooms get an id from their name on first read.
+// Guests reach a room at /rooms/<slug>. Renaming a room keeps its slug. When staff change the slug, the old one is
+// kept in previousSlugs so existing links redirect to the new address.
 // ============================================================
-const ROOM_FIELDS = ["name", "text", "image", "rate", "sample", "hidden"] as const;
-type RoomInput = Omit<Room, "id">;
+const ROOM_FACTS = ["size", "bed", "occupancy", "bathroom", "location", "view"] as const;
+const ROOM_FIELDS = [
+  "slug",
+  "name",
+  "text",
+  "image",
+  "rate",
+  "sample",
+  "hidden",
+  ...ROOM_FACTS,
+  "inRoom",
+  "services",
+] as const;
+type RoomInput = Omit<Room, "id" | "previousSlugs">;
+/** Postgres column per room field where the names differ. Lists are stored as JSON text. */
+const ROOM_COLUMNS: Record<string, string> = { inRoom: "in_room", previousSlugs: "previous_slugs", view: "room_view" };
+const ROOM_LISTS = new Set(["inRoom", "services", "previousSlugs"]);
+const roomColumn = (key: string) => ROOM_COLUMNS[key] ?? key;
+const encodeRoomValue = (key: string, value: unknown) => (ROOM_LISTS.has(key) ? JSON.stringify(value ?? []) : value);
+
+/** Thrown when a room's web address is already used by another room. */
+export class RoomAddressTakenError extends ConflictError {
+  constructor(slug: string) {
+    super(`The web address "${slug}" is already used by another room. Choose a different one.`);
+    this.name = "RoomAddressTakenError";
+  }
+}
+
 const pickRoom = (input: Partial<Room>) =>
   Object.fromEntries(ROOM_FIELDS.filter(k => input[k] !== undefined).map(k => [k, input[k]])) as Partial<RoomInput>;
-const slug = (name: string) =>
-  name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "") || "room";
-function withRoomIds(data: DB): DB {
-  const used = new Set<string>();
+/** `base`, or `base-2`, `base-3` … whichever is not taken yet. */
+function freeSlug(base: string, taken: Set<string>) {
+  const root = base || "room";
+  let candidate = root;
+  for (let n = 2; taken.has(candidate); n++) candidate = root + "-" + n;
+  return candidate;
+}
+/** Old addresses after moving from `from` to `to`: `from` is added, `to` is live again, so it is no longer old. */
+const movedSlugs = (previous: string[], from: string, to: string) =>
+  [...new Set([...previous, from])].filter(s => s && s !== to).slice(-20);
+const parseList = (value: unknown): string[] => {
+  try {
+    const list = JSON.parse(String(value ?? "[]"));
+    return Array.isArray(list) ? list.map(String) : [];
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Rooms saved before facts, inclusions and slugs were part of the record. Inclusions come from the built-in room
+ * with the same name (they used to be looked up by name). Sample rooms used to show a photo chosen by name instead
+ * of their stored image, so that photo becomes the stored image and guests keep seeing the same picture.
+ */
+const LEGACY_SAMPLE_PHOTOS: Record<string, string> = {
+  "Family Room": "/images/image-40.jpeg",
+  Suite: "/images/image-17.jpeg",
+};
+function legacyRoomUpgrade(room: { name: string; sample?: boolean }) {
+  const builtIn = SITE_CONFIG.rooms.find(r => r.name === room.name);
+  return {
+    inRoom: builtIn?.inRoom ?? [],
+    services: builtIn?.services ?? [],
+    ...(room.sample ? { image: LEGACY_SAMPLE_PHOTOS[room.name] ?? "/images/image-49.jpeg" } : {}),
+  };
+}
+
+function normalizeRooms(data: DB): DB {
+  const ids = new Set<string>(),
+    slugs = new Set<string>();
   for (const room of data.config.rooms) {
-    let id = room.id || slug(room.name);
-    for (let n = 2; used.has(id); n++) id = slug(room.name) + "-" + n;
-    room.id = id;
-    used.add(id);
+    room.id = room.id && !ids.has(room.id) ? room.id : freeSlug(slugify(room.name), ids);
+    ids.add(room.id);
+    if (room.inRoom === undefined) Object.assign(room, legacyRoomUpgrade(room));
+    room.services ??= [];
+    for (const key of ROOM_FACTS) room[key] ??= "";
+    room.slug = room.slug && !slugs.has(room.slug) ? room.slug : freeSlug(slugify(room.name), slugs);
+    slugs.add(room.slug);
   }
   return data;
 }
+
 const roomRow = (r: Record<string, unknown>): Room =>
   ({
     id: String(r.idx),
+    slug: r.slug ?? "",
+    previousSlugs: parseList(r.previous_slugs),
     name: r.name,
     text: r.text,
     image: r.image,
     rate: r.rate,
     sample: !!r.sample,
     hidden: !!r.hidden,
+    ...Object.fromEntries(ROOM_FACTS.map(k => [k, r[roomColumn(k)] ?? ""])),
+    inRoom: parseList(r.in_room),
+    services: parseList(r.services),
   }) as Room;
 const pgRoomKey = (id: string) => (/^\d+$/.test(id) ? Number(id) : null);
+const isUniqueViolation = (error: unknown) => (error as { code?: string })?.code === "23505";
+
+let roomSetup: Promise<void> | undefined;
+/** Add the newer room columns, give older rows a slug and their inclusions once, then enforce unique slugs. */
+async function prepareRooms() {
+  if (!IS_POSTGRES) return;
+  roomSetup ??= (async () => {
+    const sql = getSQL();
+    // in_room has no default, so rows saved before this change are recognisable (NULL) and upgraded once.
+    await sql.query("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS in_room TEXT");
+    await sql.query("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS slug TEXT");
+    await sql.query("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS previous_slugs TEXT DEFAULT '[]'");
+    await sql.query("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS services TEXT DEFAULT '[]'");
+    for (const key of ROOM_FACTS)
+      await sql.query(`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS ${roomColumn(key)} TEXT DEFAULT ''`);
+    const rows: Record<string, unknown>[] = await sql.query("SELECT * FROM rooms ORDER BY idx");
+    const taken = new Set(rows.map(r => String(r.slug ?? "")).filter(Boolean));
+    for (const r of rows) {
+      const changes: Record<string, unknown> = {};
+      if (!r.slug) taken.add((changes.slug = freeSlug(slugify(String(r.name)), taken)));
+      if (r.in_room == null) {
+        const upgrade = legacyRoomUpgrade({ name: String(r.name), sample: !!r.sample });
+        changes.in_room = JSON.stringify(upgrade.inRoom);
+        changes.services = JSON.stringify(upgrade.services);
+        if (upgrade.image) changes.image = upgrade.image;
+      }
+      const columns = Object.keys(changes);
+      if (columns.length)
+        await sql.query(
+          `UPDATE rooms SET ${columns.map((c, i) => `${c} = $${i + 1}`).join(", ")} WHERE idx = $${columns.length + 1}`,
+          [...Object.values(changes), r.idx],
+        );
+    }
+    await sql.query("CREATE UNIQUE INDEX IF NOT EXISTS rooms_slug_key ON rooms (slug)");
+  })().catch(error => {
+    roomSetup = undefined;
+    throw error;
+  });
+  await roomSetup;
+}
 
 export async function getRooms(): Promise<Room[]> {
-  if (IS_POSTGRES) return (await getSQL().query("SELECT * FROM rooms ORDER BY idx")).map(roomRow);
+  if (IS_POSTGRES) {
+    await prepareRooms();
+    return (await getSQL().query("SELECT * FROM rooms ORDER BY idx")).map(roomRow);
+  }
   return readDB().config.rooms;
 }
-export async function addRoom(input: RoomInput): Promise<Room> {
-  const room = pickRoom(input) as RoomInput;
-  if (IS_POSTGRES)
-    return roomRow(
-      (
-        await getSQL().query(
-          "INSERT INTO rooms (name, text, image, rate, sample, hidden) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
-          [room.name, room.text, room.image, room.rate, room.sample, !!room.hidden],
-        )
-      )[0],
-    );
+/** A new room gets the slug it was given, or one made from its name. A slug already in use is refused. */
+export async function addRoom(input: Omit<RoomInput, "slug"> & { slug?: string }): Promise<Room> {
+  const room = {
+    inRoom: [],
+    services: [],
+    ...Object.fromEntries(ROOM_FACTS.map(k => [k, ""])),
+    ...pickRoom(input),
+  } as RoomInput;
+  if (IS_POSTGRES) {
+    await prepareRooms();
+    const sql = getSQL();
+    const taken = new Set<string>((await sql.query("SELECT slug FROM rooms")).map((r: { slug: string }) => r.slug));
+    if (room.slug && taken.has(room.slug)) throw new RoomAddressTakenError(room.slug);
+    room.slug ||= freeSlug(slugify(room.name), taken);
+    const keys = Object.keys(room);
+    try {
+      const rows = await sql.query(
+        `INSERT INTO rooms (${keys.map(roomColumn).join(", ")}) VALUES (${keys.map((_, i) => "$" + (i + 1)).join(", ")}) RETURNING *`,
+        keys.map(k => encodeRoomValue(k, room[k as keyof RoomInput])),
+      );
+      return roomRow(rows[0]);
+    } catch (error) {
+      if (isUniqueViolation(error)) throw new RoomAddressTakenError(room.slug);
+      throw error;
+    }
+  }
   const db = readDB();
-  const created = { ...room, id: "" } as Room;
+  if (room.slug && db.config.rooms.some(r => r.slug === room.slug)) throw new RoomAddressTakenError(room.slug);
+  const created = { ...room, id: "", slug: room.slug || "" } as Room;
   db.config.rooms.push(created);
-  withRoomIds(db);
+  normalizeRooms(db);
   writeDB(db);
   return created;
 }
+/** An empty slug keeps the current one. A changed slug keeps the old one as a redirect. */
 export async function updateRoom(id: string, updates: Partial<Room>): Promise<Room | null> {
-  const changes = pickRoom(updates);
+  const changes: Partial<Room> = pickRoom(updates);
+  if (!changes.slug) delete changes.slug;
   if (IS_POSTGRES) {
     const key = pgRoomKey(id);
     if (key === null) return null;
-    const columns = Object.keys(changes);
-    const rows = columns.length
-      ? await getSQL().query(
-          `UPDATE rooms SET ${columns.map((c, i) => `${c} = $${i + 1}`).join(", ")} WHERE idx = $${columns.length + 1} RETURNING *`,
-          [...Object.values(changes), key],
-        )
-      : await getSQL().query("SELECT * FROM rooms WHERE idx = $1", [key]);
-    return rows[0] ? roomRow(rows[0]) : null;
+    await prepareRooms();
+    const sql = getSQL();
+    const current = (await sql.query("SELECT * FROM rooms WHERE idx = $1", [key]))[0];
+    if (!current) return null;
+    if (changes.slug && changes.slug !== current.slug) {
+      if ((await sql.query("SELECT idx FROM rooms WHERE slug = $1 AND idx <> $2", [changes.slug, key])).length)
+        throw new RoomAddressTakenError(changes.slug);
+      changes.previousSlugs = movedSlugs(parseList(current.previous_slugs), current.slug, changes.slug);
+    }
+    const keys = Object.keys(changes);
+    if (!keys.length) return roomRow(current);
+    try {
+      const rows = await sql.query(
+        `UPDATE rooms SET ${keys.map((k, i) => `${roomColumn(k)} = $${i + 1}`).join(", ")} WHERE idx = $${keys.length + 1} RETURNING *`,
+        [...keys.map(k => encodeRoomValue(k, changes[k as keyof Room])), key],
+      );
+      return rows[0] ? roomRow(rows[0]) : null;
+    } catch (error) {
+      if (isUniqueViolation(error)) throw new RoomAddressTakenError(changes.slug ?? "");
+      throw error;
+    }
   }
   const db = readDB();
   const room = db.config.rooms.find(r => r.id === id);
   if (!room) return null;
+  if (changes.slug && changes.slug !== room.slug) {
+    if (db.config.rooms.some(r => r !== room && r.slug === changes.slug)) throw new RoomAddressTakenError(changes.slug);
+    changes.previousSlugs = movedSlugs(room.previousSlugs ?? [], room.slug, changes.slug);
+  }
   Object.assign(room, changes);
   writeDB(db);
   return room;
@@ -364,7 +532,9 @@ export async function updateRoom(id: string, updates: Partial<Room>): Promise<Ro
 export async function deleteRoom(id: string): Promise<boolean> {
   if (IS_POSTGRES) {
     const key = pgRoomKey(id);
-    return key !== null && (await getSQL().query("DELETE FROM rooms WHERE idx = $1 RETURNING idx", [key])).length > 0;
+    if (key === null) return false;
+    await prepareRooms();
+    return (await getSQL().query("DELETE FROM rooms WHERE idx = $1 RETURNING idx", [key])).length > 0;
   }
   const db = readDB();
   const index = db.config.rooms.findIndex(r => r.id === id);
@@ -377,9 +547,15 @@ export async function deleteRoom(id: string): Promise<boolean> {
 // ============================================================
 // Bookings and the notification outbox (written in one transaction / one file write)
 // ============================================================
-type NewBooking = Omit<Booking, "id" | "createdAt" | "paymentId" | "paymentStatus" | "bookingStatus">;
+type NewBooking = Omit<Booking, "id" | "createdAt" | "paymentId" | "paymentStatus" | "bookingStatus" | "source">;
+/** Staff-added bookings choose their status, are marked as staff and queue no guest notification. */
+export interface NewBookingOptions {
+  status?: "pending" | "confirmed";
+  source?: "staff";
+  notify?: boolean;
+}
 function mapBookingRow(r: Record<string, unknown>): Booking {
-  return {
+  return withCouponFields({
     id: r.id,
     name: r.name,
     mobile: r.mobile,
@@ -388,6 +564,8 @@ function mapBookingRow(r: Record<string, unknown>): Booking {
     country: r.country,
     gender: r.gender,
     roomType: r.room_type,
+    roomId: r.room_id ? String(r.room_id) : undefined,
+    source: r.source === "staff" ? "staff" : undefined,
     checkin: r.checkin,
     checkout: r.checkout,
     guests: r.guests,
@@ -397,8 +575,21 @@ function mapBookingRow(r: Record<string, unknown>): Booking {
     paymentId: r.payment_id,
     roomsRequested: Number(r.rooms_requested ?? 1),
     specialRequests: String(r.special_requests ?? ""),
+    // NULL only on requests saved before these columns existed; newer requests always store a value.
+    couponCode: r.coupon_code == null ? undefined : String(r.coupon_code),
+    couponOffer: r.coupon_offer == null ? undefined : String(r.coupon_offer),
     createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
-  } as Booking;
+  } as Booking);
+}
+/**
+ * Requests saved before offer codes had their own fields carry the code in the note as "Coupon CODE (Offer) · note".
+ * Only those (no coupon field at all) are read this way, so a guest typing that text today cannot fake a code.
+ */
+const LEGACY_COUPON = /^Coupon (\S{1,30}) \((.{1,100}?)\)(?: · ([\s\S]*))?$/;
+function withCouponFields(b: Booking): Booking {
+  if (b.couponCode !== undefined || !b.specialRequests) return b;
+  const match = LEGACY_COUPON.exec(b.specialRequests);
+  return match ? { ...b, couponCode: match[1], couponOffer: match[2], specialRequests: match[3] ?? "" } : b;
 }
 let bookingSetup: Promise<void> | undefined;
 async function prepareBookingExtensions() {
@@ -407,6 +598,10 @@ async function prepareBookingExtensions() {
     const sql = getSQL();
     await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rooms_requested INT DEFAULT 1`;
     await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS special_requests TEXT DEFAULT ''`;
+    await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS room_id TEXT DEFAULT ''`;
+    await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS source TEXT DEFAULT ''`;
+    await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS coupon_code TEXT`;
+    await sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS coupon_offer TEXT`;
     await sql`CREATE TABLE IF NOT EXISTS notification_outbox (id TEXT PRIMARY KEY, booking_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW())`;
     await sql`ALTER TABLE notification_outbox ADD COLUMN IF NOT EXISTS last_attempt_at TIMESTAMPTZ`;
   })().catch(error => {
@@ -436,6 +631,7 @@ export async function prepareStorage() {
   if (!IS_POSTGRES) return;
   await prepareBookingExtensions();
   await prepareAdminState();
+  await prepareRooms();
   for (const def of [ENQUIRIES, OFFERS, BANQUET, DINING, REVIEWS])
     for (const statement of def.migrations ?? []) await getSQL().query(statement);
 }
@@ -506,7 +702,8 @@ export async function getBookings(): Promise<Booking[]> {
   }
   return [...readDB().bookings].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
-export async function addBooking(b: NewBooking): Promise<Booking> {
+export async function addBooking(b: NewBooking, options: NewBookingOptions = {}): Promise<Booking> {
+  const { status = "pending", source, notify = true } = options;
   const id = crypto.randomUUID(),
     now = new Date().toISOString();
   const booking: Booking = {
@@ -515,22 +712,27 @@ export async function addBooking(b: NewBooking): Promise<Booking> {
     createdAt: now,
     paymentId: "",
     paymentStatus: "pending",
-    bookingStatus: "pending",
+    bookingStatus: status,
+    ...(source ? { source } : {}),
   };
   if (IS_POSTGRES) {
     const sql = getSQL();
     await prepareBookingExtensions();
-    await sql.transaction([
-      sql`INSERT INTO bookings (
+    const insert = sql`INSERT INTO bookings (
         id, name, mobile, email, city, country, gender, room_type, checkin, checkout, guests, amount,
-        payment_status, booking_status, payment_id, created_at, rooms_requested, special_requests) VALUES (${id}, ${b.name}, ${b.mobile}, ${b.email}, ${b.city}, ${b.country}, ${b.gender}, ${b.roomType}, ${b.checkin}, ${b.checkout}, ${b.guests}, ${b.amount}, 'pending', 'pending', '', ${now}, ${b.roomsRequested ?? 1}, ${b.specialRequests ?? ""})`,
-      sql`INSERT INTO notification_outbox (id, booking_id, status, attempts, created_at) VALUES (${id}, ${id}, 'pending', 0, ${now})`,
-    ]);
+        payment_status, booking_status, payment_id, created_at, rooms_requested, special_requests, room_id, source, coupon_code, coupon_offer) VALUES (${id}, ${b.name}, ${b.mobile}, ${b.email}, ${b.city}, ${b.country}, ${b.gender}, ${b.roomType}, ${b.checkin}, ${b.checkout}, ${b.guests}, ${b.amount}, 'pending', ${status}, '', ${now}, ${b.roomsRequested ?? 1}, ${b.specialRequests ?? ""}, ${b.roomId ?? ""}, ${source ?? ""}, ${b.couponCode ?? ""}, ${b.couponOffer ?? ""})`;
+    // A website request and its notification event are saved together; a staff booking has no event.
+    if (notify)
+      await sql.transaction([
+        insert,
+        sql`INSERT INTO notification_outbox (id, booking_id, status, attempts, created_at) VALUES (${id}, ${id}, 'pending', 0, ${now})`,
+      ]);
+    else await sql.transaction([insert]);
     return booking;
   }
   const db = readDB();
   db.bookings.push(booking);
-  db.notificationJobs!.push({ id, bookingId: id, status: "pending", attempts: 0, createdAt: now });
+  if (notify) db.notificationJobs!.push({ id, bookingId: id, status: "pending", attempts: 0, createdAt: now });
   writeDB(db);
   return booking;
 }

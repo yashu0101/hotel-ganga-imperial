@@ -2,6 +2,7 @@ import { canonical } from "@/lib/seo";
 import Link from "next/link";
 import InteriorShell from "@/components/InteriorShell";
 import { HOTEL_INFORMATION as info, GUEST_FAQS } from "@/lib/hotel-content";
+import Icon from "@/components/Icon";
 export const metadata = {
   ...canonical("/guest-information"),
   title: "Guest information & policies | Hotel Ganga Imperial",
@@ -66,7 +67,7 @@ export default function Guide() {
         </div>
         <div className="guide-actions">
           <Link className="btn btn-solid" href="/book" data-reserve-cta>
-            Request a reservation <span aria-hidden="true">↗</span>
+            Request a reservation <Icon name="arrow-right" position="end" />
           </Link>
           <Link href="/contact">Contact & location</Link>
         </div>

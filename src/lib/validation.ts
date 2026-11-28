@@ -8,11 +8,20 @@ export type Rule =
   | { type: "date" }
   | { type: "enum"; values: readonly string[]; default: string }
   | { type: "list"; maxItems: number; itemMax: number }
-  | { type: "imagePath"; default: string };
+  | { type: "imagePath"; default: string }
+  /** A web-address segment. Input is normalised ("Deluxe King" → "deluxe-king"); "" means "choose one for me". */
+  | { type: "slug"; max: number };
 export type Schema = Record<string, Rule>;
 export type Parsed = { ok: true; data: Record<string, unknown> } | { ok: false; error: string };
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Lower-case words joined by hyphens, as used in web addresses: "Deluxe Room" → "deluxe-room". */
+export const slugify = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 
 function check(key: string, rule: Rule, value: unknown): { value: unknown } | { error: string } {
   switch (rule.type) {
@@ -45,6 +54,12 @@ function check(key: string, rule: Rule, value: unknown): { value: unknown } | { 
         return { error: `${key} must be a list of up to ${rule.maxItems} short items` };
       return { value: value.map((i: string) => i.trim()).filter(Boolean) };
     }
+    case "slug": {
+      if (typeof value !== "string") return { error: `${key} must be text` };
+      const v = slugify(value.trim());
+      if (value.trim() && !v) return { error: `${key} must contain letters or numbers` };
+      return v.length > rule.max ? { error: `${key} must be ${rule.max} characters or fewer` } : { value: v };
+    }
     case "imagePath":
       return typeof value === "string" && /^\/images\/[\w.-]+\.(jpe?g|png|webp|avif)$/i.test(value)
         ? { value }
@@ -56,6 +71,7 @@ function fallback(rule: Rule): unknown {
   if (rule.type === "date") return "";
   if (rule.type === "list") return [];
   if (rule.type === "string") return rule.default ?? "";
+  if (rule.type === "slug") return "";
   return rule.default;
 }
 
@@ -83,11 +99,21 @@ export function parseInput(schema: Schema, body: unknown, { partial = false } = 
 
 export const ROOM_SCHEMA: Schema = {
   name: { type: "string", max: 80, required: true },
+  /** "" when adding: made from the name. "" when editing: the current address is kept. */
+  slug: { type: "slug", max: 80 },
   text: { type: "string", max: 600 },
   image: { type: "imagePath", default: "/images/image-49.jpeg" },
   rate: { type: "string", max: 40 },
   sample: { type: "boolean", default: false },
   hidden: { type: "boolean", default: false },
+  size: { type: "string", max: 80 },
+  bed: { type: "string", max: 80 },
+  occupancy: { type: "string", max: 80 },
+  bathroom: { type: "string", max: 80 },
+  location: { type: "string", max: 120 },
+  view: { type: "string", max: 80 },
+  inRoom: { type: "list", maxItems: 20, itemMax: 80 },
+  services: { type: "list", maxItems: 20, itemMax: 80 },
 };
 export const OFFER_SCHEMA: Schema = {
   title: { type: "string", max: 100, required: true },

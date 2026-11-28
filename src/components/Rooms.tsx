@@ -1,7 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
-import { roomSlug, roomPhoto } from "@/lib/hotel-content";
+import { ILLUSTRATION_IMAGES } from "@/lib/config";
 import type { Room } from "@/lib/types";
+import Icon from "@/components/Icon";
 
 // Rooms are loaded once on the server by the page and passed in (visible rooms only).
 export default function Rooms({
@@ -29,10 +30,10 @@ export default function Rooms({
         )}
         <div className="stay-grid">
           {(preview ? rooms.slice(0, 2) : rooms).map((room, i) => (
-            <article className="stay-card" key={room.name}>
+            <article className="stay-card" key={room.slug}>
               <div className="stay-photo">
                 <Image
-                  src={roomPhoto(room)}
+                  src={room.image}
                   alt={room.sample ? "Representative imagery for " + room.name : room.name}
                   width={640}
                   height={440}
@@ -42,7 +43,7 @@ export default function Rooms({
                 />
                 {room.sample && (
                   <span className="chip">
-                    {room.name === "Family Room" ? "Room illustration" : "Representative photo"}
+                    {ILLUSTRATION_IMAGES.includes(room.image) ? "Room illustration" : "Representative photo"}
                   </span>
                 )}
                 <span className="room-number">0{i + 1}</span>
@@ -50,16 +51,16 @@ export default function Rooms({
               <div className="stay-body">
                 <h3>{room.name}</h3>
                 <p>{room.text}</p>
-                <Link className="room-details-link" href={"/rooms/" + roomSlug(room.name)}>
-                  Room details & practical information <span aria-hidden="true">↗</span>
+                <Link className="room-details-link" href={"/rooms/" + room.slug}>
+                  Room details & practical information <Icon name="arrow-right" position="end" />
                 </Link>
                 <div className="stay-price">
                   <div>
                     <small>Indicative nightly rate</small>
                     <strong>{room.rate || "On request"}</strong>
                   </div>
-                  <Link href={"/book?room=" + encodeURIComponent(room.name)}>
-                    Request this room <span aria-hidden="true">↗</span>
+                  <Link href={"/book?room=" + encodeURIComponent(room.slug)}>
+                    Request this room <Icon name="arrow-right" position="end" />
                   </Link>
                 </div>
               </div>
@@ -69,7 +70,7 @@ export default function Rooms({
         {preview && (
           <div className="section-action">
             <Link className="btn btn-solid" href="/rooms">
-              Explore all rooms & compare <span aria-hidden="true">↗</span>
+              Explore all rooms & compare <Icon name="arrow-right" position="end" />
             </Link>
           </div>
         )}

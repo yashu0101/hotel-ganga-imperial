@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { EXPERIENCE_STEPS } from "@/lib/config";
+import Icon from "@/components/Icon";
 
 // Desktop: scrolling through the tall sticky section turns the building.
 // Phones and small tablets (<=900px) and reduced motion: the section is normal height and the 01-04 buttons turn it.
@@ -129,7 +130,7 @@ export default function Experience() {
             <i />
           </div>
           <button className="replay-welcome" onClick={() => window.dispatchEvent(new Event("replay-hotel-welcome"))}>
-            Replay the welcome ↻
+            Replay the welcome <Icon name="replay" position="end" />
           </button>
         </div>
         <div className="scene" aria-hidden="true">

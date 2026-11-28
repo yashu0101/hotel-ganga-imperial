@@ -3,6 +3,7 @@ import Link from "next/link";
 import InteriorShell from "@/components/InteriorShell";
 import { SITE_CONFIG } from "@/lib/config";
 import { telHref, whatsappHref } from "@/lib/contact";
+import Icon, { NewTabNote } from "@/components/Icon";
 export const metadata = {
   ...canonical("/contact"),
   title: "Contact & location | Hotel Ganga Imperial",
@@ -62,25 +63,38 @@ export default function Contact() {
             )}
             {(tel || c.email || whatsapp) && (
               <div className="guide-actions">
-                {tel && <a href={tel}>Call the hotel</a>}
-                {c.email && <a href={"mailto:" + c.email}>Email the hotel</a>}
+                {tel && (
+                  <a href={tel}>
+                    <Icon name="phone" position="start" />
+                    Call the hotel
+                  </a>
+                )}
+                {c.email && (
+                  <a href={"mailto:" + c.email}>
+                    <Icon name="mail" position="start" />
+                    Email the hotel
+                  </a>
+                )}
                 {whatsapp && (
                   <a href={whatsapp} target="_blank" rel="noreferrer">
-                    WhatsApp <span aria-hidden="true">↗</span>
+                    <Icon name="chat" position="start" />
+                    WhatsApp
+                    <NewTabNote />
                   </a>
                 )}
               </div>
             )}
             <Link className="btn btn-solid" href="/book" data-reserve-cta>
-              Request a reservation <span aria-hidden="true">↗</span>
+              Request a reservation <Icon name="arrow-right" position="end" />
             </Link>
           </div>
           <div className="location-card">
-            <span aria-hidden="true">⌖</span>
+            <Icon name="pin" className="location-mark" />
             <h2>Find your way here</h2>
             {c.mapEmbedUrl ? (
               <a className="btn btn-solid" href={c.mapEmbedUrl} target="_blank" rel="noreferrer">
-                Open hotel directions <span aria-hidden="true">↗</span>
+                Open hotel directions <Icon name="external" position="end" />
+                <NewTabNote />
               </a>
             ) : (
               <p>Ask for directions in your request and the hotel will include them in its reply.</p>
