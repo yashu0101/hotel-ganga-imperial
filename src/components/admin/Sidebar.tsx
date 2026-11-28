@@ -51,7 +51,16 @@ export const SECTIONS = NAV.flatMap(g => g.items.map(i => i.id));
 /** A count beside a section: "attention" ones ask staff to act. */
 export type Badges = Partial<Record<Section, { n: number; attention?: boolean; label: string }>>;
 
-export default function Sidebar({ current, badges }: { current: Section; badges: Badges }) {
+/** `hidden` sections are left out of the navigation (e.g. Enquiries when there are none). */
+export default function Sidebar({
+  current,
+  badges,
+  hidden = [],
+}: {
+  current: Section;
+  badges: Badges;
+  hidden?: readonly Section[];
+}) {
   const { t } = useApp();
   return (
     <aside className="adm-sidebar">
@@ -66,27 +75,29 @@ export default function Sidebar({ current, badges }: { current: Section; badges:
               {t(group.group)}
             </p>
             <ul aria-labelledby={"nav-" + group.group}>
-              {group.items.map(item => {
-                const badge = badges[item.id];
-                return (
-                  <li key={item.id}>
-                    <a
-                      href={"#" + item.id}
-                      className="adm-nav-link"
-                      aria-current={current === item.id ? "page" : undefined}
-                    >
-                      <Icon name={item.icon} />
-                      <span className="label">{t("admin.nav." + item.id)}</span>
-                      {badge && badge.n > 0 && (
-                        <span className={"adm-nav-badge" + (badge.attention ? " attention" : "")}>
-                          {badge.n}
-                          <span className="sr-only"> {badge.label}</span>
-                        </span>
-                      )}
-                    </a>
-                  </li>
-                );
-              })}
+              {group.items
+                .filter(item => !hidden.includes(item.id))
+                .map(item => {
+                  const badge = badges[item.id];
+                  return (
+                    <li key={item.id}>
+                      <a
+                        href={"#" + item.id}
+                        className="adm-nav-link"
+                        aria-current={current === item.id ? "page" : undefined}
+                      >
+                        <Icon name={item.icon} />
+                        <span className="label">{t("admin.nav." + item.id)}</span>
+                        {badge && badge.n > 0 && (
+                          <span className={"adm-nav-badge" + (badge.attention ? " attention" : "")}>
+                            {badge.n}
+                            <span className="sr-only"> {badge.label}</span>
+                          </span>
+                        )}
+                      </a>
+                    </li>
+                  );
+                })}
             </ul>
           </div>
         ))}

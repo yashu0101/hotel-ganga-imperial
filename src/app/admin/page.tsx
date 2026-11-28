@@ -192,6 +192,13 @@ function Dashboard() {
     });
   }, [ready, loadNotifications]);
 
+  // Nothing creates enquiries any more; the tab only appears while older ones are stored
+  // (or when they could not be loaded, so the error stays visible). Links to it then land on Today.
+  const showEnquiries = loaded && (data.enquiries.length > 0 || failed.has("enquiries"));
+  useEffect(() => {
+    if (loaded && !showEnquiries && place.section === "enquiries") window.location.replace("#today");
+  }, [loaded, showEnquiries, place.section]);
+
   // Status changes and deletes apply to the screen only after the server confirms them.
   const changeStatus = useCallback(
     async (row: RequestRow, status: string) => {
@@ -341,7 +348,7 @@ function Dashboard() {
       <a className="adm-skip" href="#adm-main">
         {t("admin.skipToContent")}
       </a>
-      <Sidebar current={section} badges={badges} />
+      <Sidebar current={section} badges={badges} hidden={showEnquiries ? [] : ["enquiries"]} />
       <div className="adm-workspace">
         <header className="adm-topbar">
           <div className="adm-title">
